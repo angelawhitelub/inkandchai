@@ -196,3 +196,54 @@ test('window closed: a fresh paid order is not cancellable here', async () => {
   assert.equal(res.statusCode, 422);
   assert.equal(JSON.parse(res.body).reason, 'too_soon');
 });
+
+// Owner, 12 Nov 2026: booked but not picked up = cancellable on WhatsApp.
+test('pickupPending: a booked prepaid order is cancellable at once, full refund', () => {
+  const q = quoteUnpickedCancel(prepaidBooked({ created_at: daysAgo(1) }), NOW, { pickupPending: true });
+  assert.deepEqual(q, { eligible: true, refundPaise: 49900, partialCod: false, hasAwb: true, pickupPending: true });
+  // Without the option the 7-day rule still stands (My Orders).
+  assert.equal(quoteUnpickedCancel(prepaidBooked({ created_at: daysAgo(1) }), NOW).reason, 'too_soon');
+});
+
+test('pickupPending: a booked COD order is cancellable, nothing to refund', () => {
+  const cod = prepaidBooked({ razorpay_payment_id: null, amount_paise: 61500, created_at: daysAgo(1) });
+  const q = quoteUnpickedCancel(cod, NOW, { pickupPending: true });
+  assert.equal(q.eligible, true);
+  assert.equal(q.refundPaise, 0);
+  assert.equal(q.pickupPending, true);
+  // COD past 7 days still waiting for pickup is covered too.
+  assert.equal(quoteUnpickedCancel({ ...cod, created_at: daysAgo(9) }, NOW, { pickupPending: true }).pickupPending, true);
+});
+
+test('pickupPending never covers an unbooked COD order or a parcel that moved', () => {
+  const cod = prepaidBooked({ razorpay_payment_id: null, created_at: daysAgo(1) });
+  assert.equal(quoteUnpickedCancel({ ...cod, tracking_id: null, status: 'cod_pending' }, NOW, { pickupPending: true }).reason, 'nothing_paid');
+  assert.equal(quoteUnpickedCancel({ ...cod, last_courier_status: 'In Transit' }, NOW, { pickupPending: true }).reason, 'moved');
+  assert.equal(quoteUnpickedCancel({ ...cod, shipment_moved_at: daysAgo(0.5) }, NOW, { pickupPending: true }).reason, 'moved');
+  assert.equal(quoteUnpickedCancel({ ...cod, cancellation_requested_at: daysAgo(0.1) }, NOW, { pickupPending: true }).reason, 'already_requested');
+});
+
+test('the Diwali pickup notice runs through its IST date, then stops by itself', () => {
+  const { pickupDelayNotice } = require('./pickup-delay');
+  const env = { PICKUP_DELAY_UNTIL: '2026-11-13' };
+  assert.match(pickupDelayNotice(Date.parse('2026-11-13T18:00:00Z'), env), /Diwali/);   // 23:30 IST on the 13th
+  assert.equal(pickupDelayNotice(Date.parse('2026-11-13T18:31:00Z'), env), '');         // 00:01 IST on the 14th
+  assert.equal(pickupDelayNotice(Date.parse('2026-11-12T10:00:00Z'), { PICKUP_DELAY_UNTIL: '' }), '');
+  assert.equal(pickupDelayNotice(Date.parse('2026-11-12T10:00:00Z'), { ...env, PICKUP_DELAY_NOTICE: 'Custom.' }), 'Custom.');
+});
+
+test('WhatsApp pickup-pending cancel of a COD order: courier asked, customer-request reason, no refund wording', async () => {
+  process.env.ADMIN_TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET || 'test-secret-for-signing-0123456789';
+  const { cancelUnpickedOrder } = require('../cancel-unpicked-order');
+  const cod = prepaidBooked({ razorpay_payment_id: null, amount_paise: 61500, created_at: new Date(Date.now() - 86400e3).toISOString() });
+  const db = fakeDb(cod);
+  let opts = null;
+  const r = await cancelUnpickedOrder(db, cod, {
+    pickupPending: true, untilShipped: false,
+    handleOne: async (ev, sb, o, o2) => { opts = o2; return { outcome: 'cancelled', reason: 'XpressBees cancelled' }; },
+  });
+  assert.equal(r.status, 200);
+  assert.match(r.body.message, /Cash on Delivery, there is nothing to refund/);
+  assert.equal(opts.cancelReason, 'customer_request');
+  assert.match(db.state.order.cancellation_request_note, /^Customer cancel: not picked up/);
+});

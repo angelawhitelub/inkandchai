@@ -137,7 +137,12 @@ async function handleOne(event, sb, order, opts) {
     };
   }
 
-  const r = await callFunction(event, 'update-order-status', { id: order.id, status: 'cancelled', tracking_id: '', courier_name: '' });
+  // A customer's own cancel says so (opts.cancelReason 'customer_request');
+  // without a reason update-order-status sends the old out-of-stock wording.
+  const r = await callFunction(event, 'update-order-status', {
+    id: order.id, status: 'cancelled', tracking_id: '', courier_name: '',
+    ...(opts.cancelReason ? { cancel_reason: opts.cancelReason } : {}),
+  });
   if (r.statusCode !== 200) return { ...base, outcome: 'failed', reason: `courier stopped (${stop}) but the order was not cancelled: ${r.data.error || r.statusCode}` };
   const { data: after } = await sb.from('orders').select('status, refund_id, refund_utr').eq('id', order.id).maybeSingle();
   const now = String(after && after.status || 'cancelled');

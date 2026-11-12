@@ -41,12 +41,13 @@ const rs = (paise) => `₹${Math.round(Number(paise || 0) / 100).toLocaleString(
 // public/js/auth.js matches the start of this note to show "Cancellation received".
 const NOTE = `Customer cancel: not picked up ${UNPICKED_DAYS}+ days after ordering (full refund).`;
 const EARLY_NOTE = 'Customer cancel: not picked up — before shipping, while the cancellation window was open (full refund).';
+const PICKUP_NOTE = 'Customer cancel: not picked up yet (booked, waiting for pickup) — cancelled on WhatsApp.';
 const cancelWindow = require('./utils/cancel-window');
 const { xbPanelIndex, baseOrderNumber } = require('./utils/booking-guard');
 
-async function alertOwner(order, line, { early = false } = {}) {
+async function alertOwner(order, line, { early = false, pickupPending = false } = {}) {
   const id = order.razorpay_order_id || order.id;
-  const why = early ? 'before shipping, cancellation window open' : `not picked up in ${UNPICKED_DAYS}+ days`;
+  const why = pickupPending ? 'booked, pickup not done yet' : early ? 'before shipping, cancellation window open' : `not picked up in ${UNPICKED_DAYS}+ days`;
   const text = `⏳ ${id}: customer cancelled (${why})\n${line}\n`
     + `${order.customer_name || ''} ${order.customer_phone || ''}\n`
     + `${order.tracking_id ? `AWB ${order.courier_name || ''} ${order.tracking_id}\n` : ''}`
@@ -82,7 +83,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   let untilShipped = false;
   if (deps.untilShipped !== undefined) untilShipped = !!deps.untilShipped;
   else { try { untilShipped = await cancelWindow.untilShippedOpen(); } catch { untilShipped = false; } }
-  const q = quoteUnpickedCancel(order, Date.now(), { untilShipped });
+  const q = quoteUnpickedCancel(order, Date.now(), { untilShipped, pickupPending: !!deps.pickupPending });
   if (!q.eligible) {
     return out(422, { error: q.reason === 'already_requested'
       ? 'We already have a cancellation for this order and are working on it.'
@@ -113,7 +114,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   // Claim: one cancel per order, whatever happens next.
   const at = new Date().toISOString();
   const { data: claimed, error: claimErr } = await supabase.from('orders')
-    .update({ cancellation_requested_at: at, cancellation_request_note: q.early ? EARLY_NOTE : NOTE })
+    .update({ cancellation_requested_at: at, cancellation_request_note: q.pickupPending ? PICKUP_NOTE : q.early ? EARLY_NOTE : NOTE })
     .eq('id', order.id).is('cancellation_requested_at', null).select('id');
   if (claimErr) {
     console.error('[cancel-unpicked-order] claim:', claimErr.message);
@@ -126,7 +127,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   const id = order.razorpay_order_id || order.id;
   let r;
   try {
-    r = await (deps.handleOne || handleOne)(internalEvent(), supabase, { ...target, cancellation_requested_at: at }, { dryRun: false, confirmManual: false });
+    r = await (deps.handleOne || handleOne)(internalEvent(), supabase, { ...target, cancellation_requested_at: at }, { dryRun: false, confirmManual: false, cancelReason: 'customer_request' });
   } catch (e) {
     console.error('[cancel-unpicked-order]', id, e);
     r = { outcome: 'failed', reason: e.message };
@@ -136,7 +137,9 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   if (r.outcome === 'cancelled') {
     return out(200, {
       success: true, outcome: 'cancelled',
-      message: `Order cancelled. Your full refund of ${rs(q.refundPaise)} has been started to your original payment method — banks usually take 3–7 working days to show it.`,
+      message: q.refundPaise > 0
+        ? `Order cancelled. Your full refund of ${rs(q.refundPaise)} has been started to your original payment method — banks usually take 3–7 working days to show it.`
+        : 'Order cancelled. As it was Cash on Delivery, there is nothing to refund.',
     });
   }
 
@@ -151,10 +154,12 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   }
 
   // Could not stop the parcel on our own: the owner finishes it.
-  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`, { early: !!q.early });
+  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`, { early: !!q.early, pickupPending: !!q.pickupPending });
   return out(202, {
     success: true, outcome: 'requested',
-    message: `We've received your cancellation. We couldn't confirm with the courier just now, so our team will stop the parcel and send your full refund of ${rs(q.refundPaise)} within 24 hours. You don't need to do anything else.`,
+    message: q.refundPaise > 0
+      ? `We've received your cancellation. We couldn't confirm with the courier just now, so our team will stop the parcel and send your full refund of ${rs(q.refundPaise)} within 24 hours. You don't need to do anything else.`
+      : "We've received your cancellation. We couldn't confirm with the courier just now, so our team will stop the parcel within 24 hours. As it was Cash on Delivery, there is nothing to pay or refund.",
   });
 }
 

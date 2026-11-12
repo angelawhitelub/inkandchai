@@ -125,6 +125,11 @@ RTO_AUTO_REFUND_MAX_PER_RUN = "25"
 # "off" stops all three.
 XPRESSBEES_QUEUE_CLEANUP = "on"
 
+# WhatsApp bot: courier-pickup delay notice for booked, not-picked-up orders
+# (utils/pickup-delay). Shown through PICKUP_DELAY_UNTIL (IST, inclusive);
+# set it to "" to stop it early or a later date to extend it.
+PICKUP_DELAY_UNTIL = "2026-11-13"
+
 # Customer notice "a book in your order is out of stock" for booked orders the
 # courier has not picked up 3+ days after ordering (stock-delay-notify-scheduled).
 # Customer-facing: "on" only after a dry run from the admin has been reviewed.
