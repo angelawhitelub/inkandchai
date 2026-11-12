@@ -16789,6 +16789,7 @@ const XBB_HOLD_TEXT = {
   fresh: 'Placed under 30 minutes ago (customer can still cancel)',
   cancel_requested: 'Customer asked to cancel',
   preorder: 'Pre-order: publish date has not arrived',
+  handling: 'Extra handling time: handover date has not arrived',
   status: 'No longer waiting to ship',
   has_awb: 'Already has an AWB',
   missing: 'Order not found',
@@ -16826,10 +16827,56 @@ function xbbHeldList(skipped) {
   return '<div style="' + DL_SEC + 'color:var(--cream-dim);">Not sent (' + skipped.length + ')</div>' +
     Object.entries(groups).map(([k, rows]) =>
       '<details style="margin-top:0.3rem;"><summary style="cursor:pointer;font-size:0.74rem;">' + dlEsc(XBB_HOLD_TEXT[k] || k) + ' — ' + rows.length + '</summary>' +
+        (k === 'handling' ? xbbPushAnywayButton(rows) : '') +
         dlOrderList(rows, r =>
           '<span style="' + DL_MONO + 'min-width:12.5rem;">' + dlEsc(r.order_id) + '</span>' +
           '<span style="color:var(--cream-dim);">' + dlEsc(r.reason || '') + '</span>') +
       '</details>').join('');
+}
+
+// "Push anyway" (owner, 12 Nov 2026): lets orders held for a book's extra
+// handling time through every courier path now (admin-handling-release), then
+// re-runs the price check so they show up ready to book. Pre-orders stay held.
+let xbbHandlingIds = [];
+function xbbPushAnywayButton(rows) {
+  xbbHandlingIds = rows.map(r => r.order_id);
+  return '<div style="margin:0.4rem 0 0.5rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">' +
+    '<button class="btn-outline" onclick="xbbPushAnyway()" style="border-color:rgba(214,184,94,0.6);color:var(--gold, #d6b85e);">🚀 Push anyway (' + rows.length + ')</button>' +
+    '<span style="font-size:0.68rem;color:var(--cream-dim);">Stock is ready early: let these through the handling hold now, on every courier. Nothing is booked until you press Book.</span>' +
+  '</div>';
+}
+
+async function xbbPushAnyway() {
+  const ids = xbbHandlingIds.slice();
+  if (!ids.length) return;
+  if (!confirm('Push ' + ids.length + ' order(s) anyway?\n\nThey are being held for extra handling time. Releasing them lets every courier path (XpressBees, NimbusPost, Delhivery, Ekart, DTDC) send them now, before the handover date the customer was given.\n\nNothing is booked yet: the price check runs again and you still press Book.')) return;
+  xbbModal(XBB_H('Book on XpressBees (API)') + '<p style="color:var(--cream-dim);"><span class="spinner"></span>Releasing ' + ids.length + ' order(s)…</p>');
+  try {
+    const res = await fetch('/.netlify/functions/admin-handling-release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken || '', 'X-Admin-Key': adminKey || '' },
+      body: JSON.stringify({ order_ids: ids, on: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  } catch (e) {
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Could not release the orders', e.message, 'They are still held. Nothing was sent to XpressBees.') +
+      '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
+    return;
+  }
+  const st = xbbState || {};
+  try { await xbbCall({ action: 'job_dismiss' }); } catch (e) { /* a finished run clears; a running one refuses below */ }
+  try {
+    await xbbCall({ action: 'job_start', mode: 'preview', service: st.service || 'surface', days: st.days || 30,
+      ...(st.scope === 'selected' && Array.isArray(st.selected) ? { order_ids: st.selected } : {}),
+      ...(st.courierId ? { courier_id: st.courierId } : {}) });
+  } catch (e) {
+    xbbModal(XBB_H('Book on XpressBees (API)') + dlErrorBox('Released, but the price check did not restart', e.message,
+      ids.length + ' order(s) are no longer held. Close this and start Book on XpressBees again.') +
+      '<div style="margin-top:1rem;text-align:right;"><button class="btn-outline" onclick="xbbClose()">Close</button></div>');
+    return;
+  }
+  xbbWatch();
 }
 
 // Opening shows the server's run if there is one — still going, or finished

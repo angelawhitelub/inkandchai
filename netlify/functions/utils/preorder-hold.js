@@ -153,14 +153,19 @@ async function allHandling(db) {
  * books. Pre-orders first, then handling time. Never throws: if the books
  * cannot be read, both rules fall back to what checkout stamped on the order.
  */
-async function preorderChecker(db, now = Date.now()) {
+async function preorderChecker(db, now = Date.now(), opts = {}) {
   let live = null;
   try { live = await allReleases(db, now); }
   catch (e) { console.error('[preorder-hold] books unreadable, using the dates on the orders:', e.message); }
   let handling = null;
   try { handling = await allHandling(db); }
   catch (e) { console.error('[preorder-hold] handling days unreadable, using the days on the orders:', e.message); }
-  return (order) => holdFromReleases(order, live, now) || holdFromHandling(order, handling, now);
+  // "Push anyway": orders the owner released from the handling hold
+  // (utils/handling-release). Pre-orders are never released this way.
+  const released = opts.released || await require('./handling-release').releasedOrders();
+  return (order) => holdFromReleases(order, live, now)
+    || (released.has(String((order && (order.razorpay_order_id || order.id)) || '').trim().toUpperCase())
+      ? null : holdFromHandling(order, handling, now));
 }
 
 /** Splits orders into those free to go and those waiting: { free, held: [{ order, ...hold }] }. */
