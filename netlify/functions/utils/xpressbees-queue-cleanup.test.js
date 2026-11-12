@@ -52,3 +52,11 @@ test('over HTTP it is owner-only', async () => {
   const res = await handler({ rawUrl: 'https://x/.netlify/functions/xpressbees-queue-cleanup-scheduled', httpMethod: 'POST', headers: {}, path: '/.netlify/functions/xpressbees-queue-cleanup-scheduled' });
   assert.equal(res.statusCode, 401);
 });
+
+test('the 15-minute sweep reads only the newest pages and never alerts', async () => {
+  const { runSweep, SWEEP_PAGES } = require('../xpressbees-queue-sweep-scheduled');
+  const cancel = spy({ statusCode: 200, data: { results: [{ orders: ['IC-9'], ok: false, error: 'HTTP 404' }] } });
+  const out = await runSweep({ cancel });
+  assert.deepEqual(cancel.calls[0], { dry_run: false, any_courier: true, closed_here: true, limit: 100, max_pages: SWEEP_PAGES });
+  assert.equal(out.failed, 1);
+});

@@ -31,6 +31,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
+const { clearXbQueueRows } = require('./utils/xb-queue-clear');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { readCancelReason } = require('./utils/cancel-reasons');
 
@@ -198,6 +199,7 @@ exports.handler = async (event) => {
 
     // ── 3. Process each row (only DB calls left are UPDATEs + emails) ─────────
     const results    = [];
+    const xbQueueIds = [];   // cancelled here: clear their XpressBees Pending rows in one panel read
     let updated      = 0;
     let emailsSent   = 0;
     let whatsappSent = 0;
@@ -334,6 +336,9 @@ exports.handler = async (event) => {
         courierCancel = await cancelCourierShipment(order);
         await recordCourierCancel(supabase, order.id, courierCancel);
       }
+      if (status === 'cancelled' && order.status !== 'cancelled' && saved && order.razorpay_order_id) {
+        xbQueueIds.push(order.razorpay_order_id);
+      }
 
       if (status === 'cancelled' && order.status !== 'cancelled' && saved && !silent) {
         await notifyOrderCancelled(saved, {
@@ -359,6 +364,8 @@ exports.handler = async (event) => {
       });
     }
 
+    const xbQueue = xbQueueIds.length ? await clearXbQueueRows(xbQueueIds) : null;
+
     return {
       statusCode: 200,
       headers: CORS,
@@ -372,6 +379,7 @@ exports.handler = async (event) => {
         cancellations_notified: cancellationsNotified,
         reships_notified: reshipsNotified,
         skipped_duplicate_awb: skippedNoOp,
+        xb_queue: xbQueue && xbQueue.message ? xbQueue : undefined,
         results,
         truncated: updates.length < (Array.isArray(body.updates) ? body.updates.length : 0),
       }),

@@ -51,10 +51,12 @@ async function defaultAlertOwner(text) {
   try { await require('./utils/whatsapp').sendText(process.env.STORE_OWNER_PHONE, text); } catch { /* logged by caller */ }
 }
 
-async function runCleanup(deps = {}, { dryRun = false } = {}) {
+async function runCleanup(deps = {}, { dryRun = false, maxPages = null } = {}) {
   const cancel = deps.cancel || defaultCancel;
   const alertOwner = deps.alertOwner || defaultAlertOwner;
-  const r = await cancel({ dry_run: dryRun, any_courier: true, closed_here: true, limit: PER_RUN });
+  const req = { dry_run: dryRun, any_courier: true, closed_here: true, limit: PER_RUN };
+  if (maxPages) req.max_pages = maxPages;
+  const r = await cancel(req);
   if (r.statusCode !== 200) {
     const msg = String(r.data.error || `HTTP ${r.statusCode}`).slice(0, 300);
     if (!dryRun) await alertOwner(`⚠️ XpressBees panel cleanup failed: ${msg}`);
@@ -102,3 +104,4 @@ exports.handler = async (event = {}) => {
 };
 
 exports.runCleanup = runCleanup;
+exports.cleanupOn = cleanupOn;

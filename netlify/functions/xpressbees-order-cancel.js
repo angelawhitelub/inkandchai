@@ -23,12 +23,18 @@
  * Every other panel row is left alone, and guards 2 and 3 are unchanged.
  *
  * closed_here: true (with any_courier) also clears rows for orders that will
- * never ship: cancelled or refunded here, with no tracking_id. A cancelled
- * order leaves our feed, but the importer never drops a row it already
- * pulled, so it sat in Pending with a live Ship button -- three cancelled
- * orders and a refunded one on 9 Oct. A cancelled order WITH an AWB is still
- * only reported (left_alone.cancelled_here). XpressBees keeps a cancelled
- * order number reserved, so an order restored later goes back with a suffix.
+ * never ship: cancelled or refunded here. A cancelled order leaves our feed,
+ * but the importer never drops a row it already pulled, so it sat in Pending
+ * with a live Ship button -- three cancelled orders and a refunded one on
+ * 9 Oct. Since 12 Nov this includes a cancelled order that carries an AWB
+ * (another courier's, now stopped): its queue row is just as dead, and guard 2
+ * still keeps every booked XpressBees row out of reach. XpressBees keeps a
+ * cancelled order number reserved, so an order restored later goes back with
+ * a suffix.
+ *
+ * max_pages (1-25, default 25) reads only the newest pages of the panel. The
+ * 15-minute sweep and the instant clear on an admin cancel use a few pages;
+ * the daily 09:00 run reads them all.
  *
  * THREE GUARDS, none of them bypassable by any flag:
  *
@@ -108,10 +114,9 @@ const hasAwb = (row) => panelAwb(row) !== '';
 // else) is a shipment whether or not an AWB field is filled in.
 const isQueued = (row) => String(row.status || '').trim().toLowerCase() === 'new';
 
-/** Will never ship: cancelled or refunded here, and no AWB was ever put on it. */
+/** Will never ship: cancelled or refunded here (any AWB it had was another courier's, or is stopped). */
 const CLOSED_STATUSES = new Set(['cancelled', 'refunded', 'refund_pending', 'refund_failed']);
-const isClosedUnshipped = (o) => CLOSED_STATUSES.has(String(o.status || '').toLowerCase())
-  && !String(o.tracking_id || '').trim();
+const isClosed = (o) => CLOSED_STATUSES.has(String(o.status || '').toLowerCase());
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
@@ -127,6 +132,7 @@ exports.handler = async (event) => {
   const endpoint = String(body.endpoint || '/orders/cancel');
   const limit = Math.max(1, Math.min(200, Number(body.limit) || 200));
   const shape = String(body.shape || 'form');
+  const maxPages = Math.max(1, Math.min(MAX_PAGES, Number(body.max_pages) || MAX_PAGES));
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const anyCourier = body.any_courier === true;
@@ -136,7 +142,7 @@ exports.handler = async (event) => {
   const seen = new Set();
   const panel = [];
   try {
-    for (let p = 1; p <= MAX_PAGES; p += 1) {
+    for (let p = 1; p <= maxPages; p += 1) {
       let out;
       try {
         out = await xb.panelOrders({
@@ -180,7 +186,7 @@ exports.handler = async (event) => {
         found.add(num);
         // An AWB on an order we cancelled is a booking that never went out --
         // not "already shipped". Report it, never act on it.
-        if (closedHere && isClosedUnshipped(o)) closed.set(num, o);
+        if (closedHere && isClosed(o)) closed.set(num, o);
         else if (String(o.status) === 'cancelled') leftAlone.cancelled_here.push(num);
         else if (!String(o.tracking_id || '').trim()) leftAlone.not_shipped_here.push(num);
         else carried.set(num, o);

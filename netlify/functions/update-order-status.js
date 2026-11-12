@@ -20,6 +20,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
+const { clearXbQueueRows } = require('./utils/xb-queue-clear');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { readCancelReason } = require('./utils/cancel-reasons');
@@ -214,6 +215,13 @@ exports.handler = async (event) => {
       await recordCourierCancel(supabase, id, courierCancel);
     }
 
+    // And take it off the XpressBees panel's Pending list, where the channel
+    // importer leaves it bookable (unbooked rows only; see utils/xb-queue-clear).
+    let xbQueue = null;
+    if (status === 'cancelled' && previousOrder.status !== 'cancelled' && previousOrder.razorpay_order_id) {
+      xbQueue = await clearXbQueueRows([previousOrder.razorpay_order_id]);
+    }
+
     let refundInfo = null;
     if (status === 'cancelled' && previousOrder.status !== 'cancelled') {
       const paymentId = previousOrder.razorpay_payment_id || '';
@@ -270,6 +278,7 @@ exports.handler = async (event) => {
     if (refundInfo) result.refund = refundInfo;
     if (trackingWarning) result.warning = trackingWarning;
     if (courierCancel && courierCancel.action !== 'none') result.courier = courierCancel;
+    if (xbQueue && xbQueue.message) result.xb_queue = xbQueue;
     return { statusCode: 200, headers: CORS, body: JSON.stringify(result) };
   } catch (err) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };

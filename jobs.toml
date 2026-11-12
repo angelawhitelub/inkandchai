@@ -491,6 +491,12 @@
 [functions."xpressbees-queue-cleanup-scheduled"]
   schedule = "30 3 * * *"
 
+# Every 15 min: the same cleanup over the newest 1,000 panel rows, so a
+# cancelled order (any path) or one another courier took leaves XpressBees
+# Pending within minutes. Admin cancels clear their own row at once.
+[functions."xpressbees-queue-sweep-scheduled"]
+  schedule = "*/15 * * * *"
+
 # 09:00 IST: parcels the couriers still carry for orders cancelled here. Stops
 # the ones waiting for pickup (live check first), tells the owner about the
 # ones already picked up. CANCELLED_PARCELS_STOP=0 makes it list-only.

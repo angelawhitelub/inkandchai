@@ -51,20 +51,32 @@ const { handler } = require(path.join('..', 'xpressbees-order-cancel'));
 const call = (body) => handler({ httpMethod: 'POST', headers: { 'x-admin-key': 'test-secret' }, body: JSON.stringify(body) })
   .then((r) => ({ status: r.statusCode, ...JSON.parse(r.body) }));
 
-test('closed_here clears queued rows of cancelled/refunded orders that never got an AWB', async () => {
+test('closed_here clears queued rows of cancelled/refunded orders, with or without an AWB', async () => {
   const r = await call({ dry_run: true, any_courier: true, closed_here: true });
   assert.equal(r.status, 200);
   const plan = Object.fromEntries(r.plan.map((p) => [p.order, p.reason]));
   assert.deepEqual(plan, {
     'IC-20261006-VMX7Z': 'closed_here',
     'IC-CW-20261001-VBLER': 'closed_here',
+    'IC-20261007-CXAWB': 'closed_here',
     'IC-20261007-SHIPD': 'carried_elsewhere',
   });
-  // A cancelled order with an AWB is reported, an open order is untouched,
-  // and a booked row is never cancelled.
-  assert.deepEqual(r.left_alone.cancelled_here, ['IC-20261007-CXAWB']);
+  // An open order is untouched, and a booked row is never cancelled, even
+  // for an order cancelled here.
+  assert.deepEqual(r.left_alone.cancelled_here, []);
   assert.ok(r.left_alone.not_shipped_here.includes('IC-20261008-OPEN1'));
   assert.equal(r.skipped.booked[0].order, 'IC-20261005-BOOKD');
+});
+
+test('max_pages stops reading the panel early', async () => {
+  const seenPages = [];
+  const orig = xb.panelOrders;
+  xb.panelOrders = async ({ params }) => { seenPages.push(params.page_no); return { rows: [{ ...PANEL[0], id: 100 + Number(params.page_no) }] }; };
+  try {
+    const r = await call({ dry_run: true, any_courier: true, closed_here: true, max_pages: 3 });
+    assert.equal(r.panel_rows_read, 3);
+    assert.deepEqual(seenPages, ['1', '2', '3']);
+  } finally { xb.panelOrders = orig; }
 });
 
 test('without closed_here the old behaviour stands', async () => {
