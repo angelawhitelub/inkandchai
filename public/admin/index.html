@@ -1166,7 +1166,7 @@ select,input,textarea{font-size:1rem;}
   <div class="order-search">
     <label for="searchBox">Search orders</label>
     <input class="search-box" id="searchBox" type="search" placeholder="Search orders…" aria-describedby="orderSearchHint" oninput="applyFilters()"/>
-    <p id="orderSearchHint">Order or payment ID, AWB, customer, phone, email or book title</p>
+    <p id="orderSearchHint">Order or payment ID, AWB, customer, phone, email or book title. Spaces and dashes don't matter; paste several IDs separated by commas to see them together.</p>
   </div>
 
   <!-- ── Status filters + search ────────────────────────────── -->
@@ -6876,8 +6876,9 @@ function statsScope() {
   const dateFrom = document.getElementById('dateFrom')?.value;
   const dateTo = document.getElementById('dateTo')?.value;
   if (!q && !dateFrom && !dateTo) return { base: allOrders, q: '', scoped: false };
+  const match = compileOrderQuery(q);
   const base = allOrders.filter(o => {
-    if (q && !orderSearchHaystack(o).includes(q)) return false;
+    if (match && !match(o)) return false;
     if (dateFrom && new Date(o.created_at) < new Date(dateFrom)) return false;
     if (dateTo && new Date(o.created_at) > new Date(dateTo + 'T23:59:59')) return false;
     return true;
@@ -7133,12 +7134,49 @@ function orderSearchHaystack(o) {
     .toLowerCase();
 }
 
+// Order search, forgiving about how an id or number is typed. A query matches
+// when ANY of these holds:
+//   - every word in it appears somewhere ("ic-20261104 pbwyr", "rahul jaipur");
+//   - with spaces, dashes and other punctuation dropped from both sides it is a
+//     substring ("IC-20261104 PBWYR", "ic20261104pbwyr", "+91 98765-43210");
+//   - it holds 10+ digits and the last 10 are a phone number on the order.
+// Several ids pasted at once (comma / semicolon / new line between them, each
+// with a digit in it) show every one of those orders.
+const searchCompact = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function compileOrderQuery(raw) {
+  const q = String(raw || '').toLowerCase().trim();
+  if (!q) return null;
+  let parts = q.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean);
+  // A one-line box turns pasted new lines into spaces: whole order ids
+  // separated by spaces are a list too ("IC-…-AAAAA IC-…-BBBBB").
+  const words = q.split(/\s+/).filter(Boolean);
+  if (parts.length === 1 && words.length > 1 && words.every(w => /^(?:ic|pb)-[a-z0-9-]*\d{8}-[a-z0-9]{4,}$/.test(w))) parts = words;
+  const idList = parts.length > 1 && parts.every(t => /\d/.test(t) && searchCompact(t).length >= 6);
+  const groups = (idList ? parts : [q.replace(/[,;\n]+/g, ' ')]).map(g => {
+    const words = g.split(/\s+/).filter(Boolean);
+    const compact = searchCompact(g);
+    const digits = g.replace(/\D/g, '');
+    return { words, compact: compact.length >= 4 ? compact : '', phone: digits.length >= 10 ? digits.slice(-10) : '' };
+  });
+  return (o) => {
+    const hay = orderSearchHaystack(o);
+    let tight = null;
+    return groups.some(g => {
+      if (g.words.every(w => hay.includes(w))) return true;
+      if (!g.compact && !g.phone) return false;
+      if (tight === null) tight = searchCompact(hay);
+      return (g.compact && tight.includes(g.compact)) || (g.phone && tight.includes(g.phone));
+    });
+  };
+}
+
 function applyFilters() {
   tablePage = 1;
   const q       = (document.getElementById('searchBox')?.value || '').toLowerCase().trim();
   const dateFrom = document.getElementById('dateFrom')?.value;
   const dateTo   = document.getElementById('dateTo')?.value;
 
+  const match = compileOrderQuery(q);
   filtered = allOrders.filter(o => {
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
     if (currentFilter === '__in_transit' && !isInTransit(o)) return false;
@@ -7163,9 +7201,7 @@ function applyFilters() {
       if (cancelledCourierOnly && !isCourierCancelled(o)) return false;
     }
     // Search
-    if (q) {
-      if (!orderSearchHaystack(o).includes(q)) return false;
-    }
+    if (match && !match(o)) return false;
     // Date range
     if (dateFrom && new Date(o.created_at) < new Date(dateFrom)) return false;
     if (dateTo   && new Date(o.created_at) > new Date(dateTo + 'T23:59:59')) return false;
