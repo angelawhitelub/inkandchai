@@ -20865,6 +20865,44 @@ async function moderateReview(reviewId, action) {
 // Load pending reviews on page load
 fetchPendingReviews();
 
+// ── "Admin was updated" banner ──────────────────────────────────────────────
+// Admin tabs stay open for hours, and a tab loaded before a deploy keeps the
+// old page: a review added from one on 13 Nov had no photos because that tab
+// predated the photo picker. Every deploy stamps /build-info.json with its
+// commit, so compare it with the one this tab started on and offer a reload.
+// Never reloads by itself — that would throw away a half-filled form.
+(function adminUpdateNotice() {
+  let loadedCommit = '';
+  let shown = false;
+  const read = () => fetch('/build-info.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(r => (r.ok ? r.json() : null)).then(j => (j && j.commit) || '').catch(() => '');
+  function show() {
+    if (shown) return;
+    shown = true;
+    const bar = document.createElement('div');
+    bar.id = 'adminUpdateBar';
+    bar.setAttribute('role', 'status');
+    bar.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483000;display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 32px);padding:.7rem 1rem;border-radius:12px;background:#241c14;color:#fff;font-size:.78rem;box-shadow:0 10px 30px rgba(0,0,0,.3)';
+    bar.innerHTML = '<span>Admin was updated. Reload to get the latest version (save anything you are typing first).</span>'
+      + '<button type="button" style="border:0;border-radius:99px;padding:.45rem .9rem;background:#c9a84c;color:#241c14;font-weight:700;cursor:pointer">Reload</button>'
+      + '<button type="button" aria-label="Dismiss" style="border:0;background:transparent;color:#fff;font-size:1rem;cursor:pointer">×</button>';
+    const [reload, close] = bar.querySelectorAll('button');
+    reload.onclick = () => location.reload();
+    close.onclick = () => bar.remove();
+    document.body.appendChild(bar);
+  }
+  async function check() {
+    if (shown || document.hidden) return;
+    const now = await read();
+    if (!now) return;
+    if (!loadedCommit) { loadedCommit = now; return; }
+    if (now !== loadedCommit) show();
+  }
+  check();
+  setInterval(check, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+})();
+
 // ── Returns ─────────────────────────────────────────────────────────────────
 let allReturnRequests = [];
 
