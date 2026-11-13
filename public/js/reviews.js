@@ -70,7 +70,7 @@
     + '.iacr-write{padding:.6rem 1.1rem;border:1px solid var(--cream,#241c14);border-radius:99px;background:transparent;color:var(--cream,#241c14);font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}'
     + '.iacr-write:hover{border-color:#f2a516;color:#a86d00}'
     + '.iacr-modal{position:fixed;inset:0;z-index:2147483000;background:rgba(10,8,6,.6);display:flex;align-items:center;justify-content:center;padding:1rem}'
-    + '.iacr-card{width:100%;max-width:420px;background:var(--panel,#fff);color:var(--cream,#241c14);border:1px solid var(--border,#e4d9c6);border-radius:18px;padding:1.4rem;box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative;font-size:.88rem;line-height:1.55}'
+    + '.iacr-card{width:100%;max-width:420px;background:var(--panel,#fff);color:var(--cream,#241c14);border:1px solid var(--border,#e4d9c6);border-radius:18px;padding:1.4rem;box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative;font-size:.88rem;line-height:1.55;max-height:calc(100vh - 2rem);max-height:calc(100dvh - 2rem);overflow-y:auto;box-sizing:border-box}'
     + '.iacr-card h3{margin:0 0 .3rem;font-size:1.25rem;font-family:"Cormorant Garamond","Playfair Display",serif}'
     + '.iacr-card p{margin:0 0 1rem;color:var(--muted,#6b5d4f);font-size:.82rem}'
     + '.iacr-card label{display:block;font-size:.76rem;font-weight:600;margin:.7rem 0 .3rem}'
