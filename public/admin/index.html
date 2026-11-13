@@ -2558,6 +2558,15 @@ select,input,textarea{font-size:1rem;}
         </div>
         <div id="arPhotoList" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;"></div>
       </div>
+      <div class="form-row" style="grid-column:span 2;margin:0;">
+        <label>Video (optional — one clip, e.g. an unboxing)</label>
+        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+          <label for="arVideo" class="btn-outline" style="cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-size:0.72rem;">🎬 Add video</label>
+          <input id="arVideo" type="file" accept="video/*" style="display:none" onchange="arPickVideo(this)"/>
+          <small id="arVideoHint" style="color:var(--cream-dim);font-size:0.62rem;">MP4 up to 60 s keeps its sound; other clips (iPhone .MOV, longer) are converted, muted, first 30 s.</small>
+        </div>
+        <div id="arVideoBox" style="margin-top:0.5rem;"></div>
+      </div>
       <div class="form-row" style="margin:0;">
         <label>Review date (optional)</label>
         <input id="arDate" type="date"/>
@@ -20558,6 +20567,74 @@ async function arAddPhotos(input) {
   hint.textContent = 'JPG, PNG, WebP or AVIF. Shrunk to WebP before upload.';
   arRenderPhotos();
 }
+// Review video: uploaded to R2 the moment it is picked (same direct-upload
+// route as product videos), so only its URL travels with the review.
+let arVideo = null;      // { url, poster, local }
+let arVideoBusy = false;
+function arVideoHint(text, colour) {
+  const h = document.getElementById('arVideoHint');
+  if (h) { h.textContent = text; h.style.color = colour || ''; }
+}
+function arRenderVideo() {
+  const box = document.getElementById('arVideoBox');
+  if (!box) return;
+  box.innerHTML = arVideo ? `<div style="display:inline-flex;gap:.6rem;align-items:flex-start;">
+      <video src="${esc(arVideo.local)}" ${arVideo.poster ? `poster="${esc(arVideo.poster)}"` : ''} controls playsinline preload="metadata" style="width:220px;max-height:220px;background:#080706;border-radius:6px;"></video>
+      <button type="button" class="btn-outline" onclick="arRemoveVideo()" style="padding:.35rem .7rem;font-size:.6rem;color:#d66;">Remove</button>
+    </div>` : '';
+}
+function arRemoveVideo() {
+  if (arVideo && arVideo.local) URL.revokeObjectURL(arVideo.local);
+  arVideo = null; arRenderVideo();
+  arVideoHint('MP4 up to 60 s keeps its sound; other clips (iPhone .MOV, longer) are converted, muted, first 30 s.');
+}
+async function arPickVideo(input) {
+  const file = (input.files || [])[0];
+  input.value = '';
+  if (!file || arVideoBusy) return;
+  const slug = arExtractSlug(document.getElementById('arSlug').value);
+  if (!slug) { alert('Enter the product URL or slug first.'); return; }
+  arRemoveVideo();
+  arVideoBusy = true;
+  try {
+    arVideoHint('Checking the clip…');
+    const codec = await videoCodecOf(file).catch(() => 'unknown');
+    const meta = await probeVideoFile(file).catch(() => null);
+    const direct = codec === 'h264' && /mp4/i.test(file.type || '')
+      && file.size <= PASSTHROUGH_MAX_MB * 1024 * 1024
+      && meta && meta.seconds > 0 && meta.seconds <= PASSTHROUGH_MAX_SECONDS;
+    let blob, type, posterDataUrl;
+    if (direct) {
+      blob = file; type = 'video/mp4';
+      posterDataUrl = await posterFromFile(file, meta.seconds).catch(() => '');
+    } else {
+      const out = await window.iacTranscodeVideo(file, v => arVideoHint(`Converting… ${Math.round(v * 100)}% — keep this tab visible`));
+      blob = out.blob; type = out.mimeType; posterDataUrl = out.posterDataUrl;
+    }
+    arVideoHint('Uploading video…');
+    const signRes = await adminFetch('/.netlify/functions/sign-product-video-upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'review-' + slug, content_type: String(type).split(';')[0] }),
+    });
+    const signed = await signRes.json().catch(() => ({}));
+    if (!signRes.ok || !signed.video_upload_url) throw new Error(signed.error || `HTTP ${signRes.status}`);
+    const put = await fetch(signed.video_upload_url, { method: 'PUT', headers: { 'Content-Type': signed.content_type }, body: blob });
+    if (!put.ok) throw new Error(`Storage rejected the video (HTTP ${put.status})`);
+    let poster = '';
+    if (posterDataUrl && signed.poster_upload_url) {
+      const pp = await fetch(signed.poster_upload_url, { method: 'PUT', headers: { 'Content-Type': 'image/webp' }, body: await dataUrlToBlob(posterDataUrl) });
+      if (pp.ok) poster = signed.poster_url;
+    }
+    arVideo = { url: signed.video_url, poster, local: URL.createObjectURL(blob) };
+    arRenderVideo();
+    arVideoHint(`✓ Video ready (${(blob.size / 1048576).toFixed(1)} MB${direct ? ', with sound' : ', muted'}). It is saved with the review when you press Add Review.`, '#5d9b55');
+  } catch (e) {
+    arVideoHint('Could not add the video: ' + e.message, '#c93636');
+  } finally {
+    arVideoBusy = false;
+  }
+}
+
 function arRemovePhoto(i) { arPhotos.splice(i, 1); arRenderPhotos(); }
 function arRenderPhotos() {
   const box = document.getElementById('arPhotoList');
@@ -20580,6 +20657,7 @@ async function submitAddReview(btn) {
 
   if (!slug)  { msg.style.color = '#e06060'; msg.textContent = 'Enter a product URL or slug.'; return; }
   if (!name)  { msg.style.color = '#e06060'; msg.textContent = 'Enter the customer name.'; return; }
+  if (arVideoBusy) { msg.style.color = '#e06060'; msg.textContent = 'Wait for the video to finish uploading.'; return; }
 
   const orig = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Adding…';
@@ -20592,6 +20670,7 @@ async function submitAddReview(btn) {
         product_slug: slug, customer_name: name, rating, comment,
         verified_buyer: verified,
         ...(arPhotos.length && { photos: arPhotos.map(p => p.dataUrl) }),
+        ...(arVideo && { video: { url: arVideo.url, poster: arVideo.poster } }),
         ...(orderId && { order_id: orderId }),
         ...(date && { created_at: date }),
       }),
@@ -20599,8 +20678,12 @@ async function submitAddReview(btn) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     msg.style.color = '#63ca6e';
-    msg.textContent = `✓ Review added${(data.photos || []).length ? ` with ${data.photos.length} photo${data.photos.length > 1 ? 's' : ''}` : ''} and live on /product/${slug}/`;
-    arPhotos = []; arRenderPhotos();
+    const extras = [
+      (data.photos || []).length ? `${data.photos.length} photo${data.photos.length > 1 ? 's' : ''}` : '',
+      data.video ? 'a video' : '',
+    ].filter(Boolean).join(' and ');
+    msg.textContent = `✓ Review added${extras ? ' with ' + extras : ''} and live on /product/${slug}/`;
+    arPhotos = []; arRenderPhotos(); arRemoveVideo();
     // Clear the form for the next entry (keep slug for multiple reviews on same book)
     document.getElementById('arName').value = '';
     document.getElementById('arComment').value = '';
@@ -20653,6 +20736,7 @@ async function loadReviews(url) {
             <div style="font-size:.65rem;color:#888;margin-bottom:.4rem">Product: <a href="/product/${encodeURIComponent(r.product_slug || '')}/" target="_blank" style="color:var(--gold)">${esc(r.product_slug)}</a> &nbsp;·&nbsp; Order: ${esc(r.order_id)}</div>
             ${r.comment ? `<div style="font-size:.72rem;color:#444;line-height:1.65;white-space:pre-line">${esc(r.comment)}</div>` : '<div style="font-size:.68rem;color:#aaa;font-style:italic">No comment</div>'}
             ${(Array.isArray(r.photos) ? r.photos : []).filter(u => /^https:\/\//.test(u)).length ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem">${r.photos.filter(u => /^https:\/\//.test(u)).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Review photo" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--border)"/></a>`).join('')}</div>` : ''}
+            ${/^https:\/\//.test(r.video_url || '') ? `<video src="${esc(r.video_url)}" ${/^https:\/\//.test(r.video_poster || '') ? `poster="${esc(r.video_poster)}"` : ''} controls playsinline preload="none" style="display:block;margin-top:.5rem;width:200px;max-height:200px;background:#080706;border-radius:4px"></video>` : ''}
           </div>
           <div style="display:flex;flex-direction:column;gap:.4rem;flex-shrink:0">
             ${!r.approved ? `<button onclick="moderateReview('${r.id}','approve')" style="background:#5d9b55;color:#fff;border:none;padding:.45rem .9rem;font-size:.62rem;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;font-weight:600">✓ Approve</button>` : ''}

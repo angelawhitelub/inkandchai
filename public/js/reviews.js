@@ -52,6 +52,10 @@
     + '.iacr-pics{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.65rem}'
     + '.iacr-pic{width:5.2rem;height:5.2rem;padding:0;border:1px solid var(--border,#e4d9c6);border-radius:10px;overflow:hidden;background:rgba(127,127,127,.08);cursor:zoom-in}'
     + '.iacr-pic img{width:100%;height:100%;object-fit:cover;display:block}'
+    + '.iacr-pic{position:relative}'
+    + '.iacr-pic.vid{background:#1b1612}'
+    + '.iacr-pic.vid:after{content:"\\25B6";position:absolute;left:50%;top:50%;width:2rem;height:2rem;margin:-1rem 0 0 -1rem;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:.8rem;line-height:2rem;text-align:center;padding-left:.15rem;box-sizing:border-box}'
+    + '.iacr-lb video{max-width:min(96vw,1100px);max-height:86vh;border-radius:8px;background:#000}'
     + '.iacr-gallery{padding:1rem 0 .2rem;border-bottom:1px solid var(--border,#e4d9c6)}'
     + '.iacr-gallery h3{margin:0;font-size:.82rem;font-weight:600;color:var(--cream,#241c14)}'
     + '.iacr-gallery .iacr-pics{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.5rem}'
@@ -103,7 +107,13 @@
   };
 
   var okUrl = function (u) { return /^https:\/\/[^\s"'<>]+$/i.test(String(u || '')); };
-  var photosOf = function (r) { return (Array.isArray(r.photos) ? r.photos : []).filter(okUrl).slice(0, 4); };
+  // A review's media: its video first (if any), then its photos.
+  var mediaOf = function (r) {
+    var out = [];
+    if (okUrl(r.video_url)) out.push({ v: 1, src: r.video_url, poster: okUrl(r.video_poster) ? r.video_poster : '' });
+    (Array.isArray(r.photos) ? r.photos : []).filter(okUrl).slice(0, 4).forEach(function (u) { out.push({ src: u }); });
+    return out;
+  };
 
   // Full-size viewer for review photos, with previous/next across the set
   // that was clicked (one review's photos, or every photo in the strip).
@@ -114,11 +124,14 @@
     lb.setAttribute('role', 'dialog');
     lb.setAttribute('aria-label', 'Customer photo');
     var many = list.length > 1;
-    lb.innerHTML = '<img alt="Customer photo"/>' + '<button type="button" class="x" aria-label="Close">×</button>'
+    lb.innerHTML = '<div class="m"></div>' + '<button type="button" class="x" aria-label="Close">×</button>'
       + (many ? '<button type="button" class="p" aria-label="Previous photo">‹</button><button type="button" class="n" aria-label="Next photo">›</button><small></small>' : '');
-    var img = lb.querySelector('img');
+    var box = lb.querySelector('.m');
     var show = function () {
-      img.src = list[i];
+      var m = list[i];
+      box.innerHTML = m.v
+        ? '<video controls autoplay playsinline preload="auto"' + (m.poster ? ' poster="' + esc(m.poster) + '"' : '') + ' src="' + esc(m.src) + '"></video>'
+        : '<img alt="Customer photo" src="' + esc(m.src) + '"/>';
       var c = lb.querySelector('small');
       if (c) c.textContent = (i + 1) + ' / ' + list.length;
     };
@@ -137,8 +150,10 @@
     document.body.appendChild(lb);
   }
   var pics = function (list, set) {
-    return '<div class="iacr-pics">' + list.map(function (u, i) {
-      return '<button type="button" class="iacr-pic" data-set="' + set + '" data-i="' + i + '" aria-label="Open customer photo ' + (i + 1) + '"><img src="' + esc(u) + '" alt="Customer photo" loading="lazy"/></button>';
+    return '<div class="iacr-pics">' + list.map(function (m, i) {
+      var thumb = m.v ? m.poster : m.src;
+      return '<button type="button" class="iacr-pic' + (m.v ? ' vid' : '') + '" data-set="' + set + '" data-i="' + i + '" aria-label="' + (m.v ? 'Play customer video' : 'Open customer photo ' + (i + 1)) + '">'
+        + (thumb ? '<img src="' + esc(thumb) + '" alt="" loading="lazy"/>' : '') + '</button>';
     }).join('') + '</div>';
   };
 
@@ -197,14 +212,16 @@
         + (r.verified_buyer ? '<span class="iacr-ok">✓ Verified purchase</span>' : '') + '</div>'
         + '<div class="iacr-meta">' + stars(r.rating) + '<span>' + esc(when(r.created_at)) + '</span></div>'
         + (r.comment ? '<p class="iacr-text">' + esc(r.comment) + '</p>' : '')
-        + (photosOf(r).length ? pics(photosOf(r), 'r' + rv.indexOf(r)) : '')
+        + (mediaOf(r).length ? pics(mediaOf(r), 'r' + rv.indexOf(r)) : '')
         + '</div>';
     };
     var FIRST = 5;
     var allPics = [];
-    rv.forEach(function (r) { allPics = allPics.concat(photosOf(r)); });
+    rv.forEach(function (r) { allPics = allPics.concat(mediaOf(r)); });
+    var vids = allPics.filter(function (m) { return m.v; }).length;
+    var galleryTitle = vids === allPics.length ? 'Customer videos' : vids ? 'Customer photos & videos' : 'Customer photos';
     var gallery = allPics.length
-      ? '<div class="iacr-gallery"><h3>Customer photos (' + allPics.length + ')</h3>' + pics(allPics.slice(0, 12), 'all') + '</div>'
+      ? '<div class="iacr-gallery"><h3>' + galleryTitle + ' (' + allPics.length + ')</h3>' + pics(allPics.slice(0, 12), 'all') + '</div>'
       : '';
     sec.className = 'iacr';
     sec.innerHTML = '<h2>Customer reviews</h2>'
@@ -220,7 +237,7 @@
       var b = e.target.closest && e.target.closest('.iacr-pic');
       if (!b) return;
       var set = b.getAttribute('data-set');
-      var list = set === 'all' ? allPics : photosOf(rv[Number(set.slice(1))] || {});
+      var list = set === 'all' ? allPics : mediaOf(rv[Number(set.slice(1))] || {});
       if (list.length) viewer(list, Number(b.getAttribute('data-i')) || 0);
     };
     var more = sec.querySelector('.iacr-more');

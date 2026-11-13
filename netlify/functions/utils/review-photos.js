@@ -8,6 +8,11 @@
  * public R2 image bucket (the same one covers live in, zero egress) under
  * reviews/<slug>/, and the public URLs are saved on the review row in
  * product_reviews.photos (jsonb array of strings, sql/product_reviews_photos.sql).
+ *
+ * One video per review: the browser uploads it straight to R2 through
+ * sign-product-video-upload (too big for a request body), then sends only its
+ * URL and poster URL here. They are accepted only when they point into our own
+ * bucket's videos/ folder, and saved on video_url / video_poster.
  */
 
 const MAX_PHOTOS = 4;
@@ -62,10 +67,26 @@ function cleanPhotoUrls(v) {
     .slice(0, MAX_PHOTOS);
 }
 
-/** A missing photos column (SQL not run yet) shows up as this kind of error. */
-function isMissingPhotosColumn(err) {
-  const m = String((err && (err.message || err.details || err.hint)) || '');
-  return /photos/i.test(m) && /(column|schema cache|does not exist)/i.test(m);
+/**
+ * Check a review video sent by the admin form: {url, poster?}. Both must be in
+ * our own bucket (publicBase/videos/…). Returns null for none; throws on junk.
+ */
+function parseVideo(v, publicBase) {
+  if (v == null || v === '') return null;
+  const base = String(publicBase || '').replace(/\/+$/, '');
+  if (!base) throw new Error('Video storage is not configured');
+  const url = String((v && v.url) || '');
+  const poster = String((v && v.poster) || '');
+  const ours = (u, ext) => u.startsWith(base + '/videos/') && ext.test(u) && /^https:\/\/[^\s"'<>]+$/i.test(u);
+  if (!ours(url, /\.(mp4|webm)$/i)) throw new Error('Video upload was not recognised — add it again');
+  if (poster && !ours(poster, /\.webp$/i)) throw new Error('Video poster was not recognised — add the video again');
+  return { url, poster };
 }
 
-module.exports = { MAX_PHOTOS, parsePhotos, photoKey, uploadPhotos, cleanPhotoUrls, isMissingPhotosColumn };
+/** A missing photos/video column (SQL not run yet) shows up as this kind of error. */
+function isMissingPhotosColumn(err) {
+  const m = String((err && (err.message || err.details || err.hint)) || '');
+  return /(photos|video_url|video_poster)/i.test(m) && /(column|schema cache|does not exist)/i.test(m);
+}
+
+module.exports = { MAX_PHOTOS, parsePhotos, photoKey, uploadPhotos, cleanPhotoUrls, parseVideo, isMissingPhotosColumn };

@@ -8,6 +8,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { cleanPhotoUrls, isMissingPhotosColumn } = require('./utils/review-photos');
+const httpsOrNull = (u) => (/^https:\/\/[^\s"'<>]+$/i.test(String(u || '')) ? String(u) : null);
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -60,9 +61,9 @@ exports.handler = async (event) => {
     .order('created_at', { ascending: false })
     .limit(50);
   const BASE = 'id, customer_name, rating, comment, created_at, verified_buyer';
-  let { data, error } = await read(BASE + ', photos');
+  let { data, error } = await read(BASE + ', photos, video_url, video_poster');
   if (error && isMissingPhotosColumn(error)) ({ data, error } = await read(BASE));
-  if (data) data = data.map((r) => ({ ...r, photos: cleanPhotoUrls(r.photos) }));
+  if (data) data = data.map((r) => ({ ...r, photos: cleanPhotoUrls(r.photos), video_url: httpsOrNull(r.video_url), video_poster: httpsOrNull(r.video_poster) }));
 
   if (error) return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: error.message }) };
 

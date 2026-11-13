@@ -57,6 +57,9 @@ exports.handler = async (event) => {
   let photos;
   try { photos = RP.parsePhotos(body.photos); }
   catch (e) { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: e.message }) }; }
+  let video;
+  try { video = RP.parseVideo(body.video, r2Configured() ? r2Config().publicBase : ''); }
+  catch (e) { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: e.message }) }; }
   if (photos.length && !r2Configured()) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Photo storage (R2) is not configured — add the review without photos.' }) };
   }
@@ -120,6 +123,7 @@ exports.handler = async (event) => {
       .from('product_reviews')
       .insert({
         ...(photoUrls.length && { photos: photoUrls }),
+        ...(video && { video_url: video.url, video_poster: video.poster || null }),
         order_id:       orderId,
         product_slug:   productSlug,
         rating,
@@ -134,13 +138,13 @@ exports.handler = async (event) => {
       .single();
 
     if (error) {
-      if (photoUrls.length && RP.isMissingPhotosColumn(error)) {
-        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Photos need one SQL step first (sql/product_reviews_photos.sql). Run it in Supabase, or add the review without photos.' }) };
+      if ((photoUrls.length || video) && RP.isMissingPhotosColumn(error)) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Photos and videos need one SQL step first (sql/product_reviews_photos.sql). Run it in Supabase, or add the review without them.' }) };
       }
       throw error;
     }
     await purgeCacheTags([TAGS.REVIEWS]);
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, review_id: data.id, photos: photoUrls }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, review_id: data.id, photos: photoUrls, video: video || null }) };
   } catch (err) {
     console.error('[add-review] error:', err.message);
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };

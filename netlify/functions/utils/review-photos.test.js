@@ -91,3 +91,16 @@ test('add-review uploads photos and saves their URLs; a missing column gives the
     delete require.cache[fn];
   }
 });
+
+test('parseVideo only accepts our own bucket videos/ URLs', () => {
+  const B = 'https://img.example';
+  assert.equal(P.parseVideo(undefined, B), null);
+  assert.deepEqual(P.parseVideo({ url: B + '/videos/review-x-video-1.mp4', poster: B + '/videos/review-x-video-1-poster.webp' }, B),
+    { url: B + '/videos/review-x-video-1.mp4', poster: B + '/videos/review-x-video-1-poster.webp' });
+  assert.deepEqual(P.parseVideo({ url: B + '/videos/a.webm' }, B), { url: B + '/videos/a.webm', poster: '' });
+  assert.throws(() => P.parseVideo({ url: 'https://evil.example/videos/a.mp4' }, B), /not recognised/);
+  assert.throws(() => P.parseVideo({ url: B + '/reviews/a.mp4' }, B), /not recognised/);
+  assert.throws(() => P.parseVideo({ url: B + '/videos/a.mp4', poster: 'https://evil.example/p.webp' }, B), /poster/);
+  assert.throws(() => P.parseVideo({ url: B + '/videos/a.mp4' }, ''), /not configured/);
+  assert.equal(P.isMissingPhotosColumn({ message: 'column product_reviews.video_url does not exist' }), true);
+});
