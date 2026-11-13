@@ -15852,39 +15852,118 @@ async function pushAllToNimbusPanel(btn) {
 function npPushChoice(btn, total, check) {
   document.getElementById('npPushChoice')?.remove();
   const c = (check && check.counts) || {};
-  const bad = ((check && check.orders) || []).filter(o => o.serviceable === false);
-  const unknown = ((check && check.orders) || []).filter(o => o.serviceable === null && !o.booked);
-  const wrap = document.createElement('div');
-  wrap.id = 'npPushChoice';
-  wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
-  const list = bad.slice(0, 40).map(o => `<div style="display:flex;justify-content:space-between;gap:.6rem;font-size:.72rem;padding:.2rem 0;border-bottom:1px solid var(--border,#3333)"><span>${esc(o.order)}</span><span style="opacity:.75">${esc(o.pincode || '')} · ${esc(o.payment || '')}</span></div>`).join('')
-    + (bad.length > 40 ? `<div style="font-size:.7rem;opacity:.7;padding-top:.3rem">…and ${bad.length - 40} more</div>` : '');
+  const all = (check && check.orders) || [];
+  // Held orders (pre-order, or extra handling time not over) are NOT ready:
+  // the push holds them back. They are counted apart, and the handling ones
+  // can be released from here (same "Push anyway" as Book on XpressBees).
+  const ready = all.filter(o => !o.booked && !o.held);
+  const handling = all.filter(o => !o.booked && o.held && o.held.kind !== 'preorder');
+  const preorders = all.filter(o => !o.booked && o.held && o.held.kind === 'preorder');
+  const booked = all.filter(o => o.booked);
+  const bad = ready.filter(o => o.serviceable === false);
+  const unknown = ready.filter(o => o.serviceable === null);
+  const readyTotal = check && check.error ? total : ready.length;
+  const row = (o, extra) => `<div style="display:flex;justify-content:space-between;gap:.6rem;font-size:.72rem;padding:.2rem 0;border-bottom:1px solid var(--border,#3333)"><span>${esc(o.order)}</span><span style="opacity:.75;text-align:right">${extra}</span></div>`;
+  const capped = (arr, fn, n = 40) => arr.slice(0, n).map(fn).join('') + (arr.length > n ? `<div style="font-size:.7rem;opacity:.7;padding-top:.3rem">…and ${arr.length - n} more</div>` : '');
+  const badList = capped(bad, o => row(o, `${esc(o.pincode || '')} · ${esc(o.payment || '')}`));
+  const fmtDay = (iso) => { try { return new Date(iso + 'T00:00:00+05:30').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); } catch { return iso || ''; } };
+  // Handling holds grouped by book + handover date: 150 rows of one book read better as one line.
+  const groups = {};
+  handling.forEach(o => { const k = (o.held.titles || []).join(', ') + '|' + (o.held.release || ''); (groups[k] = groups[k] || []).push(o); });
+  const heldList = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).map(([k, os]) => {
+    const [titles, release] = k.split('|');
+    const svc = os.filter(o => o.serviceable === true).length, nsv = os.filter(o => o.serviceable === false).length;
+    return `<div style="font-size:.72rem;padding:.3rem 0;border-bottom:1px solid var(--border,#3333)"><b>${os.length}</b> · ${esc(titles || 'book')} · handover ${esc(fmtDay(release))}<br><span style="opacity:.7">${svc} serviceable on XpressBees · ${nsv} not</span><details><summary style="cursor:pointer;font-size:.68rem;opacity:.75">orders</summary>${capped(os, o => row(o, `${esc(o.pincode || '')} · ${o.serviceable === false ? 'not serviceable' : o.serviceable ? 'serviceable' : '?'}`), 200)}</details></div>`;
+  }).join('');
+  const preList = capped(preorders, o => row(o, `release ${esc(fmtDay(o.held.release))} · ${esc((o.held.titles || []).join(', '))}`));
+  const bGroups = {};
+  booked.forEach(o => { const k = (o.courier || 'courier') + ' · ' + (o.scan || 'no scan'); (bGroups[k] = bGroups[k] || []).push(o); });
+  const bookedList = Object.entries(bGroups).sort((a, b) => b[1].length - a[1].length).map(([k, os]) =>
+    `<details style="font-size:.72rem;padding:.2rem 0"><summary style="cursor:pointer"><b>${os.length}</b> · ${esc(k)}</summary>${capped(os, o => row(o, `${esc(o.awb || '')} · ${esc(o.status || '')} · ${esc(String(o.created || '').slice(0, 10))}`), 200)}</details>`).join('');
   const summary = check && check.error
     ? `<p style="color:#b3261e;font-size:.8rem">Could not check XpressBees serviceability: ${esc(check.error)}</p>`
     : `<p style="font-size:.82rem;line-height:1.6;margin:.2rem 0 .6rem">
-         ✅ <b>${c.serviceable || 0}</b> order${c.serviceable === 1 ? '' : 's'} serviceable on XpressBees<br>
+         <b>${ready.length}</b> order${ready.length === 1 ? '' : 's'} ready to ship:<br>
+         ✅ <b>${c.serviceable || 0}</b> serviceable on XpressBees<br>
          ⛔ <b>${c.not_serviceable || 0}</b> not serviceable on XpressBees<br>
          ${c.unknown ? `❔ <b>${c.unknown}</b> could not be checked (no readable pincode or XpressBees did not answer)<br>` : ''}
-         ${c.booked ? `🚚 ${c.booked} already have an AWB but their status was never moved to shipped. They are skipped, not pushed<br>` : ''}
+         ${handling.length ? `⏳ <b>${handling.length}</b> held for extra handling time (not counted above)<br>` : ''}
+         ${preorders.length ? `📅 <b>${preorders.length}</b> pre-order${preorders.length === 1 ? '' : 's'} held until release (cannot be pushed)<br>` : ''}
          <span style="opacity:.7;font-size:.72rem">${c.pincodes_checked || 0} pincode checks from pickup ${esc(check.origin || '')}. Nothing is booked or charged by this check.</span></p>`;
+  const wrap = document.createElement('div');
+  wrap.id = 'npPushChoice';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
   wrap.innerHTML = `
-    <div style="background:var(--card,#fff);color:var(--cream,#20170f);border:1px solid var(--border,#d8cfbf);box-shadow:0 18px 50px rgba(0,0,0,.25);border-radius:14px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:1.2rem 1.3rem;">
+    <div style="background:var(--card,#fff);color:var(--cream,#20170f);border:1px solid var(--border,#d8cfbf);box-shadow:0 18px 50px rgba(0,0,0,.25);border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow:auto;padding:1.2rem 1.3rem;">
       <h3 style="margin:0 0 .4rem;font-size:1rem">Push to NimbusPost Panel (No AWB)</h3>
       ${summary}
-      ${bad.length ? `<details style="margin-bottom:.8rem"><summary style="cursor:pointer;font-size:.75rem">Show the ${bad.length} not serviceable on XpressBees</summary>${list}</details>` : ''}
+      ${bad.length ? `<details style="margin-bottom:.6rem"><summary style="cursor:pointer;font-size:.75rem">Show the ${bad.length} not serviceable on XpressBees</summary>${badList}</details>` : ''}
+      ${handling.length ? `<div style="border:1px solid var(--border,#d8cfbf);border-radius:10px;padding:.6rem .7rem;margin-bottom:.6rem">
+        <label style="display:flex;gap:.5rem;align-items:flex-start;font-size:.78rem;cursor:pointer"><input type="checkbox" id="npIncludeHeld" style="margin-top:.2rem">
+          <span>Also push the <b>${handling.length}</b> held for extra handling time (push anyway). They go out before the handover date the customer was told, and are released for every courier.</span></label>
+        <details style="margin-top:.4rem"><summary style="cursor:pointer;font-size:.72rem">Show the ${handling.length} held orders</summary>${heldList}</details></div>` : ''}
+      ${preorders.length ? `<details style="margin-bottom:.6rem"><summary style="cursor:pointer;font-size:.75rem">Show the ${preorders.length} pre-orders</summary>${preList}</details>` : ''}
+      ${booked.length ? `<details style="margin-bottom:.8rem"><summary style="cursor:pointer;font-size:.75rem">🚚 ${booked.length} have an AWB but are still marked unshipped: skipped, not pushed</summary>
+        <p style="font-size:.68rem;opacity:.75;margin:.3rem 0">Already with a courier. Grouped by courier and its last scan; open an order to fix its status.</p>${bookedList}</details>` : ''}
       <div style="display:flex;flex-direction:column;gap:.5rem">
-        <button class="btn-green" id="npPushBad" ${bad.length ? '' : 'disabled'}>Push only ${bad.length} unserviceable to NimbusPost</button>
-        <button class="btn-outline" id="npPushAll">Push all ${total} anyway</button>
+        <button class="btn-green" id="npPushBad"></button>
+        <button class="btn-outline" id="npPushAll"></button>
         <button class="btn-outline" id="npPushCancel" style="opacity:.8">Cancel</button>
       </div>
       ${unknown.length ? `<p style="font-size:.68rem;opacity:.7;margin:.6rem 0 0">The ${unknown.length} that could not be checked are not in "only unserviceable"; use "Push all" or push them by hand.</p>` : ''}
     </div>`;
   document.body.appendChild(wrap);
+  const box = wrap.querySelector('#npIncludeHeld');
+  const badBtn = wrap.querySelector('#npPushBad');
+  const allBtn = wrap.querySelector('#npPushAll');
+  const picks = () => {
+    const withHeld = !!(box && box.checked);
+    const heldBad = withHeld ? handling.filter(o => o.serviceable === false) : [];
+    return {
+      withHeld,
+      bad: bad.concat(heldBad),
+      heldBad,
+      allCount: readyTotal + (withHeld ? handling.length : 0),
+    };
+  };
+  const label = () => {
+    const p = picks();
+    badBtn.textContent = `Push only ${p.bad.length} unserviceable to NimbusPost` + (p.heldBad.length ? ` (incl. ${p.heldBad.length} held)` : '');
+    badBtn.disabled = !p.bad.length;
+    allBtn.textContent = `Push all ${p.allCount} anyway` + (p.withHeld && handling.length ? ` (incl. ${handling.length} held)` : '');
+  };
+  label();
+  if (box) box.onchange = label;
   const close = () => wrap.remove();
+  // Release the chosen held orders first (admin-handling-release), so the push
+  // does not hold them back; then push as before.
+  const release = async (ids) => {
+    if (!ids.length) return true;
+    if (!confirm(`Push ${ids.length} held order(s) anyway?\n\nThey are being held for extra handling time. Releasing them lets every courier path (XpressBees, NimbusPost, Delhivery, Ekart, DTDC) send them now, before the handover date the customer was given.`)) return false;
+    try {
+      const res = await adminFetch('/.netlify/functions/admin-handling-release', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order_ids: ids, on: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return true;
+    } catch (e) {
+      alert('Could not release the held orders: ' + e.message + '\n\nNothing was pushed.');
+      return false;
+    }
+  };
   wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
   wrap.querySelector('#npPushCancel').onclick = close;
-  wrap.querySelector('#npPushAll').onclick = () => { close(); runNimbusPanelPush(btn, { all_unshipped: true }); };
-  wrap.querySelector('#npPushBad').onclick = () => { close(); runNimbusPanelPush(btn, { order_ids: bad.map(o => o.order), xb_unserviceable: true }); };
+  allBtn.onclick = async () => {
+    const p = picks();
+    if (p.withHeld && !(await release(handling.map(o => o.order)))) return;
+    close(); runNimbusPanelPush(btn, { all_unshipped: true });
+  };
+  badBtn.onclick = async () => {
+    const p = picks();
+    if (p.heldBad.length && !(await release(p.heldBad.map(o => o.order)))) return;
+    close(); runNimbusPanelPush(btn, { order_ids: p.bad.map(o => o.order), xb_unserviceable: true });
+  };
 }
 
 async function runNimbusPanelPush(btn, body) {
