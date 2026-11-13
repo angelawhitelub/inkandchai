@@ -59,8 +59,9 @@ exports.handler = async (event) => {
   const slug = params.slug || '';
   if (!slug) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'slug required' }) };
 
-  // photos needs sql/product_reviews_photos.sql; until it has run, read the
-  // reviews without it rather than showing none.
+  // photos / video_url / video_poster come from sql/product_reviews_photos.sql.
+  // Fall back one step at a time: on 13 Nov the photos column existed but the
+  // video ones did not, and dropping straight to BASE hid every photo.
   const read = (cols) => supabase
     .from('product_reviews')
     .select(cols)
@@ -70,6 +71,7 @@ exports.handler = async (event) => {
     .limit(50);
   const BASE = 'id, customer_name, rating, comment, created_at, verified_buyer';
   let { data, error } = await read(BASE + ', photos, video_url, video_poster');
+  if (error && isMissingPhotosColumn(error)) ({ data, error } = await read(BASE + ', photos'));
   if (error && isMissingPhotosColumn(error)) ({ data, error } = await read(BASE));
   if (data) data = data.map((r) => ({ ...r, photos: cleanPhotoUrls(r.photos), video_url: httpsOrNull(r.video_url), video_poster: httpsOrNull(r.video_poster) }));
 

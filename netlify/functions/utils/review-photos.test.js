@@ -61,7 +61,7 @@ test('add-review uploads photos and saves their URLs; a missing column gives the
   const puts = [];
   require.cache[sbPath] = { id: sbPath, filename: sbPath, loaded: true, exports: { createClient: () => db } };
   require.cache[r2Path] = { id: r2Path, filename: r2Path, loaded: true, exports: { ...realR2, r2PutObject: async (cfg, o) => { puts.push(o.key); return cfg.publicBase + '/' + o.key; } } };
-  require.cache[pcPath] = { id: pcPath, filename: pcPath, loaded: true, exports: { ...realPc, purgeCacheTags: async () => {} } };
+  require.cache[pcPath] = { id: pcPath, filename: pcPath, loaded: true, exports: { ...realPc, purgeCacheTags: async () => {}, purgeReviews: async () => {} } };
   const fn = path.join(__dirname, '..', 'add-review.js');
   delete require.cache[fn];
   try {
@@ -138,4 +138,46 @@ test('admin-update-review: photos keep only URLs already on the review, add new 
   assert.throws(() => planPhotos(['https://evil.example/x.webp'], have), /not recognised/);
   assert.throws(() => planPhotos([webp, webp, webp, webp, webp], have), /At most 4/);
   assert.deepEqual(planPhotos([], have).order, []);
+});
+
+test('purgeReviews clears the book\'s get-reviews URL exactly as the Worker caches it', async () => {
+  const pcPath = require.resolve('./purge-cache');
+  delete require.cache[pcPath];
+  const saved = { t: process.env.CF_PURGE_TOKEN, z: process.env.CF_ZONE_ID, f: global.fetch };
+  process.env.CF_PURGE_TOKEN = 'tok'; process.env.CF_ZONE_ID = 'a'.repeat(32);
+  const bodies = [];
+  global.fetch = async (url, o) => { bodies.push(JSON.parse(o.body)); return { ok: true, status: 200, json: async () => ({ success: true }) }; };
+  try {
+    const { purgeReviews } = require('./purge-cache');
+    await purgeReviews(['some-book']);
+    const files = bodies.flatMap((b) => b.files);
+    assert.ok(files.some((u) => /\/\.netlify\/functions\/get-reviews\?slug=some-book$/.test(u)), files.join(' '));
+  } finally {
+    process.env.CF_PURGE_TOKEN = saved.t || ''; process.env.CF_ZONE_ID = saved.z || ''; global.fetch = saved.f;
+    delete require.cache[pcPath];
+  }
+});
+
+test('get-reviews keeps photos when only the video columns are missing', async () => {
+  const path = require('node:path');
+  const sbPath = require.resolve('@supabase/supabase-js');
+  const saved = require.cache[sbPath];
+  const asked = [];
+  const db = { from: () => { const b = { _cols: '', select(c) { b._cols = c; asked.push(c); return b; }, eq: () => b, order: () => b,
+    limit: async () => (/video_url/.test(b._cols)
+      ? { data: null, error: { message: 'column product_reviews.video_url does not exist' } }
+      : { data: [{ id: '1', rating: 5, photos: ['https://img.example/reviews/x/1.webp'] }], error: null }) }; return b; } };
+  require.cache[sbPath] = { id: sbPath, filename: sbPath, loaded: true, exports: { createClient: () => db } };
+  const fn = path.join(__dirname, '..', 'get-reviews.js');
+  delete require.cache[fn];
+  try {
+    const res = await require(fn).handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { slug: 'x' } });
+    const r = JSON.parse(res.body).reviews[0];
+    assert.deepEqual(r.photos, ['https://img.example/reviews/x/1.webp']);
+    assert.equal(r.video_url, null);
+    assert.equal(asked.length, 2);
+  } finally {
+    if (saved) require.cache[sbPath] = saved; else delete require.cache[sbPath];
+    delete require.cache[fn];
+  }
 });

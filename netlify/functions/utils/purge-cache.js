@@ -175,7 +175,19 @@ async function purgeProductSlugs(slugs) {
   return purgeUrls(urls);
 }
 
+// A review changed: the 'reviews' tag only maps to '/', but each book page
+// reads /.netlify/functions/get-reviews?slug=<slug>, which the Worker caches
+// for an hour. Without purging that exact URL, a new photo or an edit showed
+// up to an hour late (13 Nov 2026). Its cache key is the URL with sorted
+// params, so this must stay a single-param URL.
+async function purgeReviews(slugs) {
+  const list = (Array.isArray(slugs) ? slugs : [slugs]).filter(Boolean);
+  const urls = urlsForTags([TAGS.REVIEWS])
+    .concat(list.map((s) => `${SITE}/.netlify/functions/get-reviews?slug=${encodeURIComponent(s)}`));
+  return purgeUrls(urls);
+}
+
 const purgeProducts = () => purgeCacheTags(PRODUCT_TAGS);
 const purgeAplus = () => purgeCacheTags([TAGS.APLUS, ...PRODUCT_TAGS]);
 
-module.exports = { purgeCacheTags, purgeProducts, purgeAplus, purgeProductSlugs, purgeUrls, TAGS, PRODUCT_TAGS };
+module.exports = { purgeCacheTags, purgeProducts, purgeAplus, purgeProductSlugs, purgeReviews, purgeUrls, TAGS, PRODUCT_TAGS };

@@ -8,6 +8,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { adminAuthOk } = require('./utils/passkey');
+const { purgeReviews } = require('./utils/purge-cache');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -34,9 +35,14 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'review_id and action (approve/reject) required' }) };
   }
 
+  // The book's cached reviews have to be cleared after either action.
+  const { data: row } = await supabase.from('product_reviews').select('product_slug').eq('id', review_id).maybeSingle();
+  const slug = row && row.product_slug;
+
   if (action === 'reject') {
     const { error } = await supabase.from('product_reviews').delete().eq('id', review_id);
     if (error) return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: error.message }) };
+    if (slug) await purgeReviews([slug]);
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, action: 'deleted' }) };
   }
 
@@ -47,5 +53,6 @@ exports.handler = async (event) => {
     .eq('id', review_id);
 
   if (error) return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: error.message }) };
+  if (slug) await purgeReviews([slug]);
   return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, action: 'approved' }) };
 };

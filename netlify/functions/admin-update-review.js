@@ -17,7 +17,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { purgeCacheTags, TAGS } = require('./utils/purge-cache');
+const { purgeReviews } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 const RP = require('./utils/review-photos');
 const { r2PutObject, r2Config, r2Configured } = require('./utils/r2-put');
@@ -114,7 +114,12 @@ exports.handler = async (event) => {
       patch.photos = plan.order.map((o) => (o.keep ? o.keep : urls[o.add]));
     }
 
-    if (!Object.keys(patch).length) return json(200, { success: true, unchanged: true });
+    // Nothing to change still clears the book's cached reviews, so a stale
+    // page can be refreshed from admin by saving without edits.
+    if (!Object.keys(patch).length) {
+      await purgeReviews([row.product_slug]);
+      return json(200, { success: true, unchanged: true });
+    }
 
     const { data, error } = await supabase
       .from('product_reviews').update(patch).eq('id', id).select('*').single();
@@ -124,7 +129,7 @@ exports.handler = async (event) => {
       }
       throw error;
     }
-    await purgeCacheTags([TAGS.REVIEWS]);
+    await purgeReviews([row.product_slug]);
     return json(200, { success: true, review: data });
   } catch (err) {
     console.error('[admin-update-review]', err.message);
