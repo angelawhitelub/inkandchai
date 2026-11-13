@@ -5772,8 +5772,6 @@ function renderProduct(b) {
   // JSON-LD structured data — Google rich-snippet for Product + Breadcrumbs
   const _sale = parseFloat((b.p||'').replace(/[^0-9.]/g,'')||0);
   const _orig = parseFloat((b.op||'').replace(/[^0-9.]/g,'')||0);
-  const _rating = parseFloat(b.rating || '4.7') || 4.7;
-  const _reviewCount = parseInt(b.review_count || '128', 10) || 128;
   const ld = {
     "@context": "https://schema.org",
     "@graph": [
@@ -5804,11 +5802,6 @@ function renderProduct(b) {
             "shippingDestination": { "@type": "DefinedRegion", "addressCountry": "IN" },
             "deliveryTime": { "@type": "ShippingDeliveryTime", "businessDays": { "@type": "QuantitativeValue", "minValue": 2, "maxValue": 5 } }
           }
-        },
-        "aggregateRating": {
-          "@type": "AggregateRating",
-          "ratingValue": _rating.toFixed(1),
-          "reviewCount": String(_reviewCount)
         }
       },
       {
@@ -5867,10 +5860,6 @@ function renderProduct(b) {
         <h1 class="prod-title">${esc(b.t)}</h1>
         ${b.a ? `<div class="prod-author">by <span>${esc(b.a)}</span></div>` : ''}
         ${b.order_badge ? `<div class="prod-order-badge">🔥 ${esc(b.order_badge)}</div>` : ''}
-        <div class="prod-rating">
-          <span class="prod-stars">★★★★★</span>
-          <span class="prod-rating-label">${b.rating && b.review_count ? `${esc(b.rating)} rating · ${esc(String(b.review_count))} customer reviews` : 'Bestseller · Loved by readers across India'}</span>
-        </div>
 
         <div class="divider"></div>
 
@@ -6021,19 +6010,9 @@ function renderProduct(b) {
           <div class="promise-box-text">Get a <strong>free replacement</strong> if you receive a damaged, misprinted, or wrong book — no questions asked. Reply to your order email within 24 hours of delivery.</div>
         </div>
 
-        ${b.review_count ? `
-        <section class="review-panel" aria-label="Customer reviews">
-          <div class="review-head">
-            <div>
-              <div class="review-kicker">Reader reviews</div>
-              <div class="review-title">Trusted by readers across India</div>
-            </div>
-            <div class="review-score">
-              <strong>${esc(b.rating || '4.6')}</strong>
-              <span>${esc(String(b.review_count))} reviews</span>
-            </div>
-          </div>
-          <div class="prod-stars" aria-label="${esc(b.rating || '4.6')} out of 5 stars">★★★★★</div>
+        ${(b.review_image || b.review_images?.length || b.review_video) ? `
+        <section class="review-panel" aria-label="Customer photos">
+          <div class="review-kicker">Customer photos</div>
           ${(b.review_image || b.review_images?.length || b.review_video) ? `
           <div class="review-media">
             ${(b.review_images && b.review_images.length > 1)
@@ -6041,17 +6020,10 @@ function renderProduct(b) {
               : b.review_image ? `<figure><img src="${esc(b.review_image)}" alt="${esc(b.t)} customer review photo" loading="lazy" onclick="openLightbox(this.src, this.alt)" /><figcaption>Customer photo shared after delivery</figcaption></figure>` : ''}
             ${b.review_video ? `<figure><video src="${esc(b.review_video)}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>` : ''}
           </div>` : ''}
-          <p class="review-note">Readers choose Ink &amp; Chai for fast delivery, careful packing and checkout-backed order updates.</p>
         </section>` : ''}
 
-        <!-- Live customer reviews loaded from Supabase -->
-        <section class="live-reviews-section" id="liveReviewsSection" style="display:none">
-          <div class="live-reviews-head">
-            <div class="live-reviews-title">Customer Reviews</div>
-            <span class="live-reviews-badge" id="liveReviewsBadge"></span>
-          </div>
-          <div id="liveReviewsList"></div>
-        </section>
+        <!-- Customer reviews: real, approved ones only, drawn by /js/reviews.js -->
+        <section id="liveReviews" data-slug="${esc(b.slug || '')}" hidden></section>
       </div>
     </div>
 
@@ -6124,33 +6096,14 @@ function updateProdWishBtn() {
 
 // ── Load live customer reviews for current product ──────────────────────────
 async function loadLiveReviews(slug) {
+  // Drawn by /js/reviews.js: approved reviews only, an honest empty state, and
+  // theme colours. The old inline version also printed customer_name unescaped.
   if (!slug) return;
-  try {
-    const res = await fetch('/.netlify/functions/get-reviews?slug=' + encodeURIComponent(slug));
-    if (!res.ok) return;
-    const { reviews } = await res.json();
-    if (!reviews || reviews.length === 0) return;
-    const section = document.getElementById('liveReviewsSection');
-    const list    = document.getElementById('liveReviewsList');
-    const badge   = document.getElementById('liveReviewsBadge');
-    if (!section || !list) return;
-    const avg = (reviews.reduce((s,r) => s + r.rating, 0) / reviews.length).toFixed(1);
-    badge.textContent = avg + ' ★  ·  ' + reviews.length + ' verified review' + (reviews.length > 1 ? 's' : '');
-    list.innerHTML = reviews.map(r => {
-      const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
-      const date  = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-      return \`<div class="live-review-card">
-        <div class="live-review-top">
-          <span class="live-review-stars">\${stars}</span>
-          <span class="live-review-date">\${date}</span>
-        </div>
-        <div class="live-review-name">\${r.customer_name || 'Verified Buyer'}</div>
-        \${r.comment ? \`<div class="live-review-body">\${r.comment.replace(/</g,'&lt;')}</div>\` : ''}
-        \${r.verified_buyer ? '<div class="live-review-verified">✓ Verified Purchase</div>' : ''}
-      </div>\`;
-    }).join('');
-    section.style.display = 'block';
-  } catch(e) { /* silent fail */ }
+  if (window.iacLoadReviews) { window.iacLoadReviews(); return; }
+  if (document.getElementById('iac-reviews-js')) return;
+  const s = document.createElement('script');
+  s.id = 'iac-reviews-js'; s.src = '/js/reviews.js?v=20261113'; s.defer = true;
+  document.head.appendChild(s);
 }
 
 function shareBook() {
@@ -6702,33 +6655,9 @@ def product_json_ld(book):
             },
         },
     }
-    # Per-product reviews → AggregateRating + Review nodes (Google rich snippets).
-    # Prefer the structured `reviews` list when present (richer schema); fall back
-    # to the codex-added `rating_value` + `review_count` manual summary.
-    reviews = book.get("reviews") or []
-    if reviews:
-        ratings = [int(r.get("rating") or 5) for r in reviews]
-        avg = sum(ratings) / len(ratings)
-        ld["aggregateRating"] = {
-            "@type": "AggregateRating",
-            "ratingValue": str(rating_value or round(avg, 1)),
-            "reviewCount": str(review_count or len(reviews)),
-            "bestRating": 5,
-        }
-        ld["review"] = [
-            {
-                "@type": "Review",
-                "author": {"@type": "Person", "name": r.get("name") or "Verified Buyer"},
-                "reviewRating": {"@type": "Rating", "ratingValue": int(r.get("rating") or 5), "bestRating": 5},
-                "reviewBody": r.get("text") or "",
-            } for r in reviews
-        ]
-    elif rating_value and review_count:
-        ld["aggregateRating"] = {
-            "@type": "AggregateRating",
-            "ratingValue": str(rating_value),
-            "reviewCount": str(review_count),
-        }
+    # No aggregateRating / Review from the catalogue: its `rating`, `review_count`
+    # and `reviews` were stored numbers, not customer reviews (owner, 13 Nov
+    # 2026). Real reviews show on the page via /js/reviews.js.
     return json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
 
 def product_faq_json_ld(book):
@@ -6951,48 +6880,13 @@ def related_books_for(book, count=10):
 # as a function rather than inline template text so the JS can use normal
 # braces; static_product_html is an f-string.
 def live_reviews_block(slug: str) -> str:
+    # Drawn by /js/reviews.js: approved product_reviews only, with an honest
+    # "No reviews yet" state. The same file serves function-rendered pages
+    # (product-page.js) and the client-side /product/ template.
     if not slug:
         return ""
-    return """<section class="reviews" id="liveReviews" style="display:none">
-  <div class="review-head">
-    <h2>Customer Reviews</h2>
-    <div class="score"><strong id="lrAvg"></strong><span id="lrCount"></span></div>
-  </div>
-  <div id="lrList"></div>
-</section>
-<script>
-(function(){
-  var S = """ + json.dumps(slug) + """;
-  fetch('/.netlify/functions/get-reviews?slug=' + encodeURIComponent(S))
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){
-      var rv = (d && d.reviews) || [];
-      var sec = document.getElementById('liveReviews');
-      if (!rv.length || !sec) return;
-      var avg = (rv.reduce(function(a, r){ return a + (r.rating || 0); }, 0) / rv.length).toFixed(1);
-      document.getElementById('lrAvg').textContent = avg + ' \u2605';
-      document.getElementById('lrCount').textContent = rv.length + (rv.length > 1 ? ' reviews' : ' review');
-      // textContent round-trip: comment and name are customer-authored.
-      var esc = function(t){ var e = document.createElement('div'); e.textContent = t == null ? '' : t; return e.innerHTML; };
-      document.getElementById('lrList').innerHTML = rv.map(function(r){
-        var n = Math.max(0, Math.min(5, r.rating || 0));
-        var stars = '\u2605'.repeat(n) + '\u2606'.repeat(5 - n);
-        var date = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-        return '<div style="border-top:1px solid var(--border);padding:.9rem 0">'
-          + '<div style="display:flex;justify-content:space-between;gap:1rem;font-size:.72rem">'
-          + '<span class="stars">' + stars + '</span>'
-          + '<span style="color:var(--muted)">' + date + '</span></div>'
-          + '<div style="margin-top:.35rem;font-size:.78rem">' + esc(r.customer_name || 'Verified Buyer')
-          + (r.verified_buyer ? ' <span style="color:#2f6e37;font-size:.6rem;letter-spacing:.1em">\u2713 VERIFIED PURCHASE</span>' : '')
-          + '</div>'
-          + (r.comment ? '<div style="margin-top:.4rem;line-height:1.7">' + esc(r.comment) + '</div>' : '')
-          + '</div>';
-      }).join('');
-      sec.style.display = 'block';
-    })
-    .catch(function(){});
-})();
-</script>"""
+    return ('<section id="liveReviews" data-slug="' + html_escape(slug) + '" hidden></section>'
+            '<script src="/js/reviews.js?v=20261113" defer></script>')
 
 # Legacy hardcoded slow-shipping list. Handling time is now per product in
 # product_settings; this only seeds the baked page for titles nobody has set a
@@ -7065,16 +6959,14 @@ def static_product_html(book):
             + (f'<figure><video src="{review_video}" controls playsinline preload="metadata"></video><figcaption>Customer video review / unboxing</figcaption></figure>' if review_video else "")
             + '</div>'
         )
-    review_html = ""
-    if review_count:
-        review_html = (
-            f'<section class="reviews"><div class="review-head"><div><div class="label">Reader reviews</div>'
-            f'<h2>Trusted by readers across India</h2></div><div class="score"><strong>{rating or "4.6"}</strong><span>{review_count} reviews</span></div></div>'
-            f'<div class="stars" aria-label="{rating or "4.6"} out of 5 stars">★★★★★</div>{review_media_html}'
-            f'<p>Readers choose Ink &amp; Chai for fast delivery, careful packing and checkout-backed order updates.</p></section>'
-        )
+    # The "Reader reviews · 4.8 · 14 reviews" box showed catalogue numbers, not
+    # customer reviews (owner, 13 Nov 2026). Customer photos/videos stay.
+    review_html = (
+        '<section class="reviews"><div class="label">Customer photos</div>' + review_media_html + '</section>'
+        if '<figure' in review_media_html else ""
+    )
     order_badge_html = f'<div class="order-badge">🔥 {order_badge}</div>' if order_badge else ""
-    rating_line_html = f'<div class="rating-line"><span class="stars">★★★★★</span><span>{rating} rating · {review_count} customer reviews</span></div>' if review_count else ""
+    rating_line_html = ""  # stored rating line removed (owner, 13 Nov 2026)
     sample_pdf_html = ""
     if sample_pdf:
         pages_label = f" ({sample_pdf_pages} pages)" if sample_pdf_pages else ""
@@ -7101,8 +6993,9 @@ def static_product_html(book):
         "qty": 1,
     }, ensure_ascii=False).replace("</", "<\\/")
 
-    # ── Customer reviews block (renders only when book has reviews) ──────
-    reviews = book.get("reviews") or []
+    # ── Stored review cards: off. The catalogue's `reviews` lists were not
+    # customer reviews (owner, 13 Nov 2026); real ones come from /js/reviews.js.
+    reviews = []
     reviews_html = ""
     if reviews:
         ratings = [int(r.get("rating") or 5) for r in reviews]

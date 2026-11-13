@@ -482,48 +482,11 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     <div class="details"><div class="label">Details</div><dl><dt>Format</dt><dd>${esc(bookFormat(product))}</dd>${detailRows(product, 'format')}<dt>Language</dt><dd>${esc(bookLanguage(product))}</dd>${detailRows(product, 'language')}<dt>Category</dt><dd>${category}</dd><dt>Publisher</dt><dd>${esc(product.publisher || 'Ink & Chai')}</dd><dt>ISBN</dt><dd>${esc(product.isbn || 'Available on request')}</dd>${detailRows(product, 'isbn')}<dt>Sold by</dt><dd>Ink &amp; Chai</dd></dl></div>
   </section>
 </main>
-<!-- Approved customer reviews. Admin-created products are served only by this
-     Lambda, so without this block a review left on one of them would never be
-     visible anywhere on the site. Uses string concatenation, not template
-     literals, because this is itself inside one. -->
-<section class="reviews" id="liveReviews" style="display:none">
-  <div class="review-head"><h2>Customer Reviews</h2>
-    <div class="score"><strong id="lrAvg"></strong><span id="lrCount"></span></div></div>
-  <div id="lrList"></div>
-</section>
-<script>
-(function(){
-  var S = ${JSON.stringify(product.slug || '')};
-  if (!S) return;
-  fetch('/.netlify/functions/get-reviews?slug=' + encodeURIComponent(S))
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){
-      var rv = (d && d.reviews) || [];
-      var sec = document.getElementById('liveReviews');
-      if (!rv.length || !sec) return;
-      var avg = (rv.reduce(function(a, r){ return a + (r.rating || 0); }, 0) / rv.length).toFixed(1);
-      document.getElementById('lrAvg').textContent = avg + ' \u2605';
-      document.getElementById('lrCount').textContent = rv.length + (rv.length > 1 ? ' reviews' : ' review');
-      var e2 = function(t){ var e = document.createElement('div'); e.textContent = t == null ? '' : t; return e.innerHTML; };
-      document.getElementById('lrList').innerHTML = rv.map(function(r){
-        var n = Math.max(0, Math.min(5, r.rating || 0));
-        var stars = '\u2605'.repeat(n) + '\u2606'.repeat(5 - n);
-        var date = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-        return '<div style="border-top:1px solid var(--border);padding:.9rem 0">'
-          + '<div style="display:flex;justify-content:space-between;gap:1rem;font-size:.72rem">'
-          + '<span style="color:var(--gold)">' + stars + '</span>'
-          + '<span style="color:var(--muted)">' + date + '</span></div>'
-          + '<div style="margin-top:.35rem;font-size:.78rem">' + e2(r.customer_name || 'Verified Buyer')
-          + (r.verified_buyer ? ' <span style="color:#2f6e37;font-size:.6rem;letter-spacing:.1em">\u2713 VERIFIED PURCHASE</span>' : '')
-          + '</div>'
-          + (r.comment ? '<div style="margin-top:.4rem;line-height:1.7">' + e2(r.comment) + '</div>' : '')
-          + '</div>';
-      }).join('');
-      sec.style.display = 'block';
-    })
-    .catch(function(){});
-})();
-</script>
+<!-- Approved customer reviews, drawn by /js/reviews.js (same file as the baked
+     pages). Admin-created products are served only by this function, so
+     without it a review left on one would never be visible. -->
+<section id="liveReviews" data-slug="${esc(product.slug || '')}" hidden></section>
+<script src="/js/reviews.js?v=20261113" defer></script>
 <section data-iac-aplus hidden></section>
 <script>window.__IAC_APLUS__=${JSON.stringify(aplusContent).replace(/</g, '\\u003c')};</script>
 <script id="iac-aplus-js" src="/js/aplus-content.js" defer></script>
