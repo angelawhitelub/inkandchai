@@ -38,8 +38,10 @@ const PRODUCT_TAGS = [TAGS.PRODUCTS, 'product-overrides'];
 // A tag maps to the static URLs whose content can change when it is purged.
 // Per-product pages are added by the caller-supplied slugs where known.
 const TAG_URLS = {
+  // homepage-merchandising carries this tag too: without it a deleted book
+  // stayed in the homepage best-sellers row for the edge cache's lifetime.
   [TAGS.PRODUCTS]: ['/', '/feed.xml', '/sitemap.xml', '/category/', '/collection/',
-                    '/custom-feed.xml'],
+                    '/custom-feed.xml', '/.netlify/functions/homepage-merchandising'],
   // The listing/search payload itself: without it a deleted book keeps being
   // handed to every browser from the edge for the full hour of s-maxage.
   'product-overrides': ['/', '/feed.xml', '/custom-feed.xml',

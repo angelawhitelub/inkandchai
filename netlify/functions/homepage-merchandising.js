@@ -49,13 +49,35 @@ async function monthOrders(supabase) {
   return rows;
 }
 
-function aggregateBestsellers(orders) {
+/**
+ * Books that must not be offered here: taken down (deleted_products; the page
+ * answers 410) or hidden from browsing. Their past orders still count in the
+ * month's sales, which is how Belonging (469 sold, removed) kept showing in
+ * the homepage best-sellers row on 14 Nov 2026. Matched by slug, and by title
+ * for cart lines that carry no slug.
+ */
+async function excludedBooks(supabase) {
+  // Required here, not at the top: both pull in @netlify/blobs (KV shim on
+  // Cloudflare), which the unit tests of this file's pure helpers cannot load.
+  const { readDeleted } = require('./utils/deleted-products');
+  const { browse } = require('./utils/search-hidden');
+  const [deleted, hidden] = await Promise.all([
+    readDeleted(supabase).catch(() => ({ slugs: [], rows: [] })),
+    browse.hiddenSlugSet().catch(() => new Set()),
+  ]);
+  const slugs = new Set([...(deleted.slugs || []), ...hidden].map((s) => String(s || '').toLowerCase()).filter(Boolean));
+  const titles = new Set((deleted.rows || []).map((r) => titleKey(r.title)).filter(Boolean));
+  return { slugs, titles };
+}
+
+function aggregateBestsellers(orders, exclude = { slugs: new Set(), titles: new Set() }) {
   const sold = new Map();
   for (const order of orders) {
     for (const item of Array.isArray(order.cart_items) ? order.cart_items : []) {
       const title = String(item.title || item.name || '').trim();
       if (!title) continue;
       const slug = slugFromItem(item);
+      if (slug ? exclude.slugs.has(slug.toLowerCase()) : exclude.titles.has(titleKey(title))) continue;
       const key = slug ? `s:${slug.toLowerCase()}` : `t:${titleKey(title)}`;
       const qty = Math.max(1, Number(item.qty) || 1);
       const current = sold.get(key) || {
@@ -102,7 +124,7 @@ exports.handler = async (event) => {
 
     // Reader Bestsellers: this month's best sellers, in this month's order,
     // badged with lifetime units sold (lifetime-sales-scheduled, hourly).
-    const [orders, productsResult, lifetime] = await Promise.all([
+    const [orders, productsResult, lifetime, exclude] = await Promise.all([
       monthOrders(supabase),
       supabase
         .from('custom_products')
@@ -113,10 +135,13 @@ exports.handler = async (event) => {
         .order('created_at', { ascending: false })
         .limit(24),
       readLifetimeSales(),
+      excludedBooks(supabase),
     ]);
     if (productsResult.error) throw productsResult.error;
 
-    const newArrivals = (productsResult.data || []).map(product => ({
+    const newArrivals = (productsResult.data || [])
+      .filter(product => !exclude.slugs.has(String(product.slug || '').toLowerCase()))
+      .map(product => ({
       ...product,
       description: String(product.description || '').slice(0, 160),
       image_url: proxifySupabaseImage(product.image_url),
@@ -138,7 +163,7 @@ exports.handler = async (event) => {
         period: 'this_month',
         sold_count: lifetime ? 'lifetime' : 'this_month',
         new_arrivals: newArrivals,
-        bestsellers: withLifetimeCounts(aggregateBestsellers(orders), lifetime),
+        bestsellers: withLifetimeCounts(aggregateBestsellers(orders, exclude), lifetime),
       }),
     };
   } catch (error) {
