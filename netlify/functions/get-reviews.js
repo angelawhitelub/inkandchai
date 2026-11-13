@@ -7,6 +7,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { cleanPhotoUrls, isMissingPhotosColumn } = require('./utils/review-photos');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -49,13 +50,19 @@ exports.handler = async (event) => {
   const slug = params.slug || '';
   if (!slug) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'slug required' }) };
 
-  const { data, error } = await supabase
+  // photos needs sql/product_reviews_photos.sql; until it has run, read the
+  // reviews without it rather than showing none.
+  const read = (cols) => supabase
     .from('product_reviews')
-    .select('id, customer_name, rating, comment, created_at, verified_buyer')
+    .select(cols)
     .eq('product_slug', slug)
     .eq('approved', true)
     .order('created_at', { ascending: false })
     .limit(50);
+  const BASE = 'id, customer_name, rating, comment, created_at, verified_buyer';
+  let { data, error } = await read(BASE + ', photos');
+  if (error && isMissingPhotosColumn(error)) ({ data, error } = await read(BASE));
+  if (data) data = data.map((r) => ({ ...r, photos: cleanPhotoUrls(r.photos) }));
 
   if (error) return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: error.message }) };
 

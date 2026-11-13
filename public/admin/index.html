@@ -2549,6 +2549,15 @@ select,input,textarea{font-size:1rem;}
         <label>Review text</label>
         <textarea id="arComment" rows="3" placeholder="What the customer said about the book…" style="width:100%;background:var(--bg);color:var(--cream);border:1px solid var(--border);padding:0.6rem;font-family:inherit;font-size:0.82rem;"></textarea>
       </div>
+      <div class="form-row" style="grid-column:span 2;margin:0;">
+        <label>Photos (optional — up to 4, from the customer: the parcel, the book, an unboxing)</label>
+        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+          <label for="arPhotos" class="btn-outline" style="cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-size:0.72rem;">📷 Add photos</label>
+          <input id="arPhotos" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,.avif,.heic" multiple style="display:none" onchange="arAddPhotos(this)"/>
+          <small id="arPhotosHint" style="color:var(--cream-dim);font-size:0.62rem;">JPG, PNG, WebP or AVIF. Shrunk to WebP before upload.</small>
+        </div>
+        <div id="arPhotoList" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;"></div>
+      </div>
       <div class="form-row" style="margin:0;">
         <label>Review date (optional)</label>
         <input id="arDate" type="date"/>
@@ -20513,6 +20522,52 @@ function arNormalizeSlug() {
   const hint = document.getElementById('arSlugHint');
   if (hint) hint.textContent = slug ? `Slug: ${slug}` : '';
 }
+// Review photos: shrunk in the browser to ≤1600px WebP (a phone photo is
+// 3–6 MB; this makes it ~200–400 KB) and sent with the review as data URLs.
+let arPhotos = [];   // [{ dataUrl, name }]
+const AR_MAX_PHOTOS = 4;
+async function arShrinkPhoto(file, maxSide = 1600) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('could not read ' + (file.name || 'image'))); i.src = url; });
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) throw new Error('could not read ' + (file.name || 'image'));
+    const k = Math.min(1, maxSide / Math.max(w, h));
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * k); c.height = Math.round(h * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    let out = c.toDataURL('image/webp', 0.82);
+    if (!out.startsWith('data:image/webp')) out = c.toDataURL('image/jpeg', 0.85);
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function arAddPhotos(input) {
+  const files = Array.from(input.files || []);
+  input.value = '';
+  const hint = document.getElementById('arPhotosHint');
+  const room = AR_MAX_PHOTOS - arPhotos.length;
+  if (files.length > room) alert(`Up to ${AR_MAX_PHOTOS} photos per review — adding the first ${Math.max(0, room)}.`);
+  for (const f of files.slice(0, Math.max(0, room))) {
+    try {
+      hint.textContent = 'Shrinking ' + (f.name || 'photo') + '…';
+      arPhotos.push({ dataUrl: await arShrinkPhoto(f), name: f.name || 'photo' });
+    } catch (e) {
+      alert(`${f.name || 'Photo'}: this browser could not open it (${e.message}). Use JPG, PNG or WebP.`);
+    }
+  }
+  hint.textContent = 'JPG, PNG, WebP or AVIF. Shrunk to WebP before upload.';
+  arRenderPhotos();
+}
+function arRemovePhoto(i) { arPhotos.splice(i, 1); arRenderPhotos(); }
+function arRenderPhotos() {
+  const box = document.getElementById('arPhotoList');
+  if (!box) return;
+  box.innerHTML = arPhotos.map((p, i) => `<div style="position:relative;width:84px;height:84px;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#f4efe6">
+      <img src="${p.dataUrl}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;display:block"/>
+      <button type="button" onclick="arRemovePhoto(${i})" title="Remove" style="position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:.8rem;line-height:22px;padding:0;cursor:pointer">×</button>
+    </div>`).join('');
+}
+
 async function submitAddReview(btn) {
   const slug    = arExtractSlug(document.getElementById('arSlug').value);
   const name    = document.getElementById('arName').value.trim();
@@ -20536,6 +20591,7 @@ async function submitAddReview(btn) {
       body: JSON.stringify({
         product_slug: slug, customer_name: name, rating, comment,
         verified_buyer: verified,
+        ...(arPhotos.length && { photos: arPhotos.map(p => p.dataUrl) }),
         ...(orderId && { order_id: orderId }),
         ...(date && { created_at: date }),
       }),
@@ -20543,7 +20599,8 @@ async function submitAddReview(btn) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     msg.style.color = '#63ca6e';
-    msg.textContent = `✓ Review added and live on /product/${slug}/`;
+    msg.textContent = `✓ Review added${(data.photos || []).length ? ` with ${data.photos.length} photo${data.photos.length > 1 ? 's' : ''}` : ''} and live on /product/${slug}/`;
+    arPhotos = []; arRenderPhotos();
     // Clear the form for the next entry (keep slug for multiple reviews on same book)
     document.getElementById('arName').value = '';
     document.getElementById('arComment').value = '';
@@ -20592,9 +20649,10 @@ async function loadReviews(url) {
               ${r.approved ? '<span style="font-size:.55rem;color:#5d9b55;letter-spacing:.1em;text-transform:uppercase">✓ Approved</span>' : '<span style="font-size:.55rem;color:#e07020;letter-spacing:.1em;text-transform:uppercase">Pending</span>'}
               ${r.verified_buyer ? '<span style="font-size:.55rem;color:#5d9b55;letter-spacing:.1em;text-transform:uppercase">✓ Verified</span>' : ''}
             </div>
-            <div style="font-size:.72rem;font-weight:600;color:#2a2018;margin-bottom:.2rem">${r.customer_name || 'Anonymous'}</div>
-            <div style="font-size:.65rem;color:#888;margin-bottom:.4rem">Product: <a href="/product/${r.product_slug}/" target="_blank" style="color:var(--gold)">${r.product_slug}</a> &nbsp;·&nbsp; Order: ${r.order_id}</div>
-            ${r.comment ? `<div style="font-size:.72rem;color:#444;line-height:1.65">${r.comment}</div>` : '<div style="font-size:.68rem;color:#aaa;font-style:italic">No comment</div>'}
+            <div style="font-size:.72rem;font-weight:600;color:#2a2018;margin-bottom:.2rem">${esc(r.customer_name || 'Anonymous')}</div>
+            <div style="font-size:.65rem;color:#888;margin-bottom:.4rem">Product: <a href="/product/${encodeURIComponent(r.product_slug || '')}/" target="_blank" style="color:var(--gold)">${esc(r.product_slug)}</a> &nbsp;·&nbsp; Order: ${esc(r.order_id)}</div>
+            ${r.comment ? `<div style="font-size:.72rem;color:#444;line-height:1.65;white-space:pre-line">${esc(r.comment)}</div>` : '<div style="font-size:.68rem;color:#aaa;font-style:italic">No comment</div>'}
+            ${(Array.isArray(r.photos) ? r.photos : []).filter(u => /^https:\/\//.test(u)).length ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem">${r.photos.filter(u => /^https:\/\//.test(u)).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Review photo" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--border)"/></a>`).join('')}</div>` : ''}
           </div>
           <div style="display:flex;flex-direction:column;gap:.4rem;flex-shrink:0">
             ${!r.approved ? `<button onclick="moderateReview('${r.id}','approve')" style="background:#5d9b55;color:#fff;border:none;padding:.45rem .9rem;font-size:.62rem;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;font-weight:600">✓ Approve</button>` : ''}

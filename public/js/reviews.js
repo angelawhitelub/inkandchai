@@ -49,6 +49,18 @@
     + '.iacr-line .iacr-stars{font-size:1rem;margin:0}'
     + '.iacr-line u{text-decoration:none;border-bottom:1px solid transparent}'
     + '.iacr-line:hover u{border-bottom-color:currentColor}'
+    + '.iacr-pics{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.65rem}'
+    + '.iacr-pic{width:5.2rem;height:5.2rem;padding:0;border:1px solid var(--border,#e4d9c6);border-radius:10px;overflow:hidden;background:rgba(127,127,127,.08);cursor:zoom-in}'
+    + '.iacr-pic img{width:100%;height:100%;object-fit:cover;display:block}'
+    + '.iacr-gallery{padding:1rem 0 .2rem;border-bottom:1px solid var(--border,#e4d9c6)}'
+    + '.iacr-gallery h3{margin:0;font-size:.82rem;font-weight:600;color:var(--cream,#241c14)}'
+    + '.iacr-gallery .iacr-pics{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.5rem}'
+    + '.iacr-gallery .iacr-pic{flex:0 0 auto}'
+    + '.iacr-lb{position:fixed;inset:0;z-index:2147483000;background:rgba(10,8,6,.88);display:flex;align-items:center;justify-content:center;padding:1rem}'
+    + '.iacr-lb img{max-width:min(96vw,1100px);max-height:86vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5)}'
+    + '.iacr-lb button{position:absolute;border:0;border-radius:50%;width:2.6rem;height:2.6rem;background:rgba(255,255,255,.14);color:#fff;font-size:1.4rem;line-height:1;cursor:pointer}'
+    + '.iacr-lb .x{top:1rem;right:1rem}.iacr-lb .p{left:1rem;top:50%;transform:translateY(-50%)}.iacr-lb .n{right:1rem;top:50%;transform:translateY(-50%)}'
+    + '.iacr-lb small{position:absolute;bottom:1rem;left:0;right:0;text-align:center;color:rgba(255,255,255,.8);font-size:.8rem}'
     + '.iacr-empty{display:flex;gap:1rem;align-items:center}'
     + '.iacr-empty .iacr-stars{font-size:1.5rem;margin:0}'
     + '.iacr-empty p{margin:.15rem 0 0;font-size:.85rem;color:var(--muted,#6b5d4f)}'
@@ -88,6 +100,46 @@
   };
   var when = function (iso) {
     try { return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return ''; }
+  };
+
+  var okUrl = function (u) { return /^https:\/\/[^\s"'<>]+$/i.test(String(u || '')); };
+  var photosOf = function (r) { return (Array.isArray(r.photos) ? r.photos : []).filter(okUrl).slice(0, 4); };
+
+  // Full-size viewer for review photos, with previous/next across the set
+  // that was clicked (one review's photos, or every photo in the strip).
+  function viewer(list, at) {
+    var i = at;
+    var lb = document.createElement('div');
+    lb.className = 'iacr-lb';
+    lb.setAttribute('role', 'dialog');
+    lb.setAttribute('aria-label', 'Customer photo');
+    var many = list.length > 1;
+    lb.innerHTML = '<img alt="Customer photo"/>' + '<button type="button" class="x" aria-label="Close">×</button>'
+      + (many ? '<button type="button" class="p" aria-label="Previous photo">‹</button><button type="button" class="n" aria-label="Next photo">›</button><small></small>' : '');
+    var img = lb.querySelector('img');
+    var show = function () {
+      img.src = list[i];
+      var c = lb.querySelector('small');
+      if (c) c.textContent = (i + 1) + ' / ' + list.length;
+    };
+    var close = function () { lb.remove(); document.removeEventListener('keydown', key); document.body.style.overflow = ''; };
+    var step = function (d) { i = (i + d + list.length) % list.length; show(); };
+    var key = function (e) { if (e.key === 'Escape') close(); else if (many && e.key === 'ArrowLeft') step(-1); else if (many && e.key === 'ArrowRight') step(1); };
+    lb.onclick = function (e) {
+      var t = e.target;
+      if (t.classList.contains('p')) step(-1);
+      else if (t.classList.contains('n')) step(1);
+      else if (t === lb || t.classList.contains('x')) close();
+    };
+    document.addEventListener('keydown', key);
+    document.body.style.overflow = 'hidden';
+    show();
+    document.body.appendChild(lb);
+  }
+  var pics = function (list, set) {
+    return '<div class="iacr-pics">' + list.map(function (u, i) {
+      return '<button type="button" class="iacr-pic" data-set="' + set + '" data-i="' + i + '" aria-label="Open customer photo ' + (i + 1) + '"><img src="' + esc(u) + '" alt="Customer photo" loading="lazy"/></button>';
+    }).join('') + '</div>';
   };
 
   function empty() {
@@ -145,17 +197,32 @@
         + (r.verified_buyer ? '<span class="iacr-ok">✓ Verified purchase</span>' : '') + '</div>'
         + '<div class="iacr-meta">' + stars(r.rating) + '<span>' + esc(when(r.created_at)) + '</span></div>'
         + (r.comment ? '<p class="iacr-text">' + esc(r.comment) + '</p>' : '')
+        + (photosOf(r).length ? pics(photosOf(r), 'r' + rv.indexOf(r)) : '')
         + '</div>';
     };
     var FIRST = 5;
+    var allPics = [];
+    rv.forEach(function (r) { allPics = allPics.concat(photosOf(r)); });
+    var gallery = allPics.length
+      ? '<div class="iacr-gallery"><h3>Customer photos (' + allPics.length + ')</h3>' + pics(allPics.slice(0, 12), 'all') + '</div>'
+      : '';
     sec.className = 'iacr';
     sec.innerHTML = '<h2>Customer reviews</h2>'
       + '<div class="iacr-top"><div><div class="iacr-avg">' + avg.toFixed(1) + ' <small>out of 5</small></div>'
       + stars(avg) + '<div class="iacr-sub">' + n + ' verified ' + (n === 1 ? 'review' : 'reviews') + '</div></div>'
       + '<div class="iacr-bars">' + bars + '</div></div>'
+      + gallery
       + '<div class="iacr-list">' + rv.slice(0, FIRST).map(item).join('') + '</div>'
       + (n > FIRST ? '<button type="button" class="iacr-more">Show all ' + n + ' reviews</button>' : '');
     summaryLine(avg, n);
+    // One listener for every thumbnail, including ones "Show all" adds later.
+    sec.onclick = function (e) {
+      var b = e.target.closest && e.target.closest('.iacr-pic');
+      if (!b) return;
+      var set = b.getAttribute('data-set');
+      var list = set === 'all' ? allPics : photosOf(rv[Number(set.slice(1))] || {});
+      if (list.length) viewer(list, Number(b.getAttribute('data-i')) || 0);
+    };
     var more = sec.querySelector('.iacr-more');
     if (more) more.onclick = function () {
       sec.querySelector('.iacr-list').innerHTML = rv.map(item).join('');

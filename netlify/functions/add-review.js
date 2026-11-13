@@ -13,7 +13,10 @@
  * immediately so they appear on the product page.
  *
  * Body: { product_slug, customer_name, rating (1-5), comment,
- *         verified_buyer?, created_at? }
+ *         verified_buyer?, created_at?, photos?: [dataUrl] (≤ 4 JPG/PNG/WebP, ≤ 3 MB) }
+ *
+ * Photos go to the public R2 image bucket (utils/review-photos.js) and their
+ * URLs onto product_reviews.photos (sql/product_reviews_photos.sql).
  * Auth: X-Admin-Key header.
  */
 
@@ -21,6 +24,8 @@ const { createClient } = require('@supabase/supabase-js');
 const { purgeCacheTags, TAGS } = require('./utils/purge-cache');
 const { requireAdmin } = require('./utils/admin-auth');
 const { orderIdFilter } = require('./utils/order-id-filter');
+const RP = require('./utils/review-photos');
+const { r2PutObject, r2Config, r2Configured } = require('./utils/r2-put');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -48,6 +53,13 @@ exports.handler = async (event) => {
   if (!productSlug) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'product_slug is required' }) };
   if (!name)        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'customer_name is required' }) };
   if (!(rating >= 1 && rating <= 5)) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'rating must be 1–5' }) };
+
+  let photos;
+  try { photos = RP.parsePhotos(body.photos); }
+  catch (e) { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: e.message }) }; }
+  if (photos.length && !r2Configured()) {
+    return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Photo storage (R2) is not configured — add the review without photos.' }) };
+  }
 
   // Validate/normalise created_at (allow backdating to a real review date)
   let createdIso = new Date().toISOString();
@@ -96,9 +108,18 @@ exports.handler = async (event) => {
       orderId = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
     }
 
+    // Upload only once the order checks have passed, so a refused review
+    // leaves no stray photos behind.
+    const photoUrls = photos.length
+      ? await RP.uploadPhotos(productSlug, photos, {
+          put: (key, buf, type) => r2PutObject(r2Config(), { key, body: buf, contentType: type }),
+        })
+      : [];
+
     const { data, error } = await supabase
       .from('product_reviews')
       .insert({
+        ...(photoUrls.length && { photos: photoUrls }),
         order_id:       orderId,
         product_slug:   productSlug,
         rating,
@@ -112,9 +133,14 @@ exports.handler = async (event) => {
       .select('id')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (photoUrls.length && RP.isMissingPhotosColumn(error)) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Photos need one SQL step first (sql/product_reviews_photos.sql). Run it in Supabase, or add the review without photos.' }) };
+      }
+      throw error;
+    }
     await purgeCacheTags([TAGS.REVIEWS]);
-    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, review_id: data.id }) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, review_id: data.id, photos: photoUrls }) };
   } catch (err) {
     console.error('[add-review] error:', err.message);
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
