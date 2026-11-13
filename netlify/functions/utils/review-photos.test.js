@@ -104,3 +104,38 @@ test('parseVideo only accepts our own bucket videos/ URLs', () => {
   assert.throws(() => P.parseVideo({ url: B + '/videos/a.mp4' }, ''), /not configured/);
   assert.equal(P.isMissingPhotosColumn({ message: 'column product_reviews.video_url does not exist' }), true);
 });
+
+test('review-start: order ids are normalised; only the right phone on a delivered order gets a link', () => {
+  process.env.ADMIN_SECRET = process.env.ADMIN_SECRET || 'test-admin-key';
+  const { normalizeOrderId, decide } = require('../review-start')._test;
+  assert.equal(normalizeOrderId('ic 20261104 pbwyr'), 'IC-20261104-PBWYR');
+  assert.equal(normalizeOrderId('IC20261104PBWYR'), 'IC-20261104-PBWYR');
+  assert.equal(normalizeOrderId(' IC-20261104-PBWYR-S2 '), 'IC-20261104-PBWYR-S2');
+  const order = { razorpay_order_id: 'IC-20261104-PBWYR', customer_phone: '+91 98765 43210', status: 'delivered',
+    cart_items: [{ slug: 'some-book', title: 'Some Book' }] };
+  assert.equal(decide(null, { phone: '9876543210', slug: 'some-book' }).status, 404);
+  const wrong = decide(order, { phone: '9876543211', slug: 'some-book' });
+  assert.equal(wrong.status, 404);
+  assert.equal(wrong.body.error, decide(null, { phone: '9876543210' }).body.error, 'same answer for wrong phone and no order');
+  assert.equal(decide({ ...order, status: 'shipped' }, { phone: '9876543210', slug: 'some-book' }).status, 409);
+  const ok = decide(order, { phone: '09876543210', slug: 'some-book' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.in_order, true);
+  assert.match(ok.body.url, /^\/review\/\?order=IC-20261104-PBWYR&product=some-book&t=[\w-]+$/);
+  const { verifyReviewToken } = require('./review-token');
+  assert.equal(verifyReviewToken('IC-20261104-PBWYR', new URL('https://x' + ok.body.url).searchParams.get('t')), true);
+  const other = decide(order, { phone: '9876543210', slug: 'another-book' });
+  assert.equal(other.body.in_order, false);
+  assert.doesNotMatch(other.body.url, /product=/);
+});
+
+test('admin-update-review: photos keep only URLs already on the review, add new uploads in place', () => {
+  const { planPhotos } = require('../admin-update-review')._test;
+  const have = ['https://img.example/reviews/a/1.webp', 'https://img.example/reviews/a/2.webp'];
+  const p = planPhotos([have[1], webp, have[0]], have);
+  assert.deepEqual(p.order, [{ keep: have[1] }, { add: 0 }, { keep: have[0] }]);
+  assert.equal(p.add.length, 1);
+  assert.throws(() => planPhotos(['https://evil.example/x.webp'], have), /not recognised/);
+  assert.throws(() => planPhotos([webp, webp, webp, webp, webp], have), /At most 4/);
+  assert.deepEqual(planPhotos([], have).order, []);
+});

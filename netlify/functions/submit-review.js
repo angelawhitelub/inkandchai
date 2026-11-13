@@ -5,11 +5,17 @@
  * Validates order ownership, saves review to product_reviews table.
  * Review starts as approved=false (pending admin approval).
  *
- * Body: { order_id, product_slug, rating (1-5), comment, customer_name }
+ * Body: { order_id, product_slug, rating (1-5), comment, customer_name,
+ *         photos?: [dataUrl] (≤ 4 JPG/PNG/WebP, ≤ 3 MB; shrunk by /review/) }
+ *
+ * Photos go to the public R2 image bucket like admin ones (utils/review-photos)
+ * and show only once the review is approved.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { verifyReviewToken } = require('./utils/review-token');
+const RP = require('./utils/review-photos');
+const { r2PutObject, r2Config, r2Configured } = require('./utils/r2-put');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -63,6 +69,12 @@ exports.handler = async (event) => {
   const r = parseInt(rating);
   if (r < 1 || r > 5) {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Rating must be 1–5' }) };
+  }
+  let photos;
+  try { photos = RP.parsePhotos((body || {}).photos); }
+  catch (e) { return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: e.message }) }; }
+  if (photos.length && !r2Configured()) {
+    return { statusCode: 503, headers: CORS, body: JSON.stringify({ error: 'Photo upload is not available right now — please submit without photos.' }) };
   }
 
   // Look up the order. order_id can be either the IC-XXXXX display ID
@@ -128,11 +140,25 @@ exports.handler = async (event) => {
     return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'You have already reviewed this product' }) };
   }
 
+  // Upload only after every check above has passed.
+  let photoUrls = [];
+  if (photos.length) {
+    try {
+      photoUrls = await RP.uploadPhotos(product_slug, photos, {
+        put: (key, buf, type) => r2PutObject(r2Config(), { key, body: buf, contentType: type }),
+      });
+    } catch (e) {
+      console.error('submit-review photo upload:', e.message);
+      return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: 'Your photos could not be uploaded. Please try again, or submit without photos.' }) };
+    }
+  }
+
   // Save review. customer_name is taken from the order (not the request body)
   // so attackers can't impersonate the buyer.
   const { data: review, error: insertErr } = await supabase
     .from('product_reviews')
     .insert({
+      ...(photoUrls.length && { photos: photoUrls }),
       order_id: cleanId,
       product_slug,
       rating: r,

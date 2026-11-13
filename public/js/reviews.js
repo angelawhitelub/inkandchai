@@ -65,6 +65,22 @@
     + '.iacr-lb button{position:absolute;border:0;border-radius:50%;width:2.6rem;height:2.6rem;background:rgba(255,255,255,.14);color:#fff;font-size:1.4rem;line-height:1;cursor:pointer}'
     + '.iacr-lb .x{top:1rem;right:1rem}.iacr-lb .p{left:1rem;top:50%;transform:translateY(-50%)}.iacr-lb .n{right:1rem;top:50%;transform:translateY(-50%)}'
     + '.iacr-lb small{position:absolute;bottom:1rem;left:0;right:0;text-align:center;color:rgba(255,255,255,.8);font-size:.8rem}'
+    + '.iacr-head{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin:0 0 1rem}'
+    + '.iacr-head h2{margin:0}'
+    + '.iacr-write{padding:.6rem 1.1rem;border:1px solid var(--cream,#241c14);border-radius:99px;background:transparent;color:var(--cream,#241c14);font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}'
+    + '.iacr-write:hover{border-color:#f2a516;color:#a86d00}'
+    + '.iacr-modal{position:fixed;inset:0;z-index:2147483000;background:rgba(10,8,6,.6);display:flex;align-items:center;justify-content:center;padding:1rem}'
+    + '.iacr-card{width:100%;max-width:420px;background:var(--panel,#fff);color:var(--cream,#241c14);border:1px solid var(--border,#e4d9c6);border-radius:18px;padding:1.4rem;box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative;font-size:.88rem;line-height:1.55}'
+    + '.iacr-card h3{margin:0 0 .3rem;font-size:1.25rem;font-family:"Cormorant Garamond","Playfair Display",serif}'
+    + '.iacr-card p{margin:0 0 1rem;color:var(--muted,#6b5d4f);font-size:.82rem}'
+    + '.iacr-card label{display:block;font-size:.76rem;font-weight:600;margin:.7rem 0 .3rem}'
+    + '.iacr-card input{width:100%;box-sizing:border-box;padding:.7rem .8rem;border:1px solid var(--border,#e4d9c6);border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:.92rem}'
+    + '.iacr-card input:focus{outline:none;border-color:#f2a516}'
+    + '.iacr-go{width:100%;margin-top:1.1rem;padding:.8rem;border:0;border-radius:99px;background:var(--cream,#241c14);color:var(--panel,#fff);font:inherit;font-weight:700;cursor:pointer}'
+    + '.iacr-go:disabled{opacity:.5;cursor:wait}'
+    + '.iacr-err{margin-top:.8rem;font-size:.8rem;color:#c0392b}'
+    + '.iacr-err a{color:inherit;font-weight:700}'
+    + '.iacr-x{position:absolute;top:.6rem;right:.7rem;border:0;background:transparent;color:var(--muted,#6b5d4f);font-size:1.4rem;cursor:pointer;line-height:1}'
     + '.iacr-empty{display:flex;gap:1rem;align-items:center}'
     + '.iacr-empty .iacr-stars{font-size:1.5rem;margin:0}'
     + '.iacr-empty p{margin:.15rem 0 0;font-size:.85rem;color:var(--muted,#6b5d4f)}'
@@ -157,13 +173,72 @@
     }).join('') + '</div>';
   };
 
+  var head = '<div class="iacr-head"><h2>Customer reviews</h2><button type="button" class="iacr-write">✍️ Write a review</button></div>';
+
+  // "Write a review": the buyer gives the order ID and phone number; on a
+  // match review-start returns the signed /review/ link and we go there.
+  function writeForm() {
+    var m = document.createElement('div');
+    m.className = 'iacr-modal';
+    m.innerHTML = '<form class="iacr-card" novalidate>'
+      + '<button type="button" class="iacr-x" aria-label="Close">×</button>'
+      + '<h3>Write a review</h3>'
+      + '<p>Reviews are from verified buyers only. Enter the order you bought this book in.</p>'
+      + '<label for="iacrOrder">Order ID</label><input id="iacrOrder" autocomplete="off" autocapitalize="characters" placeholder="e.g. IC-20261104-AB12C" required/>'
+      + '<label for="iacrPhone">Phone number on the order</label><input id="iacrPhone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile number" required/>'
+      + '<button type="submit" class="iacr-go">Continue</button>'
+      + '<div class="iacr-err" role="alert"></div>'
+      + '<p style="margin:1rem 0 0;font-size:.74rem">Your order ID is in your order confirmation email and WhatsApp.</p>'
+      + '</form>';
+    var close = function () { m.remove(); document.removeEventListener('keydown', key); };
+    var key = function (e) { if (e.key === 'Escape') close(); };
+    m.addEventListener('click', function (e) { if (e.target === m || e.target.classList.contains('iacr-x')) close(); });
+    document.addEventListener('keydown', key);
+    var form = m.querySelector('form');
+    var err = m.querySelector('.iacr-err');
+    var go = m.querySelector('.iacr-go');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      err.textContent = '';
+      var order = m.querySelector('#iacrOrder').value.trim();
+      var phone = m.querySelector('#iacrPhone').value.trim();
+      if (!order) { err.textContent = 'Enter your order ID.'; return; }
+      if (String(phone).replace(/\D/g, '').length < 10) { err.textContent = 'Enter the 10-digit phone number you ordered with.'; return; }
+      go.disabled = true; go.textContent = 'Checking…';
+      fetch('/.netlify/functions/review-start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order, phone: phone, slug: slug }),
+      })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (x) {
+          if (x.ok && x.d.url && /^\/review\//.test(x.d.url)) {
+            if (x.d.in_order === false) {
+              err.innerHTML = esc(x.d.message || '') + ' <a href="' + esc(x.d.url) + '">Review that order →</a>';
+              go.disabled = false; go.textContent = 'Continue';
+              return;
+            }
+            location.href = x.d.url;
+            return;
+          }
+          err.textContent = (x.d && x.d.error) || 'Something went wrong. Please try again.';
+          go.disabled = false; go.textContent = 'Continue';
+        })
+        .catch(function () { err.textContent = 'No connection. Please try again.'; go.disabled = false; go.textContent = 'Continue'; });
+    });
+    document.body.appendChild(m);
+    setTimeout(function () { m.querySelector('#iacrOrder').focus(); }, 50);
+  }
+  sec.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('.iacr-write')) writeForm();
+  });
+
   function empty() {
     dropLine();
     sec.className = 'iacr';
-    sec.innerHTML = '<h2>Customer reviews</h2>'
+    sec.innerHTML = head
       + '<div class="iacr-empty">' + stars(0)
       + '<div><b>No reviews yet</b>'
-      + '<p>Bought this book from Ink &amp; Chai? After delivery we send you a WhatsApp link to rate it. Only verified buyers can review.</p></div></div>';
+      + '<p>Bought this book from Ink &amp; Chai? Be the first to review it — tap <b style="font-size:inherit">Write a review</b>. Only verified buyers can review.</p></div></div>';
     sec.hidden = false;
     sec.style.display = 'block';
   }
@@ -224,7 +299,7 @@
       ? '<div class="iacr-gallery"><h3>' + galleryTitle + ' (' + allPics.length + ')</h3>' + pics(allPics.slice(0, 12), 'all') + '</div>'
       : '';
     sec.className = 'iacr';
-    sec.innerHTML = '<h2>Customer reviews</h2>'
+    sec.innerHTML = head
       + '<div class="iacr-top"><div><div class="iacr-avg">' + avg.toFixed(1) + ' <small>out of 5</small></div>'
       + stars(avg) + '<div class="iacr-sub">' + n + ' verified ' + (n === 1 ? 'review' : 'reviews') + '</div></div>'
       + '<div class="iacr-bars">' + bars + '</div></div>'

@@ -2518,7 +2518,7 @@ select,input,textarea{font-size:1rem;}
   <!-- Add Review manually -->
   <section class="product-panel" id="addReviewSection" style="margin-bottom:1.4rem;">
     <div style="margin-bottom:1rem;">
-      <h2 style="font-family:'DM Serif Display',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">＋ Add a Review</h2>
+      <h2 id="arHeading" style="font-family:'DM Serif Display',serif;font-size:1.4rem;font-weight:400;margin-bottom:.2rem">＋ Add a Review</h2>
       <p style="font-size:.65rem;color:var(--cream-dim);line-height:1.6">Add a genuine customer review you collected off-platform (Instagram DM, WhatsApp, etc.) — useful while order delivery isn't auto-tracked. Only add real feedback from real customers.</p>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;max-width:760px;">
@@ -2578,7 +2578,8 @@ select,input,textarea{font-size:1rem;}
       </div>
     </div>
     <div style="margin-top:1.1rem;display:flex;gap:0.7rem;align-items:center;flex-wrap:wrap;">
-      <button class="btn-gold" onclick="submitAddReview(this)" style="background:var(--gold);">＋ Add Review</button>
+      <button class="btn-gold" id="arSubmitBtn" onclick="submitAddReview(this)" style="background:var(--gold);">＋ Add Review</button>
+      <button class="btn-outline" id="arCancelEdit" type="button" onclick="arExitEdit()" style="display:none;">Cancel edit</button>
       <span id="arMsg" style="font-size:0.74rem;"></span>
     </div>
   </section>
@@ -20584,7 +20585,7 @@ function arRenderVideo() {
     </div>` : '';
 }
 function arRemoveVideo() {
-  if (arVideo && arVideo.local) URL.revokeObjectURL(arVideo.local);
+  if (arVideo && /^blob:/.test(arVideo.local || '')) URL.revokeObjectURL(arVideo.local);
   arVideo = null; arRenderVideo();
   arVideoHint('MP4 up to 60 s keeps its sound; other clips (iPhone .MOV, longer) are converted, muted, first 30 s.');
 }
@@ -20640,12 +20641,99 @@ function arRenderPhotos() {
   const box = document.getElementById('arPhotoList');
   if (!box) return;
   box.innerHTML = arPhotos.map((p, i) => `<div style="position:relative;width:84px;height:84px;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#f4efe6">
-      <img src="${p.dataUrl}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;display:block"/>
+      <img src="${esc(p.dataUrl || p.url)}" alt="${esc(p.name || 'photo')}" style="width:100%;height:100%;object-fit:cover;display:block"/>
       <button type="button" onclick="arRemovePhoto(${i})" title="Remove" style="position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:.8rem;line-height:22px;padding:0;cursor:pointer">×</button>
     </div>`).join('');
 }
 
+// ── Edit an existing review (✎ Edit in the list below loads it here) ───────
+let arEditId = null;
+let arEditOrig = null;
+const reviewsById = {};
+function arIstDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10);
+}
+function arStartEdit(id) {
+  const r = reviewsById[id];
+  if (!r) { alert('Reload the reviews list and try again.'); return; }
+  if (arVideoBusy) { alert('Wait for the video upload to finish first.'); return; }
+  arEditId = id;
+  arEditOrig = r;
+  const set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v; };
+  set('arSlug', r.product_slug || ''); arNormalizeSlug();
+  set('arOrderId', String(r.order_id || '').startsWith('MANUAL-') ? '' : (r.order_id || ''));
+  set('arName', r.customer_name || '');
+  set('arRating', String(r.rating || 5));
+  set('arComment', r.comment || '');
+  set('arDate', arIstDate(r.created_at));
+  document.getElementById('arVerified').checked = !!r.verified_buyer;
+  document.getElementById('arSlug').disabled = true;
+  document.getElementById('arOrderId').disabled = true;
+  arPhotos = (Array.isArray(r.photos) ? r.photos : []).filter(u => /^https:\/\//.test(u)).map(u => ({ url: u, name: 'photo' }));
+  arRenderPhotos();
+  if (arVideo && /^blob:/.test(arVideo.local || '')) URL.revokeObjectURL(arVideo.local);
+  arVideo = /^https:\/\//.test(r.video_url || '') ? { url: r.video_url, poster: r.video_poster || '', local: r.video_url } : null;
+  arRenderVideo();
+  document.getElementById('arHeading').textContent = '✎ Edit review — ' + (r.customer_name || 'customer');
+  document.getElementById('arSubmitBtn').textContent = '💾 Save changes';
+  document.getElementById('arCancelEdit').style.display = '';
+  const msg = document.getElementById('arMsg'); msg.textContent = ''; 
+  document.getElementById('addReviewSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function arExitEdit() {
+  arEditId = null; arEditOrig = null;
+  ['arName', 'arComment', 'arDate', 'arOrderId'].forEach(k => { document.getElementById(k).value = ''; });
+  document.getElementById('arVerified').checked = false;
+  document.getElementById('arRating').value = '5';
+  document.getElementById('arSlug').disabled = false;
+  document.getElementById('arOrderId').disabled = false;
+  arPhotos = []; arRenderPhotos(); arRemoveVideo();
+  document.getElementById('arHeading').textContent = '＋ Add a Review';
+  document.getElementById('arSubmitBtn').textContent = '＋ Add Review';
+  document.getElementById('arCancelEdit').style.display = 'none';
+}
+async function arSaveEdit(btn, msg) {
+  const o = arEditOrig || {};
+  const body = {
+    review_id: arEditId,
+    customer_name: document.getElementById('arName').value.trim(),
+    rating: parseInt(document.getElementById('arRating').value, 10),
+    comment: document.getElementById('arComment').value.trim(),
+    verified_buyer: document.getElementById('arVerified').checked,
+    photos: arPhotos.map(p => p.url || p.dataUrl),
+  };
+  const date = document.getElementById('arDate').value;
+  if (date && date !== arIstDate(o.created_at)) body.created_at = date;
+  const before = o.video_url || '';
+  const after = arVideo ? arVideo.url : '';
+  if (after !== before) body.video = arVideo ? { url: arVideo.url, poster: arVideo.poster } : null;
+  if (!body.customer_name) { msg.style.color = '#e06060'; msg.textContent = 'Enter the customer name.'; return; }
+  if (arVideoBusy) { msg.style.color = '#e06060'; msg.textContent = 'Wait for the video to finish uploading.'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Saving…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-update-review', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const slug = o.product_slug;
+    arExitEdit();
+    msg.style.color = '#63ca6e';
+    msg.textContent = `✓ Review saved — live on /product/${slug}/ (refresh the book page)`;
+    if (reviewsShowAll) fetchAllReviews(); else fetchPendingReviews();
+  } catch (err) {
+    msg.style.color = '#e06060';
+    msg.textContent = 'Error: ' + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = arEditId ? '💾 Save changes' : '＋ Add Review';
+  }
+}
+
 async function submitAddReview(btn) {
+  if (arEditId) return arSaveEdit(btn, document.getElementById('arMsg'));
   const slug    = arExtractSlug(document.getElementById('arSlug').value);
   const name    = document.getElementById('arName').value.trim();
   const rating  = parseInt(document.getElementById('arRating').value);
@@ -20716,10 +20804,11 @@ async function loadReviews(url) {
 
     if (reviews.length === 0) {
       container.innerHTML = '<p style="font-size:.7rem;color:var(--cream-dim);padding:.5rem 0">' +
-        (reviewsShowAll ? 'No reviews yet.' : 'No pending reviews 🎉') + '</p>';
+        (reviewsShowAll ? 'No reviews yet.' : 'No pending reviews 🎉 &nbsp;<a href="#" onclick="fetchAllReviews();return false;" style="color:var(--gold)">Show all reviews to edit them →</a>') + '</p>';
       return;
     }
 
+    reviews.forEach(r => { reviewsById[r.id] = r; });
     container.innerHTML = reviews.map(r => {
       const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
       const date  = new Date(r.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
@@ -20739,6 +20828,7 @@ async function loadReviews(url) {
             ${/^https:\/\//.test(r.video_url || '') ? `<video src="${esc(r.video_url)}" ${/^https:\/\//.test(r.video_poster || '') ? `poster="${esc(r.video_poster)}"` : ''} controls playsinline preload="none" style="display:block;margin-top:.5rem;width:200px;max-height:200px;background:#080706;border-radius:4px"></video>` : ''}
           </div>
           <div style="display:flex;flex-direction:column;gap:.4rem;flex-shrink:0">
+            <button onclick="arStartEdit('${esc(r.id)}')" style="background:#fff;color:#2a2018;border:1px solid var(--border);padding:.45rem .9rem;font-size:.62rem;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;font-weight:600">✎ Edit</button>
             ${!r.approved ? `<button onclick="moderateReview('${r.id}','approve')" style="background:#5d9b55;color:#fff;border:none;padding:.45rem .9rem;font-size:.62rem;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;font-weight:600">✓ Approve</button>` : ''}
             <button onclick="moderateReview('${r.id}','reject')" style="background:#c05050;color:#fff;border:none;padding:.45rem .9rem;font-size:.62rem;letter-spacing:.1em;cursor:pointer;text-transform:uppercase;font-weight:600">✕ Delete</button>
           </div>

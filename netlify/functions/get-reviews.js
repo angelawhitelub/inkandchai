@@ -8,6 +8,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { cleanPhotoUrls, isMissingPhotosColumn } = require('./utils/review-photos');
+const { requireAdmin } = require('./utils/admin-auth');
 const httpsOrNull = (u) => (/^https:\/\/[^\s"'<>]+$/i.test(String(u || '')) ? String(u) : null);
 
 const CORS = {
@@ -24,6 +25,13 @@ exports.handler = async (event) => {
   });
 
   const params = event.queryStringParameters || {};
+
+  // The two list views return whole rows (customer email, order id) and are
+  // for the admin Reviews tab only. They used to answer anyone.
+  if (params.pending === '1' || params.all === '1') {
+    const block = requireAdmin(event, CORS);
+    if (block) return block;
+  }
 
   // Admin: get all pending reviews
   if (params.pending === '1') {
