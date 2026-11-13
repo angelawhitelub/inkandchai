@@ -8251,6 +8251,14 @@ function productSlugFromTitle(title) {
 // from canvas, so the output is WebP either way -- which is what we want:
 // Google Merchant Center accepts WebP and rejects AVIF, and every cover here
 // ends up in the product feed.
+// Book images the admin may upload. AVIF (what Amazon and many publishers
+// serve) is converted to WebP like JPG/PNG by iacImageToWebp. macOS can hand
+// an .avif over with an empty type, so the file name is checked as well.
+function iacIsUploadImage(file) {
+  const type = String((file && file.type) || '').toLowerCase();
+  if (/^image\/(png|jpe?g|webp|avif)$/.test(type)) return true;
+  return !type && /\.(png|jpe?g|webp|avif)$/i.test(String((file && file.name) || ''));
+}
 window.iacImageToWebp = async function (input, quality = 0.85) {
   let dataUrl = '';
   try {
@@ -8261,6 +8269,10 @@ window.iacImageToWebp = async function (input, quality = 0.85) {
         r.onerror = () => rej(new Error('read failed'));
         r.readAsDataURL(input);
       });
+      // A file with no type reads as application/octet-stream; name its image
+      // type from the extension so it is decoded and converted, not passed on raw.
+      const ext = (String(input.name || '').match(/\.(png|jpe?g|webp|avif)$/i) || [])[1];
+      if (!input.type && ext) dataUrl = dataUrl.replace(/^data:[^;,]*/, 'data:image/' + ext.toLowerCase().replace('jpg', 'jpeg'));
     } else {
       dataUrl = String(input || '');
     }
@@ -8574,9 +8586,9 @@ async function previewCreateProductImages(fileList) {
     document.getElementById('newProdImage').value = '';
     return;
   }
-  const invalid = files.find(file => !/^image\/(png|jpe?g|webp)$/i.test(file.type) || file.size > 4 * 1024 * 1024);
+  const invalid = files.find(file => !iacIsUploadImage(file) || file.size > 4 * 1024 * 1024);
   if (invalid) {
-    alert(`${invalid.name}: use a JPG, PNG, or WebP image below 4 MB.`);
+    alert(`${invalid.name}: use a JPG, PNG, WebP or AVIF image below 4 MB.`);
     document.getElementById('newProdImage').value = '';
     return;
   }
@@ -10622,8 +10634,8 @@ function renderAplusImagePreview(index) {
 async function previewAplusBlockImage(index, fileList) {
   const file = Array.from(fileList || [])[0];
   if (!file) return;
-  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type) || file.size > 4 * 1024 * 1024) {
-    alert('Use a JPG, PNG, or WebP image below 4 MB.');
+  if (!iacIsUploadImage(file) || file.size > 4 * 1024 * 1024) {
+    alert('Use a JPG, PNG, WebP or AVIF image below 4 MB.');
     return;
   }
   const msg = document.getElementById('prodAplusSaveMsg');
@@ -12162,9 +12174,9 @@ async function previewEditProductImages(fileList) {
     document.getElementById('prodGalleryImages').value = '';
     return;
   }
-  const invalid = files.find(file => !/^image\/(png|jpe?g|webp)$/i.test(file.type) || file.size > 4 * 1024 * 1024);
+  const invalid = files.find(file => !iacIsUploadImage(file) || file.size > 4 * 1024 * 1024);
   if (invalid) {
-    alert(`${invalid.name}: use a JPG, PNG, or WebP image below 4 MB.`);
+    alert(`${invalid.name}: use a JPG, PNG, WebP or AVIF image below 4 MB.`);
     document.getElementById('prodGalleryImages').value = '';
     return;
   }
