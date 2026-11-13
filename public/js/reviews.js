@@ -18,6 +18,9 @@
 
   var CSS = ''
     + '.iacr{margin-top:1.4rem;padding:1.4rem;border:1px solid var(--border,#e4d9c6);border-radius:20px;background:var(--panel,#fff);color:var(--cream,#241c14);line-height:1.6}'
+    // Baked pages put the section straight after <main class="wrap"> (1260px,
+    // 16px padding); line it up with that column instead of the full window.
+    + 'body>.iacr{box-sizing:border-box;width:calc(100% - 32px);max-width:1228px;margin:1.4rem auto 0}'
     + '.iacr h2{font-family:"Cormorant Garamond","Playfair Display",serif;font-size:1.6rem;font-weight:600;margin:0 0 1rem;color:var(--cream,#241c14)}'
     + '.iacr-top{display:grid;grid-template-columns:minmax(150px,200px) 1fr;gap:1.6rem;align-items:center;padding-bottom:1.2rem;border-bottom:1px solid var(--border,#e4d9c6)}'
     + '.iacr-avg{font-size:2.6rem;font-weight:700;line-height:1;color:var(--cream,#241c14)}'
