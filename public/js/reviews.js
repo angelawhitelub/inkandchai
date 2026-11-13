@@ -44,6 +44,11 @@
     + '.iacr-text{margin:.5rem 0 0;font-size:.92rem;line-height:1.7;color:var(--cream,#241c14);white-space:pre-line;overflow-wrap:anywhere}'
     + '.iacr-more{margin-top:.9rem;padding:.6rem 1.1rem;border:1px solid var(--border,#e4d9c6);border-radius:99px;background:transparent;color:var(--cream,#241c14);font:inherit;font-size:.8rem;cursor:pointer}'
     + '.iacr-more:hover{border-color:#f2a516}'
+    + '.iacr-line{display:inline-flex;align-items:center;gap:.45rem;margin:.35rem 0 .2rem;font-size:.86rem;color:var(--muted,#6b5d4f);text-decoration:none}'
+    + '.iacr-line b{color:var(--cream,#241c14);font-weight:700}'
+    + '.iacr-line .iacr-stars{font-size:1rem;margin:0}'
+    + '.iacr-line u{text-decoration:none;border-bottom:1px solid transparent}'
+    + '.iacr-line:hover u{border-bottom-color:currentColor}'
     + '.iacr-empty{display:flex;gap:1rem;align-items:center}'
     + '.iacr-empty .iacr-stars{font-size:1.5rem;margin:0}'
     + '.iacr-empty p{margin:.15rem 0 0;font-size:.85rem;color:var(--muted,#6b5d4f)}'
@@ -86,6 +91,7 @@
   };
 
   function empty() {
+    dropLine();
     sec.className = 'iacr';
     sec.innerHTML = '<h2>Customer reviews</h2>'
       + '<div class="iacr-empty">' + stars(0)
@@ -93,6 +99,29 @@
       + '<p>Bought this book from Ink &amp; Chai? After delivery we send you a WhatsApp link to rate it. Only verified buyers can review.</p></div></div>';
     sec.hidden = false;
     sec.style.display = 'block';
+  }
+
+  function dropLine() {
+    var old = document.querySelector('.iacr-linewrap');
+    if (old) old.remove();
+  }
+
+  // Stars + count under "by Author" (Amazon-style), only when real reviews
+  // exist. Baked and Worker pages use .author, the client page .prod-author.
+  function summaryLine(avg, n) {
+    dropLine();
+    var h1 = document.querySelector('h1.prod-title') || document.querySelector('h1');
+    if (!h1) return;
+    var anchor = h1.parentElement.querySelector('.author, .prod-author') || h1;
+    var a = document.createElement('a');
+    a.className = 'iacr-line';
+    a.href = '#liveReviews';
+    a.innerHTML = stars(avg) + '<b>' + avg.toFixed(1) + '</b><u>' + n + ' ' + (n === 1 ? 'rating' : 'ratings') + '</u>';
+    a.onclick = function (e) { e.preventDefault(); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    var wrap = document.createElement('div');
+    wrap.className = 'iacr-linewrap';
+    wrap.appendChild(a);
+    anchor.insertAdjacentElement('afterend', wrap);
   }
 
   function render(rv) {
@@ -126,6 +155,7 @@
       + '<div class="iacr-bars">' + bars + '</div></div>'
       + '<div class="iacr-list">' + rv.slice(0, FIRST).map(item).join('') + '</div>'
       + (n > FIRST ? '<button type="button" class="iacr-more">Show all ' + n + ' reviews</button>' : '');
+    summaryLine(avg, n);
     var more = sec.querySelector('.iacr-more');
     if (more) more.onclick = function () {
       sec.querySelector('.iacr-list').innerHTML = rv.map(item).join('');
