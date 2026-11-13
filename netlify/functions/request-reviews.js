@@ -44,6 +44,18 @@ const BATCH_DELAY = 250;
 const MAX_PER_RUN = 3000;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+const maskPhone = (p) => { const s = String(p || ''); return s.length > 7 ? s.slice(0, 4) + '****' + s.slice(-3) : s; };
+
+/** One line saying why WhatsApp did not take a send (Meta code + message). */
+function sendError(out) {
+  if (!out) return 'no response';
+  if (out.skipped) return 'skipped: WhatsApp not configured or invalid phone';
+  if (out.error) return String(out.error).slice(0, 160);
+  const e = (out.data && out.data.error) || {};
+  const detail = (e.error_data && e.error_data.details) || e.message || '';
+  return `HTTP ${out.status || '?'}${e.code ? ' code ' + e.code : ''}${detail ? ': ' + String(detail).slice(0, 140) : ''}`;
+}
+
 function firstBookTitle(order) {
   const items = Array.isArray(order.cart_items) ? order.cart_items : [];
   const t = items[0]?.title || items[0]?.name || '';
@@ -170,28 +182,48 @@ exports.handler = async (event) => {
     }
 
     // ── Send in batches ─────────────────────────────────────────────────────
-    let sent = 0, failed = 0;
+    let sent = 0, failed = 0, aborted = false;
     const failures = [];
+    const reasons = {};
     const stampIds = [];
 
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
       const results = await Promise.allSettled(batch.map(async r => {
         try {
-          await sendWhatsApp({
+          // sendWhatsApp never throws: a Meta refusal comes back as
+          // { ok:false, status, data }. This used to await it and call every
+          // send a success, stamping review_requested_at on ~9,200 orders from
+          // 1 Sep to 13 Nov while product_reviews stayed at its one admin row.
+          const out = await sendWhatsApp({
             to: r.phone, template, lang,
             params: [r.name, r.book, reviewLink(r.orderId)],
           });
+          if (!out || out.ok !== true) return { ok: false, phone: r.phone, error: sendError(out) };
           if (r._rowId && r._hasReqCol) stampIds.push(r._rowId);
           return { ok: true };
         } catch (e) { return { ok: false, phone: r.phone, error: e.message }; }
       }));
       for (const res of results) {
         if (res.status === 'fulfilled' && res.value.ok) sent++;
-        else { failed++; const v = res.value || {}; if (failures.length < 20) failures.push({ phone: v.phone, error: v.error || res.reason?.message }); }
+        else {
+          failed++;
+          const v = res.value || {};
+          const why = v.error || res.reason?.message || 'unknown';
+          reasons[why] = (reasons[why] || 0) + 1;
+          if (failures.length < 20) failures.push({ phone: maskPhone(v.phone), error: why });
+        }
+      }
+      // The whole first batch refused for one reason (template not approved,
+      // wrong variable count, token): every later send would fail the same
+      // way, so stop instead of making a few hundred doomed calls.
+      if (i === 0 && sent === 0 && failed === batch.length && Object.keys(reasons).length === 1) {
+        aborted = true;
+        break;
       }
       if (i + BATCH_SIZE < recipients.length) await sleep(BATCH_DELAY);
     }
+    if (failed) console.error(`[request-reviews] ${failed} not sent (${template}):`, JSON.stringify(reasons).slice(0, 600));
 
     // ── Stamp review_requested_at so we don't re-ask (best-effort) ──────────
     if (stampIds.length) {
@@ -206,7 +238,9 @@ exports.handler = async (event) => {
     }
 
     return { statusCode: 200, headers: CORS, body: JSON.stringify({
-      success: true, template, total: recipients.length, sent, failed, sample_failures: failures,
+      success: sent > 0 || failed === 0, template, total: recipients.length, sent, failed,
+      ...(aborted && { aborted: true, not_tried: recipients.length - sent - failed }),
+      reasons, sample_failures: failures,
     }) };
 
   } catch (err) {
@@ -214,3 +248,5 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+exports._test = { sendError };

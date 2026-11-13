@@ -37,6 +37,13 @@ exports.handler = async () => {
     });
     const detail = await response.text().catch(() => '');
     if (!response.ok) throw new Error(`request-reviews returned ${response.status}: ${detail.slice(0, 300)}`);
+    // A run where WhatsApp refused every send is a failure, not "ok": until
+    // 13 Nov those refusals were counted as sent and nobody could tell.
+    let out = {};
+    try { out = JSON.parse(detail); } catch { /* keep the raw text */ }
+    if (Number(out.failed) > 0 && !Number(out.sent)) {
+      throw new Error(`no review requests sent; ${out.failed} refused: ${JSON.stringify(out.reasons || {}).slice(0, 300)}`);
+    }
     console.log(`[review-scheduler] ${detail.slice(0, 300)}`);
     return { statusCode: 200, headers: HEADERS, body: detail || '{"ok":true}' };
   } catch (error) {
