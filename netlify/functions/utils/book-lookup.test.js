@@ -55,7 +55,8 @@ test('the 4 Nov case: a listed custom book is found from the name the customer t
   });
   assert.deepEqual(seen, ['Without Fear or Favour by Sanjay Kaul']);
   assert.equal(hit.slug, WFF.slug);
-  assert.equal(hit.price, 549);
+  // ₹549 stored; quoted at this week's swing price (utils/weekly-price).
+  assert.equal(hit.price, require('./weekly-price').weeklyPrice(WFF.slug, 549));
   assert.equal(hit.source, 'custom');
 });
 
@@ -130,7 +131,7 @@ test('a book whose page was taken down is never priced; the bot is told it was r
   assert.equal(gone.removed, true);
   assert.equal(gone.price, undefined);
   const live = await lookupBook('atomic habits', deps);
-  assert.equal(live.price, 399);
+  assert.equal(live.price, require('./weekly-price').weeklyPrice('atomic-habits', 399));
   const lookup = (t) => lookupBook(t, deps);
   const priced = await priceBooksList('The Secret by Rhonda Byrne, Atomic Habits', 349, { lookupBook: lookup, limitMap: async () => ({}) });
   assert.deepEqual(priced.removed, ['The Secret']);

@@ -37,6 +37,7 @@ import codRules from '../netlify/functions/utils/cod-rules.js';
 import qtyLimits from '../netlify/functions/utils/qty-limits.js';
 import noReturns from '../netlify/functions/utils/no-returns.js';
 import productIdUtil from '../netlify/functions/utils/product-id.js';
+import weeklyPriceUtil from '../netlify/functions/utils/weekly-price.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -528,6 +529,99 @@ async function withShipHolidays(response, env) {
     .transform(response);
 }
 
+// ── Weekly price swing (utils/weekly-price) ─────────────────────────────────
+// A book at ₹300+ sells for ₹10 or ₹20 less, re-picked every Monday 00:00 IST.
+// Baked pages and product-page.js both render the stored price (and are cached
+// that way); the cut is applied here on every request, so a cached copy can
+// never carry last week's number. The till (utils/pricing.js) applies the same
+// rule. Rewrites the visible price, the save badge, the Offer in JSON-LD and
+// the inline currentItem the Add to cart / Buy now buttons read.
+function withWeeklyPrice(response, slug) {
+  if (response.status !== 200 || !weeklyPriceUtil.cutFor(slug)) return response;
+  let ldBuf = '';
+  let jsBuf = '';
+  let sale = 0;
+  let mrp = 0;
+  let titleBuf = '';
+  const titleMeta = { element(el) { const c = el.getAttribute('content'); if (c) el.setAttribute('content', weeklyPriceUtil.patchTitlePrice(c, slug)); } };
+  const out = new HTMLRewriter()
+    .on('title', {
+      text(chunk) {
+        titleBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = titleBuf;
+        titleBuf = '';
+        // The chunk is source text (&amp; already escaped): put it back as such.
+        chunk.replace(weeklyPriceUtil.patchTitlePrice(whole, slug), { html: true });
+      },
+    })
+    .on('meta[property="og:title"]', titleMeta)
+    .on('meta[name="twitter:title"]', titleMeta)
+    .on('script[type="application/ld+json"]', {
+      text(chunk) {
+        ldBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = ldBuf;
+        ldBuf = '';
+        chunk.replace(weeklyPriceUtil.patchJsonLdPrices(whole, slug), { html: true });
+      },
+    })
+    .on('script:not([src]):not([type="application/ld+json"])', {
+      text(chunk) {
+        jsBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = jsBuf;
+        jsBuf = '';
+        chunk.replace(whole.includes('currentItem') ? weeklyPriceUtil.patchCurrentItem(whole, slug) : whole, { html: true });
+      },
+    })
+    .on('[data-product-price]', {
+      element(el) {
+        const base = Number(el.getAttribute('data-product-price'));
+        const p = weeklyPriceUtil.weeklyPrice(slug, base);
+        if (!(p !== base && p > 0)) { if (!sale && base > 0) sale = base; return; }
+        if (!sale) sale = p;
+        el.setAttribute('data-product-price', String(p));
+        el.setInnerContent(weeklyPriceUtil.priceText(p));
+      },
+    })
+    .on('[data-product-original-price]', {
+      element(el) { if (!mrp) mrp = Number(el.getAttribute('data-product-original-price')) || 0; },
+    })
+    .on('[data-save-badge]', {
+      element(el) {
+        if (mrp > sale && sale > 0) el.setInnerContent(`${Math.round((mrp - sale) / mrp * 100)}% off`);
+      },
+    })
+    .transform(response);
+  const headers = new Headers(out.headers);
+  headers.delete('etag');
+  headers.delete('last-modified');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
+/** feed.xml / custom-feed.xml / custom-feed-bulk: the same weekly price. */
+async function withWeeklyFeedPrice(response) {
+  if (response.status !== 200) return response;
+  let text;
+  try { text = await response.text(); } catch { return response; }
+  const { xml, changed } = weeklyPriceUtil.patchFeedXml(text);
+  const headers = new Headers(response.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('X-Weekly-Price-Items', String(changed));
+  return new Response(xml, { status: 200, headers });
+}
+
+/** get-product-overrides: what the page paints over its baked price. */
+async function withWeeklyOverridePrice(response) {
+  if (response.status !== 200) return response;
+  let doc;
+  try { doc = await response.clone().json(); } catch { return response; }
+  const headers = new Headers(response.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  return new Response(JSON.stringify(weeklyPriceUtil.patchOverridesJson(doc)), { status: 200, headers });
+}
+
 // ── Free-delivery copy on product pages ─────────────────────────────────────
 // Free delivery depends on how the order is paid (utils/free-delivery): prepaid
 // above ₹399, Cash on Delivery from ₹499. ~2,700 baked pages still say
@@ -835,12 +929,15 @@ async function soldOutFeed(request, env, ctx, origin) {
   const asset = await env.ASSETS.fetch(request);
   if (request.method !== 'GET' || asset.status !== 200) return asset;
   const sold = await soldOutSet(env, ctx, origin);
-  if (!sold.size) return asset;
-  const { xml, changed } = soldOutUtil.markFeedSoldOut(await asset.text(), sold);
+  let xml = await asset.text();
+  let changed = 0;
+  if (sold.size) ({ xml, changed } = soldOutUtil.markFeedSoldOut(xml, sold));
+  const weekly = weeklyPriceUtil.patchFeedXml(xml);
   const headers = new Headers(asset.headers);
   for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
   headers.set('X-Sold-Out-Items', String(changed));
-  return new Response(xml, { status: 200, headers });
+  headers.set('X-Weekly-Price-Items', String(weekly.changed));
+  return new Response(weekly.xml, { status: 200, headers });
 }
 
 // sitemap.xml is baked from the catalogue; the books created in the admin
@@ -1016,6 +1113,11 @@ export default {
       // through fetch(), so they keep working without a key.
       const refused = refuseAnonymousJobRun(name, request, JOB_NAMES);
       if (refused) return refused;
+      // The admin editors ask with ?raw=1 for the stored (base) price, so a
+      // save can never write the weekly price back and compound it.
+      if (name === 'get-product-overrides' && request.method === 'GET' && !url.searchParams.has('raw')) {
+        return withWeeklyOverridePrice(await runHandler(name, request, env, ctx));
+      }
       return runHandler(name, request, env, ctx);
     }
 
@@ -1027,7 +1129,7 @@ export default {
       return runHandler('img-proxy', request, env, ctx);
     }
     if (url.pathname === '/custom-feed.xml') {
-      return runHandler('custom-products-feed', request, env, ctx);
+      return withWeeklyFeedPrice(await runHandler('custom-products-feed', request, env, ctx));
     }
     // inkandchai.in answers as a WooCommerce store on /wp-json so the
     // XpressBees Sales Channel importer can pull unshipped orders into the
@@ -1038,7 +1140,7 @@ export default {
     }
     const bulk = url.pathname.match(/^\/custom-feed-bulk\/([^/]+)\/?$/);
     if (bulk) {
-      return runHandler('custom-products-feed-bulk', withQuery(request, { page: bulk[1] }), env, ctx);
+      return withWeeklyFeedPrice(await runHandler('custom-products-feed-bulk', withQuery(request, { page: bulk[1] }), env, ctx));
     }
 
     // Before the asset router, so a deleted catalogue book's baked file can
@@ -1114,7 +1216,7 @@ export default {
       const entry = (await catalogContent(env))[contentSlug];
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
-      page = await withFreeDelivery(await withCodRule(withShippingCopy(page), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
+      page = await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(page, contentSlug)), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
       return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env);
     }
 
@@ -1133,9 +1235,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(markSoldOutPage(rendered)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
+          return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(markSoldOutPage(rendered), slug)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
         }
-        if (rendered.status !== 404) return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(rendered) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
+        if (rendered.status !== 404) return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(withWeeklyPrice(rendered, slug)) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

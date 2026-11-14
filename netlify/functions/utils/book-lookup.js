@@ -14,6 +14,7 @@
  * ALL_BOOKS.json is 6MB — loaded once per cold start into a compact index.
  */
 
+const { weeklyPrice } = require('./weekly-price');
 const path = require('path');
 const fs   = require('fs');
 const { createClient } = require('@supabase/supabase-js');
@@ -158,7 +159,9 @@ async function lookupBook(rawTitle, deps = {}) {
     return { removed: true, title: bestAny.title, author: bestAny.author, slug: bestAny.slug, source: bestAny.source };
   }
   if (!best || bestScore < minAcceptable) return null;
-  return { title: best.title, author: best.author, image: best.image, price: best.price, slug: best.slug, source: best.source };
+  // The weekly price swing (utils/weekly-price): the bot quotes and drafts
+  // orders at the same price the website shows this week.
+  return { title: best.title, author: best.author, image: best.image, price: weeklyPrice(best.slug, best.price), slug: best.slug, source: best.source };
 }
 
 // Split a books string into titles on STRUCTURAL separators only — commas,

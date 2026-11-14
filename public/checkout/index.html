@@ -987,6 +987,43 @@ async function loadFreeDelivery() {
     // The order functions decide the charge anyway.
   }
 }
+// Live prices (utils/pricing, the till): a line keeps the price it was added at,
+// so a book added before Monday's weekly price swing (utils/weekly-price) or an
+// admin price edit would show one total here and be charged another. Ask the
+// till once and repaint; a Google discount grant still wins when it is lower.
+let _livePricesReady = Promise.resolve();
+async function loadLivePrices() {
+  try {
+    const sent = getCart();
+    if (!sent.length) return;
+    const res = await fetch('/.netlify/functions/check-product-shipping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cart: sent, prices_only: true }),
+    });
+    if (!res.ok) return;
+    const prices = (await res.json()).prices || {};
+    const cart = getCart();
+    let changed = false;
+    for (const item of cart) {
+      if (!item) continue;
+      const raw = String(item.url || item.id || '').match(/[/]product[/]([^/?#]+)/i);
+      const keys = [String(couponItemSlug(item) || '').toLowerCase()];
+      if (raw) { try { keys.push(decodeURIComponent(raw[1]).toLowerCase()); } catch (_) { keys.push(raw[1].toLowerCase()); } }
+      const key = keys.find(k => k && Number(prices[k]) > 0);
+      if (!key) continue;
+      let want = Number(prices[key]);
+      try {
+        const g = JSON.parse(localStorage.getItem('iac_gd_' + key) || 'null');
+        if (g && g.grant && Number(g.exp) > Date.now() && Number(g.price) > 0 && Number(g.price) < want) want = Number(g.price);
+      } catch (_) {}
+      if (Number(item.price) !== want) { item.price = want; changed = true; }
+    }
+    if (changed) { saveCart(cart); renderSummary(); }
+  } catch (_) {
+    // The order functions charge the live price anyway.
+  }
+}
 // Pre-orders (preorder-slugs): the line carries its release day as _release,
 // shown on the line and in the summary. utils/pricing stamps the same date on
 // the saved order; it never changes the price.
@@ -1842,6 +1879,7 @@ document.addEventListener('change', e => {
 // ── Main submit ────────────────────────────────────────────────────────────
 async function submitOrder(method) {
   await _freeDeliveryReady;
+  await _livePricesReady;
   if (_shippingRestrictionBlocked) {
     alert(_shippingRestrictionText || 'A product in your cart cannot be delivered to this pincode.');
     return;
@@ -2771,6 +2809,7 @@ loadManagedPromotions().then(() => loadProductCoupons(getCart())).then(renderSum
 renderSummary();
 loadCodRules();
 _freeDeliveryReady = loadFreeDelivery();
+_livePricesReady = loadLivePrices();
 loadPreorders();
 
 // When returning to checkout — including bfcache back/forward from a payment

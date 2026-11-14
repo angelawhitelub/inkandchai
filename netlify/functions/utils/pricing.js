@@ -19,6 +19,7 @@ const { grantMap, feedOfferId } = require('./google-discount');
 const { selectTolerant } = require('./publisher-sourced');
 const { fetchSettings } = require('./product-settings');
 const { releasesFor } = require('./release-date');
+const { weeklyPrice } = require('./weekly-price');
 
 // Hardcoded slug overrides — MUST stay in sync with `make_slug` in generate_site.py.
 // (Combo packs ship under hand-picked slugs that don't follow the auto-slug rule.)
@@ -357,6 +358,18 @@ async function resolveCartPrices(cart, supabase, { discountGrants } = {}) {
   for (const item of resolved) {
     if (noRet[String(item.slug || '').toLowerCase()]) item._no_returns = true;
     else delete item._no_returns;
+  }
+
+  // ── Weekly price swing (utils/weekly-price) ──────────────────────────────
+  // Books at ₹300+ sell for ₹10 or ₹20 less, re-picked per book every Monday
+  // 00:00 IST. It is the listed price (the page, feed.xml and the custom feeds
+  // show the same number via worker/index.js), applied to the stored price so
+  // it never compounds. Before Google's discount, which can only go lower.
+  for (const item of resolved) {
+    const base = Number(item.price);
+    const weekly = weeklyPrice(item.slug, base);
+    if (weekly !== base) { item._base_price = base; item.price = weekly; }
+    else delete item._base_price;
   }
 
   // ── Google automated discounts ───────────────────────────────────────────

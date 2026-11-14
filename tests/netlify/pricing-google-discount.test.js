@@ -8,7 +8,10 @@ const { mintGrant } = require('../../netlify/functions/utils/google-discount');
 
 // A real catalogue slug so the test exercises the genuine resolution path.
 const SLUG = 'our-perfect-storm-by-carley-fortune-rtune';
-const LIST = 499;
+// The stored price is ₹499; the till sells it at this week's swing price
+// (utils/weekly-price), and Google's discount works from that.
+const { weeklyPrice } = require('../../netlify/functions/utils/weekly-price');
+const LIST = weeklyPrice(SLUG, 499);
 const cart = (qty = 1) => [{ slug: SLUG, url: `/product/${SLUG}/`, qty, price: 1 }];
 
 test('without a grant the catalogue price stands, whatever the browser claims', async () => {

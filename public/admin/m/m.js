@@ -659,7 +659,7 @@
     try {
       const [ov, cod, hidden, browseHidden] = await Promise.all([
         // The timestamp skips the edge copy, so a save made a moment ago shows.
-        fetch(FN + 'get-product-overrides?slug=' + encodeURIComponent(slug) + '&t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+        fetch(FN + 'get-product-overrides?raw=1&slug=' + encodeURIComponent(slug) + '&t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
         api('admin-cod-rules', { query: { slug } }).catch((e) => ({ error: e.message })),
         api('admin-search-hidden', { query: { slug } }).catch((e) => ({ error: e.message })),
         api('admin-search-hidden', { query: { slug, scope: 'browse' } }).catch((e) => ({ error: e.message })),

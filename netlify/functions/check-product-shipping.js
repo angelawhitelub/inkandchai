@@ -22,6 +22,13 @@ exports.handler = async (event) => {
     if (!cart.length) return { statusCode: 200, headers: CORS, body: JSON.stringify({ allowed: true }) };
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const priced = await resolveCartPrices(cart, supabase);
+    // Checkout repaints its lines from these (loadLivePrices): the till's price
+    // per slug, weekly price swing included, before any Google discount grant.
+    if (body.prices_only) {
+      const prices = {};
+      for (const i of priced.cart) prices[String(i.slug || '').toLowerCase()] = i.price;
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ prices }) };
+    }
     // A sold-out book blocks checkout whatever the address.
     const soldOut = findSoldOut(priced.cart);
     if (soldOut.blocked) return { statusCode: 200, headers: CORS, body: JSON.stringify({ allowed: false, ...soldOut }) };
