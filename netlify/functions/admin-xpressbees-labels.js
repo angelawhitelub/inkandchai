@@ -311,6 +311,14 @@ async function handle(event = {}, deps = {}) {
   try {
     const seen = await readDownloaded(kv);
     const only = latest ? (awb) => !seen[awb] : null;
+    if (q.sample) {
+      // Diagnosis: the first batch's PDF exactly as XpressBees sends it. Not sorted, not marked downloaded.
+      const call = makeCaller(deps);
+      const shipments = await readyShipments(call, { days });
+      const chunk = shipments.map((r) => String(r.awb_number).trim()).slice(0, Math.min(CHUNK, Math.max(1, parseInt(q.sample, 10) || 8)));
+      const bytes = await labelPdf(call, chunk, deps.fetch || fetch, { waits: [], asks: 1, returnShort: true });
+      return new Response(bytes, { status: 200, headers: { ...CORS, 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store, private', 'X-Label-Awbs': chunk.join(',') } });
+    }
     if (q.check) {
       return json(200, await checkBatches({ days, only, maxBatches: Math.max(1, parseInt(q.batches, 10) || 999), retry: q.retry !== '0' }, deps));
     }
