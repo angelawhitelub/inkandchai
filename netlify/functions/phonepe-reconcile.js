@@ -20,6 +20,7 @@
  * fires confirmation emails (deduped against the webhook).
  */
 
+const { shortCodeHtml } = require('./utils/order-ref');
 const { createClient } = require('@supabase/supabase-js');
 
 const { sendEmail } = require('./utils/email');
@@ -94,7 +95,7 @@ function paidEmailHtml(order) {
         <tbody>${rows}</tbody>
       </table>
       <p style="color:#a09080;font-size:13px;"><strong style="color:#f0e8d8;">Delivery to:</strong><br/>${order.customer_address || '—'}</p>
-      <p style="margin-top:18px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${order.razorpay_order_id || order.id}</strong></p>
+      <p style="margin-top:18px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${order.razorpay_order_id || order.id}</strong></p>${shortCodeHtml(order.razorpay_order_id || order.id)}
       <hr style="border:none;border-top:1px solid #2a2a2a;margin:32px 0;"/>
       <p style="color:#7a6330;font-size:11px;">Ink &amp; Chai</p>
     </div>`;

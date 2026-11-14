@@ -16,6 +16,7 @@ const { canEditAddress } = require('./utils/address-editable');
 const { resolveRefundRef, cleanRefundItems } = require('./utils/refund-notifications');
 const { assess: assessWrongCod } = require('./utils/wrong-cod-refund');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
+const { findOrderByRef } = require('./utils/order-ref');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -99,45 +100,25 @@ exports.handler = async (event) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    // Look up by razorpay_order_id.
-    // Strategy 1 — exact match (required for old Razorpay order_ IDs which are case-sensitive)
-    // Strategy 2 — case-insensitive ilike fallback (handles IC- IDs typed in wrong case)
-    let { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('razorpay_order_id', id)
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error('track-order Supabase error (eq):', error);
-      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Database error: ' + error.message }) };
-    }
-
-    // Fallback: case-insensitive search — catches IC- IDs entered in lowercase
-    if (!data) {
-      const r2 = await supabase
-        .from('orders')
-        .select('*')
-        .ilike('razorpay_order_id', id)
-        .limit(1)
-        .maybeSingle();
-      if (r2.error) {
-        console.error('track-order Supabase error (ilike):', r2.error);
-      } else {
-        data = r2.data;
-      }
-    }
-
-    if (!data) {
-      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found. Check the order ID and try again.' }) };
-    }
-
-    // Verify q matches email OR phone (last 10 digits) on the order
+    // The order id, or just its 5-character short code (AB3CD), with the
+    // email/phone on the order (utils/order-ref.js).
     const qn = norm(q);
-    const emailOk = data.customer_email && norm(data.customer_email) === qn;
-    const phoneOk = data.customer_phone && norm(data.customer_phone).slice(-10) === qn.replace(/\D/g, '').slice(-10) && qn.replace(/\D/g, '').length >= 10;
-    if (!emailOk && !phoneOk) {
+    const qDigits = qn.replace(/\D/g, '');
+    const owns = (o) => !!((o.customer_email && norm(o.customer_email) === qn)
+      || (o.customer_phone && qDigits.length >= 10 && norm(o.customer_phone).replace(/\D/g, '').slice(-10) === qDigits.slice(-10)));
+    const found = await findOrderByRef(supabase, id, owns);
+    if (found.error) {
+      console.error('track-order Supabase error:', found.error);
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: 'Database error: ' + found.error.message }) };
+    }
+    if (found.hint) {
+      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: found.hint, hint: 'date_only' }) };
+    }
+    const data = found.order;
+    if (!data) {
+      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found. Check the order ID (or its last 5 characters, e.g. AB3CD) and the email/phone you ordered with.' }) };
+    }
+    if (!found.owned) {
       return { statusCode: 403, headers: CORS, body: JSON.stringify({ error: 'Email or phone does not match this order. Please use the same email/phone you used at checkout.' }) };
     }
 

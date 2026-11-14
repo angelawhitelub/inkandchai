@@ -184,7 +184,7 @@
       + '<button type="button" class="iacr-x" aria-label="Close">×</button>'
       + '<h3>Write a review</h3>'
       + '<p>Reviews are from verified buyers only. Enter the order you bought this book in.</p>'
-      + '<label for="iacrOrder">Order ID</label><input id="iacrOrder" autocomplete="off" autocapitalize="characters" placeholder="e.g. IC-20261104-AB12C" required/>'
+      + '<label for="iacrOrder">Order ID</label><input id="iacrOrder" autocomplete="off" autocapitalize="characters" placeholder="AB12C or IC-20261104-AB12C" required/>'
       + '<label for="iacrPhone">Phone number on the order</label><input id="iacrPhone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile number" required/>'
       + '<button type="submit" class="iacr-go">Continue</button>'
       + '<div class="iacr-err" role="alert"></div>'

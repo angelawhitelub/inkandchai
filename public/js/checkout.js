@@ -524,6 +524,7 @@ function showCODSuccess(orderId, name, email, cart, amountRs, addr) {
       <p style="font-size:0.65rem; color:#7a6330; letter-spacing:0.12em; margin-bottom:1rem;">
         Order ID: ${orderId}
       </p>
+      ${/\d{8}-[A-Z0-9]{5}$/i.test(String(orderId || '')) ? `<p style="font-size:0.8rem; color:#f0e8d8; margin:-0.4rem 0 1rem;">Your order code: <strong style="color:#c9a84c; letter-spacing:0.12em;">${String(orderId).slice(-5).toUpperCase()}</strong></p>` : ''}
       ${orderSummaryHtml(cart, amountRs, addr, 'Pay on delivery')}
       ${email ? `
       <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.2);

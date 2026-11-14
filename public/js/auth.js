@@ -1359,7 +1359,7 @@ window.IACClaimEvidence = {
           <p style="color:#7d6d5b;font-size:0.68rem;line-height:1.7;margin:0 0 0.7rem;">
             Enter the order ID and the email or phone you used at checkout, and we'll add it to this account.
           </p>
-          <input id="link-order-id" type="text" placeholder="Order ID (IC-…)" autocomplete="off"
+          <input id="link-order-id" type="text" placeholder="Order ID, or its last 5 characters" autocomplete="off"
             style="width:100%;box-sizing:border-box;padding:0.55rem 0.7rem;margin-bottom:0.5rem;background:rgba(0,0,0,0.25);
                    border:1px solid rgba(201,168,76,0.25);color:#f0e8d8;font-size:0.75rem;" />
           <input id="link-order-proof" type="text" placeholder="Email or phone used at checkout" autocomplete="off"

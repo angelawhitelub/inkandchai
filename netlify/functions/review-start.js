@@ -15,6 +15,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { findOrderByRef } = require('./utils/order-ref');
 const { signReviewToken } = require('./utils/review-token');
 
 const CORS = {
@@ -69,20 +70,20 @@ exports.handler = async (event) => {
   const orderId = normalizeOrderId(body.order_id);
   const phone = String(body.phone || '');
   const slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 160);
-  if (!orderId || orderId.length < 8) return json(400, { error: 'Enter your order ID.' });
+  if (!orderId || orderId.length < 5) return json(400, { error: 'Enter your order ID (the last 5 characters are enough).' });
   if (last10(phone).length !== 10) return json(400, { error: 'Enter the 10-digit phone number you ordered with.' });
 
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: order, error } = await supabase
-      .from('orders')
-      .select('razorpay_order_id, customer_phone, status, cart_items')
-      .eq('razorpay_order_id', orderId)
-      .maybeSingle();
-    if (error) throw error;
-    const out = decide(order, { phone, slug });
+    // The full order id or just its 5-character short code (utils/order-ref.js).
+    const found = await findOrderByRef(supabase, orderId,
+      (o) => last10(phone).length === 10 && last10(o.customer_phone) === last10(phone),
+      { select: 'razorpay_order_id, customer_phone, status, cart_items' });
+    if (found.error) throw found.error;
+    if (found.hint) return json(404, { error: found.hint });
+    const out = decide(found.order || null, { phone, slug });
     if (out.status !== 200) console.log(`[review-start] ${out.status} ${orderId.slice(0, 12)}…`);
     return json(out.status, out.body);
   } catch (err) {

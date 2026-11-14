@@ -239,12 +239,12 @@ html[data-theme="light"] .mob-nav{background:rgba(250,247,242,0.97);border-top-c
 <main>
   <div class="eyebrow">Order Tracking</div>
   <h1>Where's my <em>order?</em></h1>
-  <p class="lede">Enter your order ID and the email or phone number you used at checkout. We'll show you the live status, courier name, and a link to track on the courier's site.</p>
+  <p class="lede">Enter your order ID (the last 5 letters/numbers are enough, e.g. <b>AB3CD</b> from IC-20261109-AB3CD) and the email or phone number you used at checkout. We'll show you the live status, courier name, and a link to track on the courier's site.</p>
 
   <form class="tform" id="trackForm" onsubmit="event.preventDefault(); doTrack();">
     <div>
-      <label for="oid">Order ID</label>
-      <input id="oid" type="text" placeholder="IC-20260430-ABCDE" autocomplete="off" required/>
+      <label for="oid">Order ID <span style="font-weight:400;opacity:.75;">— or just its last 5 characters</span></label>
+      <input id="oid" type="text" placeholder="AB3CD  or  IC-20261109-AB3CD" autocomplete="off" autocapitalize="characters" spellcheck="false" required/>
     </div>
     <div>
       <label for="oq">Email or Phone</label>
@@ -335,7 +335,8 @@ async function doTrack() {
       errBox.style.display = '';
       return;
     }
-    lastTracked = { id: oid, q: oq, order: data.order };
+    // The full id from the server: the customer may have typed only the short code.
+    lastTracked = { id: (data.order && data.order.order_id) || oid, q: oq, order: data.order };
     // Remember the contact that just worked, so a link with only an order id in
     // it (a refund or dispatch notification) opens straight onto the order next
     // time. Only ever this browser's own localStorage — never the URL.

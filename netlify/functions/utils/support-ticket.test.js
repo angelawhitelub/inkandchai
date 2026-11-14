@@ -21,7 +21,10 @@ function fakeDb(seed = {}) {
       eq(c, v) { q.filters.push((r) => r[c] === v); return api; },
       in(c, vs) { q.filters.push((r) => vs.includes(r[c])); return api; },
       is(c, v) { q.filters.push((r) => (r[c] ?? null) === v); return api; },
-      ilike(c, v) { q.filters.push((r) => String(r[c] || '').toLowerCase() === String(v).toLowerCase()); return api; },
+      ilike(c, v) {
+        const re = new RegExp('^' + String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i');
+        q.filters.push((r) => re.test(String(r[c] || ''))); return api;
+      },
       order(c, { ascending } = {}) { q.ord = [c, ascending !== false]; return api; },
       limit(n) { q.lim = n; return api; },
       maybeSingle() { q.single = 'maybe'; return api; },
@@ -617,3 +620,21 @@ test('the contact page offers every category the server accepts', () => {
     assert.equal(r.status, 200);
   });
 }
+
+test('a ticket can be opened and found with just the 5-character order code', async () => {
+  const s = setup();
+  const r = await A.createTicket(s.deps, valid({ order_id: 'abcde' }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const f = await A.findTickets(s.deps, { order_id: '#ABCDE', contact: 'asha@example.com' });
+  assert.equal(f.status, 200);
+  assert.equal(f.body.tickets.length, 1);
+});
+
+test('the short code never confirms an order to a stranger, and the date alone gets a hint', async () => {
+  const s = setup();
+  const wrong = await A.createTicket(s.deps, valid({ order_id: 'ABCDE', contact: 'x@y.com' }));
+  assert.equal(wrong.status, 404);
+  const date = await A.createTicket(s.deps, valid({ order_id: '20260930' }));
+  assert.equal(date.status, 404);
+  assert.match(date.body.error, /order date/);
+});

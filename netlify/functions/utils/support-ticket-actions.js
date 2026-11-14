@@ -16,6 +16,7 @@
  */
 
 const T = require('./support-ticket');
+const { findOrderByRef, parseOrderRef, DATE_HINT } = require('./order-ref');
 
 const TICKETS = 'support_tickets';
 const EVENTS = 'support_ticket_events';
@@ -119,13 +120,11 @@ async function createTicket(deps, body, { ipHash = null } = {}) {
   if (!parsed.ok) return fail(400, parsed.error, { field: parsed.field });
   const { orderId, contact, category, message, files } = parsed.value;
 
-  let { data: order, error: orderErr } = await deps.db.from('orders').select('*').eq('razorpay_order_id', orderId).limit(1).maybeSingle();
-  if (!orderErr && !order) {
-    const r = await deps.db.from('orders').select('*').ilike('razorpay_order_id', orderId).limit(1).maybeSingle();
-    order = r.data || null;
-    orderErr = r.error;
-  }
-  if (orderErr) return fail(500, 'Could not check that order right now. Please try again in a minute.');
+  // The full order id or just its 5-character short code (utils/order-ref.js).
+  const found = await findOrderByRef(deps.db, orderId, (o) => T.contactMatches(o, contact));
+  if (found.error) return fail(500, 'Could not check that order right now. Please try again in a minute.');
+  if (found.hint) return fail(404, found.hint, { field: 'order_id' });
+  const order = found.order || null;
   // Same answer for "no such order" and "wrong contact": an order id alone must
   // never confirm that an order exists.
   if (!order || !T.contactMatches(order, contact)) {
@@ -331,8 +330,16 @@ async function lookupTicket(deps, body) {
 
 /** "I lost my ticket number": every ticket on an order the caller owns. */
 async function findTickets(deps, body) {
-  const orderId = T.cleanOrderId(body.order_id);
+  let orderId = T.cleanOrderId(body.order_id);
   if (!orderId) return fail(400, 'Enter your order ID.');
+  // A short code (AB3CD) or an id typed without its dashes: tickets are stored
+  // under the full id, so find the caller's own order first.
+  const ref = parseOrderRef(orderId);
+  if (ref.kind === 'date') return fail(404, DATE_HINT);
+  if (ref.kind === 'code' || ref.kind === 'datecode') {
+    const found = await findOrderByRef(deps.db, orderId, (o) => T.contactMatches(o, body.contact), { select: 'razorpay_order_id,customer_email,customer_phone' });
+    if (found.order) orderId = found.order.razorpay_order_id;
+  }
   const { data, error } = await deps.db.from(TICKETS).select('*').eq('order_id', orderId).order('created_at', { ascending: false });
   if (error) return MISSING_TABLE.test(error.message || '') ? fail(503, NO_TABLE) : fail(500, 'Could not look that up right now.');
   const mine = (data || []).filter((t) => T.contactMatches(t, body.contact));

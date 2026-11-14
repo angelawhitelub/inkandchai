@@ -22,6 +22,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { findOrderByRef } = require('./utils/order-ref');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -86,16 +87,15 @@ exports.handler = async (event) => {
 
   try {
     // ── Find the order ──────────────────────────────────────────────────────
-    let { data: order, error } = await supabase
-      .from('orders').select('*').eq('razorpay_order_id', orderId).limit(1).maybeSingle();
-    if (error) throw error;
-    if (!order) {
-      const r2 = await supabase
-        .from('orders').select('*').ilike('razorpay_order_id', orderId).limit(1).maybeSingle();
-      if (!r2.error) order = r2.data;
+    // The full order id or just its 5-character short code (utils/order-ref.js).
+    const found = await findOrderByRef(supabase, orderId, (o) => proofMatchesOrder(o, proof));
+    if (found.error) throw found.error;
+    if (found.hint) {
+      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: found.hint }) };
     }
+    const order = found.order;
     if (!order) {
-      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found. Check the order ID and try again.' }) };
+      return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'Order not found. Check the order ID (or its last 5 characters, e.g. AB3CD) and the email/phone you ordered with.' }) };
     }
 
     // ── Prove it is theirs ──────────────────────────────────────────────────

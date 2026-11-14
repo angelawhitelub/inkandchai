@@ -9,6 +9,7 @@
  * the customer (e.g. WhatsApp delivery failed, or email was missing).
  */
 
+const { shortCodeHtml } = require('./utils/order-ref');
 const { createClient } = require('@supabase/supabase-js');
 const { sendOrderConfirmed, orderCoversHtml } = require('./utils/order-cover');
 const { sendEmail }    = require('./utils/email');
@@ -104,7 +105,7 @@ exports.handler = async (event) => {
           </p>
           ${orderCoversHtml(cart)}
           <p style="color:#a09080;font-size:13px;"><strong style="color:#f0e8d8;">Delivery address:</strong><br/>${address || '—'}</p>
-          <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${orderId}</strong></p>
+          <p style="margin-top:16px;color:#7a6330;font-size:12px;">Order ID: <strong style="color:#c9a84c;">${orderId}</strong></p>${shortCodeHtml(orderId)}
           <div style="margin-top:20px;padding:14px 16px;background:#1c1916;border-left:3px solid #c9a84c;">
             <p style="color:#f0e8d8;font-size:13px;margin:0 0 10px;">📦 Track your order any time</p>
             <a href="https://inkandchai.in/track/?id=${encodeURIComponent(orderId)}&q=${encodeURIComponent(email || phone || '')}" style="display:inline-block;background:#c9a84c;color:#0d0b08;padding:10px 22px;text-decoration:none;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Track Order →</a>

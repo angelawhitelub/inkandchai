@@ -2253,6 +2253,12 @@ function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
         : `Hi ${esc(addr.name.split(' ')[0])}, your books are on their way.<br/>Pay cash when they arrive.`}
     </p>
     <p class="success-id">${isPaid ? 'Payment ID' : 'Order ID'}: ${esc(orderId)}</p>
+    ${(() => {
+      // Short order code (owner, 14 Nov 2026): the last 5 characters of the
+      // IC- order id are enough, with the phone, to track the order.
+      const m = String(surveyOrderId || '').toUpperCase().match(/\d{8}-([A-Z0-9]{5})$/);
+      return m ? `<p class="success-code" style="margin:-0.9rem 0 1.5rem;font-size:0.8rem;color:var(--cream);">Your order code: <strong style="letter-spacing:0.12em;color:var(--gold);">${m[1]}</strong><br/><span style="font-size:0.66rem;color:var(--cream-dim);">With your phone number, that is all you need to track this order.</span></p>` : '';
+    })()}
     ${addr.email ? `
     <div class="success-email-box">
       <p style="font-size:0.68rem;color:var(--gold);margin-bottom:0.35rem;letter-spacing:0.07em;">
