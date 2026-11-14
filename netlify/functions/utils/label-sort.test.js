@@ -178,6 +178,14 @@ test('lists every Ready to Pickup shipment across pages, deduplicated', async ()
   assert.ok(Number(q.get('end_date')) - Number(q.get('start_date')) === 30 * 86400);
 });
 
+test('reads past 1,000 shipments (the panel stops at 500) and refuses rather than cut at the cap', async () => {
+  const xb = fakeXb({ total: 1195 });
+  const out = await endpoint.run({ days: 30, summaryOnly: true }, xb);
+  assert.equal(out.awbs.length, 1195);
+  const big = fakeXb({ total: 3001 });
+  await assert.rejects(endpoint.run({ summaryOnly: true }, big), /More than 3000/);
+});
+
 test('re-logs in once on a 401, and says plainly when the panel refuses the API login', async () => {
   const once = fakeXb({ total: 3, rejectFirst: 1 });
   const ok = await endpoint.run({ summaryOnly: true }, once);
