@@ -21,11 +21,10 @@
  * PREPARING THE FILE (macOS, no ffmpeg needed)
  *   iPhone .MOV is HEVC, which Chrome and Firefox cannot play. Transcode to
  *   H.264 first, then grab the poster frame:
- *     avconvert -s IMG_1234.MOV -p Preset960x540 -o clip.mp4 --replace
+ *     avconvert -s IMG_1234.MOV -p Preset1920x1080 -o clip.mp4 --replace
  *     qlmanage -t -s 1080 -o . clip.mp4
  *     cwebp -q 72 clip.mp4.png -o poster.webp
- *   Preset960x540 keeps a portrait clip at 540x960 — enough to read print on a
- *   page, small enough to start fast.
+ *   Preset1920x1080 keeps a portrait clip at 1080x1920 for readable print.
  *
  * RUN (from the repo root)
  *   R2_ACCOUNT_ID=xxxx \
@@ -79,7 +78,7 @@ if (posterPath && !existsSync(posterPath)) { console.error(`✗ No such poster: 
 // HEVC. Catch it here rather than after the customer taps play on a black box.
 if (/\.mov$/i.test(videoPath)) {
   console.error('✗ Refusing to upload a .MOV — iPhone .MOV is HEVC, which Chrome and Firefox cannot play.');
-  console.error('  Transcode first:  avconvert -s "' + videoPath + '" -p Preset960x540 -o clip.mp4 --replace');
+  console.error('  Transcode first:  avconvert -s "' + videoPath + '" -p Preset1920x1080 -o clip.mp4 --replace');
   process.exit(1);
 }
 

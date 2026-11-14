@@ -12,9 +12,8 @@
  * tuned. Going direct removes the ceiling, which lets the ORIGINAL phone file be
  * stored with no re-encode at all.
  *
- * upload-product-video.js is deliberately left in place: it still handles the
- * transcode path for clips that are too long, too large, or in a codec the web
- * cannot play.
+ * Both original MP4 files and converted HD clips use this direct upload path.
+ * upload-product-video.js remains available for older admin clients.
  *
  * Credentials never reach the browser. Each URL is valid for one key, one
  * method, and ten minutes.

@@ -1580,7 +1580,7 @@ select,input,textarea{font-size:1rem;}
       <div class="product-head">
         <div>
           <h2>🎬 Storefront Reels</h2>
-          <p>Select phone videos or screenshots. Each upload is compressed here and appended after the existing reels on every product page, before Frequently Bought Together.</p>
+          <p>Select phone videos or screenshots. Videos keep their original quality when compatible, or convert at up to 1080p. Uploads are appended after the existing reels on every product page, before Frequently Bought Together.</p>
         </div>
         <div class="mini-actions"><button class="btn-outline" onclick="loadSiteReels()">↻ Refresh</button></div>
       </div>
@@ -2056,8 +2056,8 @@ select,input,textarea{font-size:1rem;}
               <label>Add a video of the real book <span style="font-weight:400;color:var(--cream-dim);font-size:0.58rem;">(goes last, after every cover image)</span></label>
               <input id="prodGalleryVideo" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*" onchange="prepareProductVideo(this.files)"/>
               <p class="hint" id="prodVideoHint" style="margin-top:.4rem;">
-                Any phone clip works — it is compressed and converted to a web-safe format here in the browser before uploading.
-                Kept silent and trimmed to the first 30 seconds. Shoot it portrait, and show the paper and print rather than the cover.
+                HD quality is the default. Compatible MP4 clips up to 60 seconds and 80 MB keep their original quality and sound.
+                Other clips are converted at up to 1080p, kept silent, and trimmed to 30 seconds. Keep this tab visible during conversion.
               </p>
               <div id="prodVideoPreview" style="display:none;gap:.8rem;align-items:flex-start;margin-top:.7rem;"></div>
               <button class="btn-green" id="prodVideoSaveBtn" type="button" onclick="saveProductVideo()" style="display:none;margin-top:.7rem;">Add Video to Gallery</button>
@@ -2564,7 +2564,7 @@ select,input,textarea{font-size:1rem;}
         <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
           <label for="arVideo" class="btn-outline" style="cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-size:0.72rem;">🎬 Add video</label>
           <input id="arVideo" type="file" accept="video/*" style="display:none" onchange="arPickVideo(this)"/>
-          <small id="arVideoHint" style="color:var(--cream-dim);font-size:0.62rem;">MP4 up to 60 s keeps its sound; other clips (iPhone .MOV, longer) are converted, muted, first 30 s.</small>
+          <small id="arVideoHint" style="color:var(--cream-dim);font-size:0.62rem;">MP4 up to 60 s keeps its sound; other clips (iPhone .MOV, longer) convert at up to 1080p, muted, first 30 s.</small>
         </div>
         <div id="arVideoBox" style="margin-top:0.5rem;"></div>
       </div>
@@ -8336,53 +8336,23 @@ function iacWarnAvifPassthrough() {
 }
 
 // ── Product video: browser-side transcode ───────────────────────────────────
-// A phone clip is unusable as-is. An iPhone .MOV is HEVC, which Chrome and
-// Firefox cannot play at all, and it is ~8 MB for 13 seconds — a hundred views
-// is 800 MB of egress. Both problems have to be solved before the file is
-// stored, and they cannot be solved on the server: the Netlify runtime has no
-// ffmpeg, and a raw clip is larger than the request body limit, so it could
-// never even arrive to be converted.
-//
-// So the conversion happens here. The clip is played into a canvas and
-// re-encoded through MediaRecorder, which gives us H.264/MP4 (or VP9/WebM,
-// whichever the browser can write) at a size we choose. That also launders the
-// codec: whatever the phone produced, the browser decodes it and we write a
-// format the storefront can definitely play.
-//
-// Audio is dropped on purpose. These clips are shown muted on the product page,
-// so the audio track is pure bandwidth.
-// 900, not 720. The slide is ~330 CSS px wide, which is 660 real pixels on a
-// phone or a retina laptop — a 406 px-wide encode was being upscaled 1.6x on
-// every device that matters.
-const VIDEO_MAX_EDGE     = 900;
+// Converted clips upload directly to R2, so quality is independent of clip
+// length and the legacy base64 endpoint's request-size limit. Preserve source
+// detail up to 1080p, with enough bitrate for printed text and page turns.
+// Compatible MP4 files bypass conversion in prepareProductVideo below.
+// Canvas conversion produces silent video for the muted product gallery.
+const VIDEO_MAX_EDGE     = 1920;
+const VIDEO_MAX_SHORT_EDGE = 1080;
 const VIDEO_MAX_SECONDS  = 30;
-const VIDEO_FPS          = 24;        // fewer frames = more bits per frame; these
-                                      // are slow hand-held clips, not action
-const VIDEO_INPUT_MAX_MB = 200;       // guard against a 4K movie being picked
-
-// Bitrate is derived from the clip's LENGTH rather than fixed, so every clip
-// fills the upload budget instead of leaving most of it unspent. The old fixed
-// 800 kbps was sized for the 30 s worst case, so a 19 s clip of a book shipped
-// at ~430 kbps actual (MediaRecorder treats the number as a hint and undershoots)
-// — far too little for printed text, which is the hardest thing to encode.
-//
-// The ceiling is not ours to raise: the clip is POSTed as base64, which inflates
-// it by a third, against a 6 MB serverless request-body limit. 3.2 MB of video
-// leaves room for that inflation plus the JSON around it, and stays under the
-// function's own 4 MB guard even if the encoder overshoots the hint.
-const VIDEO_TARGET_BYTES = 3.2 * 1024 * 1024;
-const VIDEO_BITS_MIN     = 900000;
-const VIDEO_BITS_MAX     = 3500000;
-function videoBitrateFor(seconds) {
-  const s = Math.max(1, Math.min(Number(seconds) || VIDEO_MAX_SECONDS, VIDEO_MAX_SECONDS));
-  return Math.round(Math.min(VIDEO_BITS_MAX, Math.max(VIDEO_BITS_MIN, (VIDEO_TARGET_BYTES * 8) / s)));
-}
+const VIDEO_FPS          = 30;
+const VIDEO_INPUT_MAX_MB = 200;
+const VIDEO_BITS_PER_SECOND = 12000000;
 
 // H.264 in MP4 first: it plays in every browser and on every phone. WebM is the
 // fallback for browsers that will not write MP4 — product-page.js accepts both.
 function pickVideoMime() {
   const candidates = [
-    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4;codecs=avc1.64002A',
     'video/mp4',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
@@ -8467,7 +8437,8 @@ window.iacTranscodeVideo = async function (file, onProgress) {
 
     // H.264 requires even dimensions; rounding to a multiple of 2 avoids a
     // silent encoder failure that yields a zero-byte recording.
-    const scale = Math.min(1, VIDEO_MAX_EDGE / Math.max(srcW, srcH));
+    const scale = Math.min(1, VIDEO_MAX_EDGE / Math.max(srcW, srcH),
+      VIDEO_MAX_SHORT_EDGE / Math.min(srcW, srcH));
     const width  = Math.max(2, Math.round((srcW * scale) / 2) * 2);
     const height = Math.max(2, Math.round((srcH * scale) / 2) * 2);
 
@@ -8487,7 +8458,7 @@ window.iacTranscodeVideo = async function (file, onProgress) {
     await seekVideo(video, 0);
 
     const stream = canvas.captureStream(VIDEO_FPS);
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: videoBitrateFor(duration) });
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: VIDEO_BITS_PER_SECOND });
     const chunks = [];
     recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     const finished = new Promise((resolve) => { recorder.onstop = () => resolve(); });
@@ -9884,8 +9855,8 @@ function selectProduct(slug) {
   const videoHint = document.getElementById('prodVideoHint');
   if (videoHint) {
     videoHint.style.color = '';
-    videoHint.textContent = 'Any phone clip works — it is compressed and converted to a web-safe format here in the browser before uploading. '
-      + 'Kept silent and trimmed to the first 30 seconds. Shoot it portrait, and show the paper and print rather than the cover.';
+    videoHint.textContent = 'HD quality is the default. Compatible MP4 clips up to 60 seconds and 80 MB keep their original quality and sound. '
+      + 'Other clips are converted at up to 1080p, kept silent, and trimmed to 30 seconds. Keep this tab visible during conversion.';
   }
   loadAplusEditor(row);
   loadProductSampleEditor(row);
@@ -12413,7 +12384,7 @@ async function posterFromFile(file, seconds) {
     });
     // Slightly in, so a clip opening on a black or blurred frame doesn't get one.
     await seekVideo(v, seconds > 1 ? Math.min(0.5, seconds / 10) : 0);
-    const scale = Math.min(1, 1080 / Math.max(v.videoWidth || 1, v.videoHeight || 1));
+    const scale = Math.min(1, VIDEO_MAX_EDGE / Math.max(v.videoWidth || 1, v.videoHeight || 1));
     const c = document.createElement('canvas');
     c.width = Math.max(2, Math.round((v.videoWidth * scale) / 2) * 2);
     c.height = Math.max(2, Math.round((v.videoHeight * scale) / 2) * 2);
@@ -12489,9 +12460,8 @@ async function prepareProductVideo(fileList) {
       return;
     }
 
-    // Slow path — HEVC (which Chrome and Firefox cannot play), an unusual codec,
-    // over a minute, or simply enormous. Re-encode, accepting the quality cost.
-    const why = codec === 'hevc' ? 'iPhone HEVC, which Chrome cannot play'
+    // Convert other inputs to a broadly supported format at up to 1080p.
+    const why = codec === 'hevc' ? 'iPhone HEVC to a widely supported format'
       : !smallEnough ? `${(file.size / 1048576).toFixed(0)} MB`
       : !shortEnough ? 'longer than a minute'
       : 'not a web-ready MP4';
@@ -12499,15 +12469,14 @@ async function prepareProductVideo(fileList) {
     const result = await window.iacTranscodeVideo(file, (progress) => {
       // Browsers throttle background tabs, so leaving this one drops the frame
       // rate of the converted clip. Worth saying while they are watching it.
-      setHint(`Converting and compressing… ${Math.round(progress * 100)}% — runs in real time, so it takes about as long as the clip. Keep this tab open.`);
+      setHint(`Converting at up to 1080p… ${Math.round(progress * 100)}% — runs in real time, so it takes about as long as the clip. Keep this tab open.`);
     });
     pendingProductVideo = result;
 
     const beforeMb = (file.size / 1048576).toFixed(1);
     const afterMb = (result.blob.size / 1048576).toFixed(2);
-    const saved = file.size > 0 ? Math.max(0, Math.round((1 - result.blob.size / file.size) * 100)) : 0;
     setHint(`Ready: ${result.width}×${result.height} ${result.ext.toUpperCase()}, `
-      + `${beforeMb} MB → ${afterMb} MB (${saved}% smaller)`
+      + `${afterMb} MB`
       + `${result.trimmed ? `, trimmed to the first ${VIDEO_MAX_SECONDS}s` : ''}. `
       + 'Check it plays, then add it to the gallery.', '#5d9b55');
 
@@ -12529,13 +12498,6 @@ async function prepareProductVideo(fileList) {
     document.getElementById('prodGalleryVideo').value = '';
   }
 }
-
-const blobToBase64 = (blob) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result || '').replace(/^data:[^,]*,/, ''));
-  reader.onerror = () => reject(new Error('Could not read the converted video'));
-  reader.readAsDataURL(blob);
-});
 
 // ── Global storefront reels ────────────────────────────────────────────────
 // These are deliberately separate from a product's gallery videos. A reel is
@@ -12666,53 +12628,44 @@ async function uploadSiteReels() {
       const direct = codec === 'h264' && /mp4/i.test(entry.file.type || '')
         && entry.file.size <= PASSTHROUGH_MAX_MB * 1024 * 1024
         && meta && meta.seconds > 0 && meta.seconds <= PASSTHROUGH_MAX_SECONDS;
-      let response;
-
+      let blob = entry.file;
+      let contentType = 'video/mp4';
+      let posterDataUrl;
       if (direct) {
-        if (progress) progress.textContent = 'Original-quality MP4 — preparing direct upload…';
-        const posterDataUrl = await posterFromFile(entry.file, meta.seconds).catch(() => '');
-        const signResponse = await adminFetch('/.netlify/functions/sign-product-video-upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: 'storefront-reel', content_type: 'video/mp4' }),
-        });
-        const signed = await signResponse.json().catch(() => ({}));
-        if (!signResponse.ok || !signed.video_upload_url) throw new Error(signed.error || `HTTP ${signResponse.status}`);
-        if (progress) progress.textContent = 'Uploading original video with sound…';
-        const videoPut = await fetch(signed.video_upload_url, {
-          method: 'PUT', headers: { 'Content-Type': signed.content_type }, body: entry.file,
-        });
-        if (!videoPut.ok) throw new Error(`Storage rejected the video (HTTP ${videoPut.status})`);
-        let posterUrl = '';
-        if (posterDataUrl && signed.poster_upload_url) {
-          const posterPut = await fetch(signed.poster_upload_url, {
-            method: 'PUT', headers: { 'Content-Type': 'image/webp' }, body: await dataUrlToBlob(posterDataUrl),
-          });
-          if (posterPut.ok) posterUrl = signed.poster_url;
-        }
-        response = await adminFetch('/.netlify/functions/upload-site-reel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caption: entry.caption, video_url: signed.video_url, poster_url: posterUrl }),
-        });
+        if (progress) progress.textContent = 'Keeping original quality…';
+        posterDataUrl = await posterFromFile(entry.file, meta.seconds).catch(() => '');
       } else {
         const converted = await window.iacTranscodeVideo(entry.file, value => {
-          if (progress) progress.textContent = `Converting… ${Math.round(value * 100)}% — keep this tab visible`;
+          if (progress) progress.textContent = `Converting at up to 1080p… ${Math.round(value * 100)}% — keep this tab visible`;
         });
-        if (progress) progress.textContent = 'Uploading compressed video…';
-        response = await adminFetch('/.netlify/functions/upload-site-reel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            caption: entry.caption,
-            video_type: converted.mimeType,
-            video_base64: await blobToBase64(converted.blob),
-            poster_base64: converted.posterDataUrl
-              ? converted.posterDataUrl.replace(/^data:[^,]*,/, '')
-              : undefined,
-          }),
-        });
+        blob = converted.blob;
+        contentType = converted.mimeType;
+        posterDataUrl = converted.posterDataUrl;
       }
+      const signResponse = await adminFetch('/.netlify/functions/sign-product-video-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: 'storefront-reel', content_type: contentType }),
+      });
+      const signed = await signResponse.json().catch(() => ({}));
+      if (!signResponse.ok || !signed.video_upload_url) throw new Error(signed.error || `HTTP ${signResponse.status}`);
+      if (progress) progress.textContent = 'Uploading video…';
+      const videoPut = await fetch(signed.video_upload_url, {
+        method: 'PUT', headers: { 'Content-Type': signed.content_type }, body: blob,
+      });
+      if (!videoPut.ok) throw new Error(`Storage rejected the video (HTTP ${videoPut.status})`);
+      let posterUrl = '';
+      if (posterDataUrl && signed.poster_upload_url) {
+        const posterPut = await fetch(signed.poster_upload_url, {
+          method: 'PUT', headers: { 'Content-Type': 'image/webp' }, body: await dataUrlToBlob(posterDataUrl),
+        });
+        if (posterPut.ok) posterUrl = signed.poster_url;
+      }
+      const response = await adminFetch('/.netlify/functions/upload-site-reel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption: entry.caption, video_url: signed.video_url, poster_url: posterUrl }),
+      });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
       uploadedCount += 1;
@@ -20599,7 +20552,7 @@ function arRenderVideo() {
 function arRemoveVideo() {
   if (arVideo && /^blob:/.test(arVideo.local || '')) URL.revokeObjectURL(arVideo.local);
   arVideo = null; arRenderVideo();
-  arVideoHint('MP4 up to 60 s keeps its sound; other clips (iPhone .MOV, longer) are converted, muted, first 30 s.');
+  arVideoHint('MP4 up to 60 s keeps its sound; other clips (iPhone .MOV, longer) convert at up to 1080p, muted, first 30 s.');
 }
 async function arPickVideo(input) {
   const file = (input.files || [])[0];
