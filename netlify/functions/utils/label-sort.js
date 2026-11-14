@@ -440,16 +440,21 @@ function splitSheets(pages, awbs) {
       if (!prev) { cells.set(key, { row, col, awb: t.t }); taken.add(t.t); }
     }
     const found = [...cells.values()].sort((a, b) => b.row - a.row || a.col - b.col);   // top row first
+    // The frame's sides: vertical rules at least half a cell tall (table rules
+    // are a few points). Found around the AWB itself, not by the grid, since a
+    // label's frame can sit right on the line between two quarters.
+    const tall = full.segs.filter((sg) => Math.abs(sg.x1 - sg.x2) < 0.6 && Math.abs(sg.y1 - sg.y2) > ch * 0.5)
+      .map((sg) => ({ x: sg.x1, lo: Math.min(sg.y1, sg.y2), hi: Math.max(sg.y1, sg.y2) }));
     for (const cell of found) {
+      const at = full.texts.find((t) => t.t === cell.awb);
       const cx0 = cell.col * cw; const cy0 = cell.row * ch;
-      const inCell = (x, y) => x >= cx0 - 1 && x <= cx0 + cw + 1 && y >= cy0 - 1 && y <= cy0 + ch + 1;
-      const segs = full.segs.filter((sg) => inCell(sg.x1, sg.y1) && inCell(sg.x2, sg.y2));
-      // The frame: the longest rules in the cell. Fall back to the whole cell.
-      const xs = segs.flatMap((sg) => [sg.x1, sg.x2]); const ys = segs.flatMap((sg) => [sg.y1, sg.y2]);
       let box = { x: cx0, y: cy0, w: cw, h: ch };
-      if (xs.length && Math.max(...xs) - Math.min(...xs) > cw * 0.6 && Math.max(...ys) - Math.min(...ys) > ch * 0.6) {
-        const x = Math.max(cx0, Math.min(...xs) - 1); const y = Math.max(cy0, Math.min(...ys) - 1);
-        box = { x, y, w: Math.min(cx0 + cw, Math.max(...xs) + 1) - x, h: Math.min(cy0 + ch, Math.max(...ys) + 1) - y };
+      const around = tall.filter((v) => v.lo <= at.y && v.hi >= at.y);
+      const left = around.filter((v) => v.x < at.x).sort((a, b) => b.x - a.x)[0];
+      const right = around.filter((v) => v.x > at.x).sort((a, b) => a.x - b.x)[0];
+      if (left && right && right.x - left.x > cw * 0.6) {
+        const lo = Math.max(left.lo, right.lo); const hi = Math.min(left.hi, right.hi);
+        box = { x: left.x - 1, y: lo - 1, w: right.x - left.x + 2, h: hi - lo + 2 };
       }
       out.push({ pageIndex, awb: cell.awb, box });
     }

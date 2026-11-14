@@ -165,7 +165,7 @@ test('refuses to build when XpressBees returns the wrong number of pages', async
 // ── A4 sheets (four labels each) ────────────────────────────────────────────
 
 /** An A4 sheet with up to four labels, each drawn as the thermal one, shifted into its quarter inside a frame. */
-async function a4Pdf(labels) {
+async function a4Pdf(labels, { bottomDy = 14 } = {}) {
   const doc = await PDFDocument.create();
   const AW = 595.28; const AH = 841.89;
   // Real A4 labels are ~273 x 391 pt in a 298 x 421 quarter: scale the thermal drawing to that.
@@ -178,7 +178,7 @@ async function a4Pdf(labels) {
     const page = doc.addPage([AW, AH]);
     let c = '';
     labels.slice(i, i + 4).forEach((l, k) => {
-      const dx = (k % 2) * (AW / 2) + 12; const dy = (k < 2 ? AH / 2 : 0) + 14;   // top row first
+      const dx = (k % 2) * (AW / 2) + 12; const dy = k < 2 ? AH / 2 + 14 : bottomDy;   // top row first
       c += shift(labelContent(l.awb, l.orderNo, l.items), dx, dy);
     });
     page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.flateStream(c)));
@@ -215,6 +215,15 @@ test('A4 sheets of four are cut into single labels, read, sorted and stamped lik
   // Four quarters of sheet 1 = four different crops (sheet 2's one label repeats a quarter).
   assert.equal(new Set([1, 2, 3, 4, 5].map((i) => firstOps(out.getPage(i)))).size, 4);
   assert.match(firstOps(out.getPage(1)), /cm[\s\S]*re[\s\S]*W[\s\S]*n/);
+});
+
+test('A4 labels whose frame crosses the halfway line are still cut by their own frame', async () => {
+  // Bottom-row frames reaching above the sheet's halfway line, as real sheets nearly do (top at ~421 of 420.9).
+  const bytes = await a4Pdf(LABELS, { bottomDy: 34 });
+  const { summary } = await buildSortedLabels([{ bytes, awbs: LABELS.map((l) => l.awb) }]);
+  assert.equal(summary.labels, 4);
+  assert.equal(summary.unread.length, 0);
+  assert.deepEqual(summary.unstamped, []);
 });
 
 test('an AWB on no A4 sheet stops the build', async () => {
