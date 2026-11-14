@@ -8213,7 +8213,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           </div>
           <div class="form-group" style="margin:0;">
             <label for="ch-phone">Phone Number *</label>
-            <input id="ch-phone" type="tel" placeholder="10-digit mobile" autocomplete="tel" inputmode="tel" oninput="sanitizePhoneField(this)"/>
+            <input id="ch-phone" type="tel" placeholder="10-digit mobile" autocomplete="tel" inputmode="tel" oninput="sanitizePhoneField(this); scheduleFirstOrderCheck()" onchange="scheduleFirstOrderCheck()"/>
           </div>
         </div>
 
@@ -8542,7 +8542,55 @@ function removeExpiredSaleFromCheckout() {
   document.getElementById('couponBox')?.classList.remove('sale-dress');
 }
 
+// ── New-customer 5% (owner, 14 Nov 2026) ───────────────────────────────────
+// The tills (create-order, phonepe-create-order, cod-order via
+// utils/first-order.js) decide; this only shows the same total up front. It
+// never stacks: whichever single discount is bigger wins, as at the till.
+// var, not let/const: renderSummary may run before this line is reached.
+var FIRST_ORDER = { code: 'FIRST5', percent: 5 };
+var firstOrderState = { phone10: '', eligible: false };
+var _firstOrderTimer = null;
+function checkoutPhone10() {
+  return String(document.getElementById('ch-phone')?.value || '').replace(/\\D/g, '').slice(-10);
+}
+function scheduleFirstOrderCheck() {
+  clearTimeout(_firstOrderTimer);
+  _firstOrderTimer = setTimeout(async () => {
+    const phone10 = checkoutPhone10();
+    if (phone10.length !== 10) {
+      if (firstOrderState.eligible) { firstOrderState = { phone10: '', eligible: false }; renderSummary(); }
+      return;
+    }
+    if (phone10 === firstOrderState.phone10) return;
+    let eligible = false;
+    try {
+      const res = await fetch('/.netlify/functions/first-order-offer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone10, email: document.getElementById('ch-email')?.value || '' }),
+      });
+      if (res.ok) eligible = !!(await res.json()).eligible;
+    } catch (e) { /* no offer shown; the till still decides */ }
+    if (checkoutPhone10() !== phone10) return; // typed on meanwhile
+    const changed = eligible !== firstOrderState.eligible;
+    firstOrderState = { phone10, eligible };
+    if (changed) renderSummary();
+  }, 450);
+}
+function firstOrderHit(cart) {
+  if (!firstOrderState || !firstOrderState.eligible || firstOrderState.phone10 !== checkoutPhone10()) return null;
+  const discount = Math.floor(cartSubtotal(cart) * FIRST_ORDER.percent / 100);
+  return discount > 0
+    ? { code: FIRST_ORDER.code, discount, message: '🎉 Welcome! 5% off your first order, applied automatically.' }
+    : null;
+}
+
 function couponDiscount(cart, method = 'online') {
+  const base = couponDiscountBase(cart, method);
+  const first = firstOrderHit(cart);
+  return first && first.discount > (base.discount || 0) ? first : base;
+}
+
+function couponDiscountBase(cart, method = 'online') {
   const subtotal = cartSubtotal(cart);
   const code = normalizeCouponCode(appliedCouponCode);
 
@@ -8617,7 +8665,7 @@ function partialPaymentTotals(cart) {
   const subtotal = cartSubtotal(cart);
   const shipping = calcShipping(subtotal, cart);
   const coupon = couponDiscount(cart, 'cod');
-  const discount = (coupon.code === 'FREEDOM' || coupon.code === FESTIVE_SALE.code) ? coupon.discount : 0;
+  const discount = (coupon.code === 'FREEDOM' || coupon.code === FESTIVE_SALE.code || coupon.code === FIRST_ORDER.code) ? coupon.discount : 0;
   const total = Math.max(1, subtotal + shipping - discount);
   const eligible = total >= PARTIAL_PAYMENT_THRESHOLD;
   const deposit = eligible ? Math.max(1, Math.ceil(total * PARTIAL_PAYMENT_RATE)) : 0;
@@ -8974,6 +9022,9 @@ function renderSummary() {
   // Cheap and idempotent, and renderSummary is the one function that always
   // runs before the coupon box is shown.
   removeExpiredSaleFromCheckout();
+  // A phone filled in by sign-in or a saved address fires no input event;
+  // this asks once per number (it skips a number already checked).
+  if (typeof scheduleFirstOrderCheck === 'function' && checkoutPhone10().length === 10 && checkoutPhone10() !== (firstOrderState && firstOrderState.phone10)) scheduleFirstOrderCheck();
   const cart = getCart();
   const container = document.getElementById('orderItems');
   const totalRow  = document.getElementById('orderTotal');
@@ -9007,7 +9058,8 @@ function renderSummary() {
   if (_pb) _pb.style.display = '';
   const { subtotal, shipping, discount, couponCode, couponMessage, total: grand } = orderTotals(cart, 'online');
   if (couponBox) couponBox.style.display = 'block';
-  const displayedCouponCode = couponCode || appliedCouponCode;
+  // The new-customer 5% is not a code the customer typed: keep their own in the box.
+  const displayedCouponCode = (couponCode && couponCode !== FIRST_ORDER.code) ? couponCode : appliedCouponCode;
   if (couponInput && couponInput.value !== displayedCouponCode) couponInput.value = displayedCouponCode;
   if (couponSelect) {
     const hasVisibleOption = Array.from(couponSelect.options).some(option => option.value === displayedCouponCode);
@@ -9044,7 +9096,7 @@ function renderSummary() {
       <span class="summary-line-value">₹${subtotal.toLocaleString('en-IN')}</span>
     </div>
     ${discount > 0 ? `<div class="summary-line summary-line-discount">
-      <span class="summary-line-label">Coupon (${couponCode})</span>
+      <span class="summary-line-label">${couponCode === FIRST_ORDER.code ? 'New customer 5% off' : `Coupon (${couponCode})`}</span>
       <span class="summary-line-value">- ₹${discount.toLocaleString('en-IN')}</span>
     </div>` : ''}
     <div class="summary-line" style="padding-bottom:0.7rem;">
@@ -9943,6 +9995,12 @@ function showSuccess(type, orderId, addr, value, surveyOrderId = orderId) {
         : `Hi ${esc(addr.name.split(' ')[0])}, your books are on their way.<br/>Pay cash when they arrive.`}
     </p>
     <p class="success-id">${isPaid ? 'Payment ID' : 'Order ID'}: ${esc(orderId)}</p>
+    ${(() => {
+      // Short order code (owner, 14 Nov 2026): the last 5 characters of the
+      // IC- order id are enough, with the phone, to track the order.
+      const m = String(surveyOrderId || '').toUpperCase().match(/\\d{8}-([A-Z0-9]{5})$/);
+      return m ? `<p class="success-code" style="margin:-0.9rem 0 1.5rem;font-size:0.8rem;color:var(--cream);">Your order code: <strong style="letter-spacing:0.12em;color:var(--gold);">${m[1]}</strong><br/><span style="font-size:0.66rem;color:var(--cream-dim);">With your phone number, that is all you need to track this order.</span></p>` : '';
+    })()}
     ${addr.email ? `
     <div class="success-email-box">
       <p style="font-size:0.68rem;color:var(--gold);margin-bottom:0.35rem;letter-spacing:0.07em;">

@@ -21,6 +21,7 @@ const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { orderShipping } = require('./utils/free-delivery');
 const { siteSaleDiscount } = require('./utils/site-sale');
+const firstOrder = require('./utils/first-order');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
@@ -59,7 +60,7 @@ function cartTable(cart, shippingFee, codFee = 0, discount = 0, coupon = '') {
           <td style="padding:8px 12px;text-align:right;color:#f0e8d8;">₹${subtotal.toLocaleString('en-IN')}</td>
         </tr>
         ${safeDiscount > 0 ? `<tr>
-          <td colspan="2" style="padding:8px 12px;color:#a09080;">Sale discount (${coupon})</td>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">${coupon === 'FIRST5' ? 'New customer 5% off' : `Sale discount (${coupon})`}</td>
           <td style="padding:8px 12px;text-align:right;color:#6dbf6d;">- ₹${safeDiscount.toLocaleString('en-IN')}</td>
         </tr>` : ''}
         ${safeCodFee > 0 ? `<tr>
@@ -174,8 +175,11 @@ exports.handler = async (event, context) => {
   const subtotal = priced.subtotal;
   const shipping = orderShipping(cart, subtotal, 'cod');
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
-  // The site sale is the one discount on COD; an opt-in sale needs its code.
-  const couponInfo = siteSaleDiscount(subtotal, Date.now(), body.coupon);
+  // The site sale is the one discount on COD (an opt-in sale needs its code),
+  // unless the new-customer 5% is worth more (utils/first-order).
+  const couponInfo = firstOrder.better(
+    siteSaleDiscount(subtotal, Date.now(), body.coupon),
+    await firstOrder.firstOrderOffer(_sbForPrice, customer, subtotal));
   const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount);
   if (couponInfo.code && cart[0]) {
     cart[0]._coupon = { code: couponInfo.code, discount: couponInfo.discount, source: couponInfo.source };

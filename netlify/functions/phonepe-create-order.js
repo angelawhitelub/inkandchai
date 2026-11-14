@@ -27,6 +27,7 @@ const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { orderShipping } = require('./utils/free-delivery');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { siteSaleDiscount, betterOfSale } = require('./utils/site-sale');
+const firstOrder = require('./utils/first-order');
 const { stashLostOrder, mirrorOrder } = require('./utils/order-fallback');
 const { recordAdClick } = require('./utils/ad-click');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
@@ -193,7 +194,10 @@ exports.handler = async (event) => {
   const isPartial   = payment_mode === 'partial_cod' || meta.mode === 'partial_cod';
   // Partial COD is a COD order (free from ₹499); full prepaid is free above ₹399.
   const shipping    = orderShipping(cart, subtotal, isPartial ? 'cod' : 'prepaid');
-  let couponInfo    = await resolveCouponDiscount(_supabaseForCoupon, cart, subtotal, coupon, { saleOnly: isPartial });
+  // New customers: 5% off the first order when it beats the coupon/sale (utils/first-order).
+  let couponInfo    = firstOrder.better(
+    await resolveCouponDiscount(_supabaseForCoupon, cart, subtotal, coupon, { saleOnly: isPartial }),
+    await firstOrder.firstOrderOffer(_supabaseForCoupon, customer || {}, subtotal));
 
   // Generate order id early so we can atomically claim a scratch card to it.
   // IC-CW- prefix for Crossword-migrated genuine-tag carts (publisher-sourced).
@@ -206,7 +210,7 @@ exports.handler = async (event) => {
     if (!claim.claimed) couponInfo = { code: '', discount: 0 };
   }
 
-  const partialDiscount = couponInfo.source === 'site_sale' ? couponInfo.discount : 0;
+  const partialDiscount = (couponInfo.source === 'site_sale' || couponInfo.source === 'first_order') ? couponInfo.discount : 0;
   const appliedDiscount = isPartial ? partialDiscount : couponInfo.discount;
   const fullTotal   = Math.max(1, subtotal + shipping - appliedDiscount);
   const deposit     = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;

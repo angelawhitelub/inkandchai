@@ -98,6 +98,7 @@ COUPONS (share only when customer asks about discounts):
 - 12% off on prepaid orders above ₹999 (code: SAVE12)
 - 15% off on prepaid orders above ₹1499 (code: SAVE15)
 - Coupons only apply to Pay Now (not COD)
+- New customers: 5% off their FIRST order on the website (inkandchai.in), applied automatically at checkout when the phone number has never ordered before — on prepaid, COD and partial COD. No code needed. It never stacks: the checkout gives whichever single discount is bigger (e.g. SAVE15 on ₹1499+ beats it). It does not apply to orders placed here on WhatsApp.
 
 ORDER TRACKING — "where is my order?" / "order status?" / "AWB?":
 - If order details are already in the system context (looked up by their phone number), share them immediately — do NOT ask for the order ID again
