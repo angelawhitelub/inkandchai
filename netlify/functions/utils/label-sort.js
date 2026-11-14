@@ -152,15 +152,23 @@ function parseLabel(texts, segs = []) {
   const grid = tableGrid(segs, header, floorY);
   if (!grid) { out.unreadReason = 'item table grid not found'; return out; }
   const { ys, xs } = grid;
-  // Columns: the last three vertical rules bound Item Name and Qty.
-  const qtyLeft = xs[xs.length - 2];
-  const nameLeft = xs[xs.length - 3];
+  // Columns by their headers: the rules either side of "Qty." and of "Item
+  // Name". Thermal labels end at Qty.; A4 labels add an Amount column after it,
+  // so "the last columns" is not a rule that holds for both.
+  const colOf = (x) => { for (let i = 0; i < xs.length - 1; i++) if (x >= xs[i] - 0.5 && x < xs[i + 1]) return i; return -1; };
+  const nameHead = texts.find((t) => /^Item\s*Name$/i.test(t.t) && Math.abs(t.y - header.y) < 3);
+  let qi = colOf(header.x);
+  if (qi < 1) qi = xs.length - 2;
+  let ni = nameHead ? colOf(nameHead.x) : qi - 1;
+  if (ni < 0 || ni >= qi) ni = qi - 1;
+  const qtyLeft = xs[qi]; const qtyRight = xs[qi + 1];
+  const nameLeft = xs[ni]; const nameRight = xs[ni + 1];
   for (let r = 0; r < ys.length - 1; r++) {
     const top = ys[r]; const bottom = ys[r + 1];
     const cell = texts.filter((t) => t.y < top && t.y > bottom);
     if (cell.some((t) => t === header)) continue;
-    const qtyText = cell.filter((t) => t.x >= qtyLeft).map((t) => t.t).join('');
-    const name = cell.filter((t) => t.x >= nameLeft && t.x < qtyLeft)
+    const qtyText = cell.filter((t) => t.x >= qtyLeft && t.x < qtyRight).map((t) => t.t).join('');
+    const name = cell.filter((t) => t.x >= nameLeft && t.x < nameRight)
       .sort((a, b) => b.y - a.y || a.x - b.x).map((t) => t.t).join(' ').replace(/\s+/g, ' ').trim();
     // A row without a number in Qty is not an item (footer text, a blank row).
     if (!/^\d{1,3}$/.test(qtyText) || !name) continue;

@@ -70,6 +70,22 @@ test('reads order number and items from the ruled table, wrapped titles kept who
   assert.ok(r.contentBottom > 100 && r.contentBottom < 160, `contentBottom ${r.contentBottom}`);
 });
 
+test('A4 item tables with an Amount column after Qty. are read by their headers', () => {
+  // The real top-left label of an A4 sheet, 14 Nov 2026 (coordinates as printed).
+  const texts = [
+    { x: 20, y: 637.2, t: 'SKU' }, { x: 119.7, y: 637.2, t: 'Item Name' }, { x: 242.4, y: 637.2, t: 'Qty.' }, { x: 258.5, y: 637.2, t: 'Amount' },
+    { x: 20, y: 628.1, t: 'N/A' }, { x: 35.8, y: 628.1, t: 'Belonging: A Journey Of Love By Sonia Gandhi' }, { x: 247.6, y: 628.1, t: '1' }, { x: 264.1, y: 628.1, t: '₹639' },
+    { x: 222.5, y: 618.9, t: 'Order Total' }, { x: 264.1, y: 618.9, t: '₹576' },
+    { x: 18.7, y: 596.2, t: 'For any query please connect with us:' },
+  ];
+  const h = (x1, x2, y) => ({ x1, y1: y, x2, y2: y });
+  const v = (x, y1, y2) => ({ x1: x, y1, x2: x, y2 });
+  const segs = [h(19, 285.9, 643.9), h(19, 285.9, 634.7), h(19, 285.9, 625.6), h(19, 285.9, 616.4),
+    v(19, 643.9, 616.4), v(34.8, 643.9, 625.6), v(241.4, 643.9, 625.6), v(257.5, 643.9, 616.4), v(285.9, 643.9, 616.4)];
+  const p = parseLabel(texts, segs);
+  assert.deepEqual(p.items, [{ title: 'Belonging: A Journey Of Love By Sonia Gandhi', qty: 1 }]);
+});
+
 test('no table grid means unread, not a guess', () => {
   const p = parseLabel([{ x: 255, y: 191, t: 'Qty.' }, { x: 260, y: 180, t: '2' }], []);
   assert.deepEqual(p.items, []);
