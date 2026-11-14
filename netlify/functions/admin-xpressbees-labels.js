@@ -178,9 +178,10 @@ async function pageCount(bytes) {
  * a broken one) is fetched again after a wait, and if it stays short the
  * batch is requested afresh once. Still short after that is an error.
  */
-async function labelPdf(call, awbs, fetchImpl = fetch, { waits = SETTLE_WAITS, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+async function labelPdf(call, awbs, fetchImpl = fetch, { waits = SETTLE_WAITS, asks = 2, returnShort = false, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   let last = 0;
-  for (let ask = 0; ask < 2; ask++) {
+  let lastBytes = null;
+  for (let ask = 0; ask < asks; ask++) {
     const out = await call('/ship/assets/label', { method: 'POST', body: { awbs: awbs.join(',') }, ms: 60000 });
     const url = out.data?.data;
     if (out.httpStatus !== 200 || out.data?.status !== true || typeof url !== 'string' || !LABEL_HOST.test(url)) {
@@ -195,11 +196,13 @@ async function labelPdf(call, awbs, fetchImpl = fetch, { waits = SETTLE_WAITS, s
       }
       const bytes = new Uint8Array(await res.arrayBuffer());
       last = await pageCount(bytes);
+      lastBytes = bytes;
       if (last === awbs.length) return bytes;
       if (last > awbs.length) return bytes;   // label-sort refuses it with the exact counts
     }
-    console.warn(`[xb-labels] batch of ${awbs.length} still ${last} pages after waiting${ask ? '' : '; asking again'}`);
+    console.warn(`[xb-labels] batch of ${awbs.length} still ${last} pages after waiting${ask + 1 < asks ? '; asking again' : ''}`);
   }
+  if (returnShort && lastBytes) return lastBytes;
   throw new XbError(`XpressBees returned ${last} label pages for ${awbs.length} AWBs even after waiting and asking again; nothing was built. Try again in a few minutes.`, 502);
 }
 
@@ -234,25 +237,35 @@ async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = 
  * report, per batch, the pages that came back and which requested AWBs no page
  * shows. Builds nothing and marks nothing downloaded.
  */
-async function checkBatches({ days, only }, deps) {
+async function checkBatches({ days, only, maxBatches = 999, retry = true }, deps) {
   const { readPage } = require('./utils/label-sort');
   const { PDFDocument } = require('pdf-lib');
   const call = makeCaller(deps);
   const shipments = await readyShipments(call, { days });
   const awbs = shipments.map((r) => String(r.awb_number).trim()).filter((a) => !only || only(a));
+  const byAwb = new Map(shipments.map((r) => [String(r.awb_number).trim(), r]));
+  const describe = (a) => {
+    const r = byAwb.get(a) || {};
+    return { awb: a, order_id: r.order_id, user_id: r.user_id, channel_fulfilled: r.channel_fulfilled, courier_id: r.courier_id,
+      warehouse_id: r.warehouse_id, created: r.created, label: r.label ? String(r.label).replace(/^https?:\/\/([^/]+).*/, '$1') : null, ship_status: r.ship_status };
+  };
   const batches = [];
   const t0 = Date.now();
-  for (let i = 0; i < awbs.length; i += CHUNK) {
+  for (let i = 0; i < awbs.length && batches.length < maxBatches; i += CHUNK) {
     const chunk = awbs.slice(i, i + CHUNK);
     const b = { from: i + 1, awbs: chunk.length };
     const t = Date.now();
     try {
-      const bytes = await labelPdf(call, chunk, deps.fetch || fetch);
+      const bytes = await labelPdf(call, chunk, deps.fetch || fetch, retry ? { returnShort: true } : { waits: [], asks: 1, returnShort: true });
       const doc = await PDFDocument.load(bytes, { updateMetadata: false });
       b.pages = doc.getPageCount();
       const shown = new Set();
       for (const p of doc.getPages()) for (const x of readPage(p).texts) shown.add(x.t);
       b.not_shown = chunk.filter((a) => !shown.has(a));
+      if (b.not_shown.length) {
+        b.missing = b.not_shown.slice(0, 6).map(describe);
+        b.present_sample = chunk.filter((a) => shown.has(a)).slice(0, 3).map(describe);
+      }
     } catch (e) { b.error = e.message; }
     b.ms = Date.now() - t;
     batches.push(b);
@@ -275,7 +288,9 @@ async function handle(event = {}, deps = {}) {
   try {
     const seen = await readDownloaded(kv);
     const only = latest ? (awb) => !seen[awb] : null;
-    if (q.check) return json(200, await checkBatches({ days, only }, deps));
+    if (q.check) {
+      return json(200, await checkBatches({ days, only, maxBatches: Math.max(1, parseInt(q.batches, 10) || 999), retry: q.retry !== '0' }, deps));
+    }
     if (q.format === 'json') {
       const { awbs, ready, shipments, reverseSkipped } = await run({ days, summaryOnly: true, only }, deps);
       const want = new Set(awbs);
