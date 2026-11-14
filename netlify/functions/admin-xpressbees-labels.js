@@ -229,6 +229,38 @@ async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = 
   return { awbs, ready, shipments, reverseSkipped: shipments.reverseSkipped || 0, ...built };
 }
 
+/**
+ * ?check=1 -- diagnosis only: fetch every label batch the way a build does and
+ * report, per batch, the pages that came back and which requested AWBs no page
+ * shows. Builds nothing and marks nothing downloaded.
+ */
+async function checkBatches({ days, only }, deps) {
+  const { readPage } = require('./utils/label-sort');
+  const { PDFDocument } = require('pdf-lib');
+  const call = makeCaller(deps);
+  const shipments = await readyShipments(call, { days });
+  const awbs = shipments.map((r) => String(r.awb_number).trim()).filter((a) => !only || only(a));
+  const batches = [];
+  const t0 = Date.now();
+  for (let i = 0; i < awbs.length; i += CHUNK) {
+    const chunk = awbs.slice(i, i + CHUNK);
+    const b = { from: i + 1, awbs: chunk.length };
+    const t = Date.now();
+    try {
+      const bytes = await labelPdf(call, chunk, deps.fetch || fetch);
+      const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+      b.pages = doc.getPageCount();
+      const shown = new Set();
+      for (const p of doc.getPages()) for (const x of readPage(p).texts) shown.add(x.t);
+      b.not_shown = chunk.filter((a) => !shown.has(a));
+    } catch (e) { b.error = e.message; }
+    b.ms = Date.now() - t;
+    batches.push(b);
+  }
+  const bad = batches.filter((b) => b.error || b.pages !== b.awbs || (b.not_shown || []).length);
+  return { success: true, labels: awbs.length, batches: batches.length, bad: bad.length, total_ms: Date.now() - t0, bad_batches: bad, all: batches.map((b) => `${b.from}:${b.pages ?? 'x'}/${b.awbs}:${b.ms}ms`) };
+}
+
 async function handle(event = {}, deps = {}) {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   const block = requireAdmin(event, CORS);
@@ -243,6 +275,7 @@ async function handle(event = {}, deps = {}) {
   try {
     const seen = await readDownloaded(kv);
     const only = latest ? (awb) => !seen[awb] : null;
+    if (q.check) return json(200, await checkBatches({ days, only }, deps));
     if (q.format === 'json') {
       const { awbs, ready, shipments, reverseSkipped } = await run({ days, summaryOnly: true, only }, deps);
       const want = new Set(awbs);
