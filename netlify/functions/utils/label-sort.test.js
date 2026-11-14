@@ -155,6 +155,7 @@ function fakeXb({ total = 230, rejectFirst = 0, rejectAlways = false } = {}) {
   const ucpFetch = async (path, opts) => {
     calls.push({ path, opts });
     if (rejectAlways || rejects > 0) { rejects--; return { httpStatus: 401, data: { message: 'Unauthorized' }, raw: '' }; }
+    if (path === '/user/label/setting') return { httpStatus: 200, data: { data: { label_format: 'thermal' } } };
     if (path.startsWith('/shipment/list')) {
       const q = new URLSearchParams(path.split('?')[1]);
       const page = Number(q.get('page')); const limit = Number(q.get('limit'));
@@ -193,7 +194,8 @@ test('Latest gives only labels not downloaded before; either scope records what 
   const deps = {
     login: async () => 'tok',
     ucpFetch: async (path, opts) => {
-      if (path.startsWith('/shipment/list')) {
+      if (path === '/user/label/setting') return { httpStatus: 200, data: { data: { label_format: 'thermal' } } };
+    if (path.startsWith('/shipment/list')) {
         const q = new URLSearchParams(path.split('?')[1]);
         const recs = Number(q.get('page')) === 1 ? ready.map((a) => ({ awb_number: a, ship_status: 'pending pickup' })) : [];
         return { httpStatus: 200, data: { data: { records: recs } } };
@@ -280,6 +282,14 @@ test('a part-written label PDF is fetched again, then the batch re-asked, before
   await assert.rejects(lib.labelPdf(call, awbs, serve([short]), opts), /returned 1 label pages for 3 AWBs even after waiting/);
 });
 
+test('an API login set to A4 sheets stops the build with the setting to change', async () => {
+  const xb = fakeXb({ total: 3 });
+  const a4 = async (path, opts) => (path === '/user/label/setting'
+    ? { httpStatus: 200, data: { data: { label_format: 'standard' } } } : xb.ucpFetch(path, opts));
+  await assert.rejects(endpoint.run({}, { ...xb, ucpFetch: a4 }), /Thermal 4×6/);
+  assert.deepEqual(await endpoint.labelSetting(async () => ({ httpStatus: 200, data: { data: { label_format: 'thermal' } } })), { format: 'thermal', raw: 'thermal' });
+});
+
 test('re-logs in once on a 401, and says plainly when the panel refuses the API login', async () => {
   const once = fakeXb({ total: 3, rejectFirst: 1 });
   const ok = await endpoint.run({ summaryOnly: true }, once);
@@ -319,7 +329,8 @@ function xbWithLabels(awbs) {
     asked,
     login: async () => 'tok',
     ucpFetch: async (path, opts) => {
-      if (path.startsWith('/shipment/list')) {
+      if (path === '/user/label/setting') return { httpStatus: 200, data: { data: { label_format: 'thermal' } } };
+    if (path.startsWith('/shipment/list')) {
         const page = Number(new URLSearchParams(path.split('?')[1]).get('page'));
         return { httpStatus: 200, data: { data: { records: page === 1 ? awbs.map((a) => ({ awb_number: a, ship_status: 'pending pickup' })) : [] } } };
       }

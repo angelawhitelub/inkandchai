@@ -164,6 +164,21 @@ async function readyShipments(call, { days }) {
   return out;
 }
 
+/**
+ * The login's label print setting at XpressBees: 'thermal' (one 4x6 label per
+ * page, what label-sort needs) or 'a4' (up to four labels per sheet). Each
+ * XpressBees login has its own; a login that never chose one gets A4. On
+ * 14 Nov 2026 the panel login was thermal and the API login A4, so every
+ * batch of 50 came back as 13 sheets. Returns { format, raw } or null if unreadable.
+ */
+async function labelSetting(call) {
+  const out = await call('/user/label/setting');
+  if (out.httpStatus !== 200) return null;
+  const d = (out.data && (out.data.data || out.data)) || {};
+  const raw = String(d.label_format || d.label_size || d.format || d.label_type || d.type || '').toLowerCase();
+  return { format: raw.includes('thermal') || raw.includes('4x6') ? 'thermal' : 'a4', raw: raw || '(not set)' };
+}
+
 /** Pages in a PDF, or 0 when it cannot be read (e.g. still being written). */
 async function pageCount(bytes) {
   try {
@@ -218,6 +233,13 @@ async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = 
   const shipments = await readyShipments(call, { days });
   const ready = shipments.map((r) => String(r.awb_number).trim());
   const awbs = only ? ready.filter(only) : ready;
+  if (!summaryOnly && awbs.length && !deps.skipSettingCheck) {
+    const setting = await labelSetting(call).catch(() => null);
+    if (setting && setting.format !== 'thermal') {
+      throw new XbError('XpressBees is set to print these labels on A4 sheets (4 per page) for the API login, so they cannot be sorted. '
+        + 'Set the label size to "Thermal 4×6" for that login (XpressBees → Settings → Label), then try again.', 409);
+    }
+  }
   if (summaryOnly || !awbs.length) return { awbs, ready, shipments, reverseSkipped: shipments.reverseSkipped || 0 };
 
   const chunks = [];
@@ -243,6 +265,7 @@ async function checkBatches({ days, only, maxBatches = 999, retry = true }, deps
   const call = makeCaller(deps);
   const shipments = await readyShipments(call, { days });
   const awbs = shipments.map((r) => String(r.awb_number).trim()).filter((a) => !only || only(a));
+  const setting = await labelSetting(call).catch((e) => ({ error: e.message }));
   const byAwb = new Map(shipments.map((r) => [String(r.awb_number).trim(), r]));
   const describe = (a) => {
     const r = byAwb.get(a) || {};
@@ -271,7 +294,7 @@ async function checkBatches({ days, only, maxBatches = 999, retry = true }, deps
     batches.push(b);
   }
   const bad = batches.filter((b) => b.error || b.pages !== b.awbs || (b.not_shown || []).length);
-  return { success: true, labels: awbs.length, batches: batches.length, bad: bad.length, total_ms: Date.now() - t0, bad_batches: bad, all: batches.map((b) => `${b.from}:${b.pages ?? 'x'}/${b.awbs}:${b.ms}ms`) };
+  return { success: true, label_setting: setting, labels: awbs.length, batches: batches.length, bad: bad.length, total_ms: Date.now() - t0, bad_batches: bad, all: batches.map((b) => `${b.from}:${b.pages ?? 'x'}/${b.awbs}:${b.ms}ms`) };
 }
 
 async function handle(event = {}, deps = {}) {
@@ -334,6 +357,6 @@ async function handle(event = {}, deps = {}) {
 // The Worker passes its own context as the second argument; tests use handle().
 exports.handler = (event) => handle(event, {});
 
-exports._test = { run, readyShipments, isReverse, makeCaller, istDate, UCP, readDownloaded, DOWNLOADED_KEY, handle };
+exports._test = { run, readyShipments, isReverse, labelSetting, makeCaller, istDate, UCP, readDownloaded, DOWNLOADED_KEY, handle };
 // Shared with admin-order-label.js (one order's label).
 exports.lib = { makeCaller, labelPdf, XbError, pageCount };
