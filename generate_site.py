@@ -669,6 +669,7 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '1702042431242274');
 fbq('init', '1639520197322862');
+fbq('init', '2412319575856664');
 fbq('track', 'PageView');
 
 // Standard-event helper. Lives here because it is the only code guaranteed on
@@ -702,8 +703,12 @@ src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
 /></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=2412319575856664&ev=PageView&noscript=1"
+/></noscript>
 <!-- End Meta Pixel Code -->"""
-# Two pixels, ONE loader and ONE PageView — deliberately not two pasted copies
+# Three pixels (2412319575856664 added 15 Nov 2026 at the owner's request),
+# ONE loader and ONE PageView — deliberately not pasted copies
 # of Meta's snippet. The loader starts with `if(f.fbq)return;`, so a second copy
 # no-ops its own loader but still runs `fbq('track','PageView')`, and track
 # fires for EVERY initialised pixel. Pasting the second snippet whole would
