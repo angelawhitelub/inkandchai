@@ -146,6 +146,56 @@ test('refuses to build when XpressBees returns the wrong number of pages', async
   await assert.rejects(buildSortedLabels([{ bytes, awbs: ['1001', '1002', '1003'] }]), /2 label pages for 3 AWBs/);
 });
 
+// ── A4 sheets (four labels each) ────────────────────────────────────────────
+
+/** An A4 sheet with up to four labels, each drawn as the thermal one, shifted into its quarter inside a frame. */
+async function a4Pdf(labels) {
+  const doc = await PDFDocument.create();
+  const AW = 595.28; const AH = 841.89;
+  // Real A4 labels are ~273 x 391 pt in a 298 x 421 quarter: scale the thermal drawing to that.
+  const SX = 0.95; const SY = 0.9;
+  const X = (x, dx) => (+x * SX + dx).toFixed(2); const Y = (y, dy) => (+y * SY + dy).toFixed(2);
+  const shift = (content, dx, dy) => content
+    .replace(/BT (-?[\d.]+) (-?[\d.]+) Td/g, (m, x, y) => `BT ${X(x, dx)} ${Y(y, dy)} Td`)
+    .replace(/(-?[\d.]+) (-?[\d.]+) m (-?[\d.]+) (-?[\d.]+) l/g, (m, a, b, c, d) => `${X(a, dx)} ${Y(b, dy)} m ${X(c, dx)} ${Y(d, dy)} l`);
+  for (let i = 0; i < labels.length; i += 4) {
+    const page = doc.addPage([AW, AH]);
+    let c = '';
+    labels.slice(i, i + 4).forEach((l, k) => {
+      const dx = (k % 2) * (AW / 2) + 12; const dy = (k < 2 ? AH / 2 : 0) + 14;   // top row first
+      c += shift(labelContent(l.awb, l.orderNo, l.items), dx, dy);
+    });
+    page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.flateStream(c)));
+  }
+  return doc.save();
+}
+
+test('A4 sheets of four are cut into single labels, read, sorted and stamped like thermal ones', async () => {
+  const LS = [...LABELS, { awb: '1005', orderNo: 'IC-E', items: [{ name: 'Book Y', qty: 1 }] }];
+  const bytes = await a4Pdf(LS);
+  const { PDFDocument: D } = require('pdf-lib');
+  assert.equal((await D.load(bytes)).getPageCount(), 2);
+  const { pdf, summary } = await buildSortedLabels([{ bytes, awbs: LS.map((l) => l.awb) }]);
+  assert.equal(summary.labels, 5);
+  assert.equal(summary.unread.length, 0);
+  assert.deepEqual(summary.unstamped, []);
+  const out = await D.load(pdf);
+  // pick list + 5 labels + blank
+  assert.equal(out.getPageCount(), 7);
+  const label = out.getPage(1);
+  const { width, height } = label.getSize();
+  assert.ok(width < 300 && height < 430, `cropped to one label: ${width} x ${height}`);
+  const box = label.getMediaBox();
+  // The cropped page shows exactly one requested AWB.
+  const r = readPage(label, { x: box.x, y: box.y, w: box.width, h: box.height });
+  assert.equal(r.texts.filter((t) => /^100\d$/.test(t.t)).length, 1);
+});
+
+test('an AWB on no A4 sheet stops the build', async () => {
+  const bytes = await a4Pdf(LABELS.slice(0, 2));
+  await assert.rejects(buildSortedLabels([{ bytes, awbs: ['1001', '1002', '1009'] }]), /1 are on none of them \(first: 1009\)/);
+});
+
 // ── endpoint: XpressBees panel API ──────────────────────────────────────────
 
 function fakeXb({ total = 230, rejectFirst = 0, rejectAlways = false } = {}) {
@@ -280,14 +330,6 @@ test('a part-written label PDF is fetched again, then the batch re-asked, before
   assert.equal(asks, 2);
   // Never complete: a plain error with the counts.
   await assert.rejects(lib.labelPdf(call, awbs, serve([short]), opts), /returned 1 label pages for 3 AWBs even after waiting/);
-});
-
-test('an API login set to A4 sheets stops the build with the setting to change', async () => {
-  const xb = fakeXb({ total: 3 });
-  const a4 = async (path, opts) => (path === '/user/label/setting'
-    ? { httpStatus: 200, data: { data: { label_format: 'standard' } } } : xb.ucpFetch(path, opts));
-  await assert.rejects(endpoint.run({}, { ...xb, ucpFetch: a4 }), /Thermal 4×6/);
-  assert.deepEqual(await endpoint.labelSetting(async () => ({ httpStatus: 200, data: { data: { label_format: 'thermal' } } })), { format: 'thermal', raw: 'thermal' });
 });
 
 test('re-logs in once on a 401, and says plainly when the panel refuses the API login', async () => {

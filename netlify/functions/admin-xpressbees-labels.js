@@ -169,7 +169,8 @@ async function readyShipments(call, { days }) {
  * page, what label-sort needs) or 'a4' (up to four labels per sheet). Each
  * XpressBees login has its own; a login that never chose one gets A4. On
  * 14 Nov 2026 the panel login was thermal and the API login A4, so every
- * batch of 50 came back as 13 sheets. Returns { format, raw } or null if unreadable.
+ * batch of 50 came back as 13 sheets; label-sort now cuts A4 sheets into
+ * single labels, so either works. Reported by ?check. Returns { format, raw } or null.
  */
 async function labelSetting(call) {
   const out = await call('/user/label/setting');
@@ -179,13 +180,23 @@ async function labelSetting(call) {
   return { format: raw.includes('thermal') || raw.includes('4x6') ? 'thermal' : 'a4', raw: raw || '(not set)' };
 }
 
-/** Pages in a PDF, or 0 when it cannot be read (e.g. still being written). */
-async function pageCount(bytes) {
+/** Pages in a PDF and the first page's width; 0 pages when it cannot be read. */
+async function pageInfo(bytes) {
   try {
     const { PDFDocument } = require('pdf-lib');
-    return (await PDFDocument.load(bytes, { updateMetadata: false })).getPageCount();
-  } catch { return 0; }
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const n = doc.getPageCount();
+    return { n, width: n ? doc.getPage(0).getSize().width : 0 };
+  } catch { return { n: 0, width: 0 }; }
 }
+async function pageCount(bytes) { return (await pageInfo(bytes)).n; }
+
+/**
+ * A complete label PDF for `count` AWBs: one page each (thermal), or A4
+ * sheets holding up to four each (the A4 label setting), which label-sort
+ * cuts back into single labels.
+ */
+const complete = ({ n, width }, count) => n === count || (width > 500 && n < count && n * 4 >= count);
 
 /**
  * One merged label PDF for `awbs`, with one page per AWB. XpressBees returns
@@ -210,9 +221,10 @@ async function labelPdf(call, awbs, fetchImpl = fetch, { waits = SETTLE_WAITS, a
         throw new XbError(`Label PDF download failed (HTTP ${res.status})`, 502);
       }
       const bytes = new Uint8Array(await res.arrayBuffer());
-      last = await pageCount(bytes);
+      const info = await pageInfo(bytes);
+      last = info.n;
       lastBytes = bytes;
-      if (last === awbs.length) return bytes;
+      if (complete(info, awbs.length)) return bytes;
       if (last > awbs.length) return bytes;   // label-sort refuses it with the exact counts
     }
     console.warn(`[xb-labels] batch of ${awbs.length} still ${last} pages after waiting${ask + 1 < asks ? '; asking again' : ''}`);
@@ -233,13 +245,6 @@ async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = 
   const shipments = await readyShipments(call, { days });
   const ready = shipments.map((r) => String(r.awb_number).trim());
   const awbs = only ? ready.filter(only) : ready;
-  if (!summaryOnly && awbs.length && !deps.skipSettingCheck) {
-    const setting = await labelSetting(call).catch(() => null);
-    if (setting && setting.format !== 'thermal') {
-      throw new XbError('XpressBees is set to print these labels on A4 sheets (4 per page) for the API login, so they cannot be sorted. '
-        + 'Set the label size to "Thermal 4×6" for that login (XpressBees → Settings → Label), then try again.', 409);
-    }
-  }
   if (summaryOnly || !awbs.length) return { awbs, ready, shipments, reverseSkipped: shipments.reverseSkipped || 0 };
 
   const chunks = [];
@@ -273,6 +278,7 @@ async function checkBatches({ days, only, maxBatches = 999, retry = true }, deps
       warehouse_id: r.warehouse_id, created: r.created, label: r.label ? String(r.label).replace(/^https?:\/\/([^/]+).*/, '$1') : null, ship_status: r.ship_status };
   };
   const batches = [];
+  const sources = [];
   const t0 = Date.now();
   for (let i = 0; i < awbs.length && batches.length < maxBatches; i += CHUNK) {
     const chunk = awbs.slice(i, i + CHUNK);
@@ -282,6 +288,8 @@ async function checkBatches({ days, only, maxBatches = 999, retry = true }, deps
       const bytes = await labelPdf(call, chunk, deps.fetch || fetch, retry ? { returnShort: true } : { waits: [], asks: 1, returnShort: true });
       const doc = await PDFDocument.load(bytes, { updateMetadata: false });
       b.pages = doc.getPageCount();
+      b.sheet = Math.round(doc.getPage(0).getSize().width) + 'pt wide';
+      sources.push({ bytes, awbs: chunk });
       const shown = new Set();
       for (const p of doc.getPages()) for (const x of readPage(p).texts) shown.add(x.t);
       b.not_shown = chunk.filter((a) => !shown.has(a));
@@ -293,8 +301,18 @@ async function checkBatches({ days, only, maxBatches = 999, retry = true }, deps
     b.ms = Date.now() - t;
     batches.push(b);
   }
-  const bad = batches.filter((b) => b.error || b.pages !== b.awbs || (b.not_shown || []).length);
-  return { success: true, label_setting: setting, labels: awbs.length, batches: batches.length, bad: bad.length, total_ms: Date.now() - t0, bad_batches: bad, all: batches.map((b) => `${b.from}:${b.pages ?? 'x'}/${b.awbs}:${b.ms}ms`) };
+  const bad = batches.filter((b) => b.error || (b.not_shown || []).length);
+  // The real sort over what was fetched, nothing saved or marked downloaded.
+  let build = null;
+  try {
+    const { buildSortedLabels } = require('./utils/label-sort');
+    const out = await buildSortedLabels(sources, { date: new Date() });
+    const { PDFDocument: D } = require('pdf-lib');
+    const doc = await D.load(out.pdf);
+    const sizes = [...new Set(doc.getPages().slice(1, 6).map((p) => { const z = p.getSize(); return `${Math.round(z.width)}x${Math.round(z.height)}`; }))];
+    build = { ...out.summary, unstamped: out.summary.unstamped.length, pages: doc.getPageCount(), label_sizes: sizes, bytes: out.pdf.length };
+  } catch (e) { build = { error: e.message }; }
+  return { success: true, label_setting: setting, build, labels: awbs.length, batches: batches.length, bad: bad.length, total_ms: Date.now() - t0, bad_batches: bad, all: batches.map((b) => `${b.from}:${b.pages ?? 'x'}/${b.awbs}:${b.ms}ms`) };
 }
 
 async function handle(event = {}, deps = {}) {

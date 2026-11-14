@@ -67,9 +67,18 @@ function decodeText(bytes) {
   return bytes;
 }
 
-/** Text runs with positions, and the lowest point anything is drawn at. */
-function readPage(page) {
-  const { width, height } = page.getSize();
+/**
+ * Text runs with positions, and the lowest point anything is drawn at.
+ * With `box` ({x, y, w, h} in page space), only what lies inside the box is
+ * read, in the box's own coordinates: one label cut out of an A4 sheet.
+ */
+function readPage(page, box = null) {
+  const size = page.getSize();
+  const width = box ? box.w : size.width;
+  const height = box ? box.h : size.height;
+  const ox = box ? box.x : 0;
+  const oy = box ? box.y : 0;
+  const inside = (x, y) => !box || (x >= -0.5 && x <= width + 0.5 && y >= -0.5 && y <= height + 0.5);
   const c = pageContent(page);
   const texts = [];
   const lows = [];
@@ -78,19 +87,23 @@ function readPage(page) {
   let m;
   while ((m = textRe.exec(c))) {
     const t = decodeText(unescapeLiteral(m[3])).trim();
-    const x = Number(m[1]); const y = Number(m[2]);
+    const x = Number(m[1]) - ox; const y = Number(m[2]) - oy;
+    if (!inside(x, y)) continue;
     if (t) texts.push({ x, y, t });
     lows.push(y - 3);   // descenders
   }
   const imgRe = /(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+cm\s*\/\w+\s+Do/g;
   const imgs = [];
   while ((m = imgRe.exec(c))) {
-    lows.push(Number(m[6]));
-    imgs.push({ x: Number(m[5]), y: Number(m[6]), w: Number(m[1]), h: Number(m[4]) });
+    const x = Number(m[5]) - ox; const y = Number(m[6]) - oy;
+    if (!inside(x, y)) continue;
+    lows.push(y);
+    imgs.push({ x, y, w: Number(m[1]), h: Number(m[4]) });
   }
   const lineRe = /(-?[\d.]+)\s+(-?[\d.]+)\s+m\s+(-?[\d.]+)\s+(-?[\d.]+)\s+l/g;
   while ((m = lineRe.exec(c))) {
-    const [x1, y1, x2, y2] = m.slice(1, 5).map(Number);
+    const [x1, y1, x2, y2] = m.slice(1, 5).map(Number).map((v, i) => v - (i % 2 ? oy : ox));
+    if (!inside(x1, y1) || !inside(x2, y2)) continue;
     // The label's own frame: rules drawn along the page edge (and a 1.5pt
     // tick at the origin). Both ends on the border = frame, not content.
     const onEdge = (x, y) => x < 3 || x > width - 3 || y < 3 || y > height - 3;
@@ -100,7 +113,9 @@ function readPage(page) {
   }
   const rectRe = /(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+re/g;
   while ((m = rectRe.exec(c))) {
-    const [x, y, w, h] = m.slice(1, 5).map(Number);
+    const [x0, y0, w, h] = m.slice(1, 5).map(Number);
+    const x = x0 - ox; const y = y0 - oy;
+    if (!inside(x, y)) continue;
     if (Math.abs(w) > width * 0.95 && Math.abs(h) > height * 0.9) continue;
     lows.push(Math.min(y, y + h));
   }
@@ -242,7 +257,20 @@ const shortTitle = (t) => {
   return cut.length >= 4 ? cut : String(t);
 };
 
-function stamp(page, label, total, fonts) {
+/** Draw calls shifted into a label's box, for a label cut out of a sheet. */
+function inBox(page, box) {
+  if (!box) return page;
+  const sx = (o) => ({ ...o, x: o.x + box.x, y: o.y + box.y });
+  return {
+    getSize: () => ({ width: box.w, height: box.h }),
+    drawText: (t, o) => page.drawText(t, sx(o)),
+    drawLine: (o) => page.drawLine({ ...o, start: sx(o.start), end: sx(o.end) }),
+    drawRectangle: (o) => page.drawRectangle(sx(o)),
+  };
+}
+
+function stamp(pageIn, label, total, fonts) {
+  const page = inBox(pageIn, label.box);
   const { width } = page.getSize();
   const top = label.contentBottom - 6;
   const bottom = 6;
@@ -351,6 +379,56 @@ function drawPickList(out, sorted, { width, height, fonts, title }) {
  * sources: [{ bytes, awbs }] -- each a label PDF and the AWBs it was asked for
  * (pages in any order). Returns { pdf: Uint8Array, summary }.
  */
+/**
+ * XpressBees prints "A4" labels four to a sheet (2 x 2, each in its own ruled
+ * frame) when the login's label setting is A4 -- the default for a login that
+ * never chose. Find each requested AWB on the sheets and the frame around it.
+ * Returns [{ pageIndex, awb, box }] in reading order, or throws when an AWB is
+ * on no sheet or two share a frame. Box = the label's frame plus 1 pt, so the
+ * frame sits on the cut edge and is not taken for content.
+ */
+function splitSheets(pages, awbs) {
+  const wanted = new Set(awbs.map(String));
+  const taken = new Set();
+  const out = [];
+  pages.forEach((page, pageIndex) => {
+    const { width: W, height: H } = page.getSize();
+    const cols = Math.max(1, Math.round(W / 297.6));
+    const rows = Math.max(1, Math.round(H / 420.9));
+    const cw = W / cols; const ch = H / rows;
+    const full = readPage(page);
+    const cells = new Map();
+    for (const t of full.texts) {
+      if (!wanted.has(t.t) || taken.has(t.t)) continue;
+      const col = Math.min(cols - 1, Math.max(0, Math.floor(t.x / cw)));
+      const row = Math.min(rows - 1, Math.max(0, Math.floor(t.y / ch)));
+      const key = `${row}:${col}`;
+      const prev = cells.get(key);
+      if (prev && prev.awb !== t.t) throw new Error(`Label sheet ${pageIndex + 1} shows AWBs ${prev.awb} and ${t.t} in one label; nothing was built`);
+      if (!prev) { cells.set(key, { row, col, awb: t.t }); taken.add(t.t); }
+    }
+    const found = [...cells.values()].sort((a, b) => b.row - a.row || a.col - b.col);   // top row first
+    for (const cell of found) {
+      const cx0 = cell.col * cw; const cy0 = cell.row * ch;
+      const inCell = (x, y) => x >= cx0 - 1 && x <= cx0 + cw + 1 && y >= cy0 - 1 && y <= cy0 + ch + 1;
+      const segs = full.segs.filter((sg) => inCell(sg.x1, sg.y1) && inCell(sg.x2, sg.y2));
+      // The frame: the longest rules in the cell. Fall back to the whole cell.
+      const xs = segs.flatMap((sg) => [sg.x1, sg.x2]); const ys = segs.flatMap((sg) => [sg.y1, sg.y2]);
+      let box = { x: cx0, y: cy0, w: cw, h: ch };
+      if (xs.length && Math.max(...xs) - Math.min(...xs) > cw * 0.6 && Math.max(...ys) - Math.min(...ys) > ch * 0.6) {
+        const x = Math.max(cx0, Math.min(...xs) - 1); const y = Math.max(cy0, Math.min(...ys) - 1);
+        box = { x, y, w: Math.min(cx0 + cw, Math.max(...xs) + 1) - x, h: Math.min(cy0 + ch, Math.max(...ys) + 1) - y };
+      }
+      out.push({ pageIndex, awb: cell.awb, box });
+    }
+  });
+  const missing = awbs.map(String).filter((a) => !taken.has(a));
+  if (missing.length) {
+    throw new Error(`The courier returned ${pages.length} label sheets for ${awbs.length} AWBs and ${missing.length} are on none of them (first: ${missing[0]}); nothing was built`);
+  }
+  return out;
+}
+
 async function buildSortedLabels(sources, { date = new Date() } = {}) {
   const out = await PDFDocument.create();
   const fonts = { bold: await out.embedFont(StandardFonts.HelveticaBold), regular: await out.embedFont(StandardFonts.Helvetica) };
@@ -359,6 +437,21 @@ async function buildSortedLabels(sources, { date = new Date() } = {}) {
   for (const src of sources) {
     const doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
     const pages = doc.getPages();
+    if (pages.length < src.awbs.length && pages.length && pages[0].getSize().width > 500) {
+      // A4 sheets, several labels each: copy the sheet once per label and
+      // crop each copy to that label's frame.
+      const cuts = splitSheets(pages, src.awbs);
+      const copies = await out.copyPages(doc, cuts.map((c) => c.pageIndex));
+      cuts.forEach((cut, i) => {
+        const pg = copies[i];
+        const { x, y, w, h } = cut.box;
+        pg.setMediaBox(x, y, w, h); pg.setCropBox(x, y, w, h); pg.setTrimBox(x, y, w, h); pg.setBleedBox(x, y, w, h); pg.setArtBox(x, y, w, h);
+        const read = readPage(pages[cut.pageIndex], cut.box);
+        if (!size) size = { width: read.width, height: read.height };
+        labels.push({ awb: cut.awb, page: pg, box: cut.box, contentBottom: read.contentBottom, ...parseLabel(read.texts, read.segs) });
+      });
+      continue;
+    }
     if (pages.length !== src.awbs.length) {
       throw new Error(`The courier returned ${pages.length} label pages for ${src.awbs.length} AWBs; nothing was built`);
     }
@@ -405,4 +498,4 @@ async function buildSortedLabels(sources, { date = new Date() } = {}) {
   };
 }
 
-module.exports = { buildSortedLabels, readPage, parseLabel, sortLabels, winAnsi, titleKey, rangeText, shortTitle };
+module.exports = { buildSortedLabels, splitSheets, readPage, parseLabel, sortLabels, winAnsi, titleKey, rangeText, shortTitle };
