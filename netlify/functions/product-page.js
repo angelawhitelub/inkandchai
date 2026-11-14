@@ -519,11 +519,10 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     '<div class="ship-by-box"><div class="ship-by-icon">\uD83D\uDCE6</div><div class="ship-by-text">'
     + '<div class="ship-by-label">Ships by</div>'
     + '<div class="ship-by-date">' + fmt(shipDate, 'long') + '</div>'
-    + '<div class="ship-by-sub">'
-    + (HANDLING > 0
-        ? 'Allow ' + HANDLING + ' extra ' + (HANDLING === 1 ? 'day' : 'days') + ' before dispatch'
-        : (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow'))
-    + '</div>'
+    // Handling-time books show the Ships-by date only (owner, 14 Nov 2026).
+    + (HANDLING > 0 ? '' : '<div class="ship-by-sub">'
+        + (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow')
+        + '</div>')
     + '<div class="eta-block" data-delivery-eta' + (HANDLING > 0 ? ' data-extra-days="' + HANDLING + '"' : '')
     + '><div class="eta-head">Estimated delivery</div>' + rows + '</div>'
     + '</div></div>';

@@ -1,0 +1,218 @@
+/* Product page — structure and polish (owner, 14 Nov 2026).
+   The Worker adds this to every /product/ page (withShippingCopy), baked and
+   admin-added alike, after the site theme. Colours come from the theme tokens
+   in site_theme.css, so light and dark both follow.
+
+   Structure: on desktop the buy controls (qty, Add to Cart, Buy Now, Returns)
+   move up to sit right under the price and badges, ahead of the Ships-by box,
+   the trust tiles and the genuine-copy note. On phones the buttons already
+   live in the fixed bottom bar, so the order there is unchanged.
+   Only the elements AFTER #shipBy are reordered, because sale banners, the
+   eBook format strip and the review stars are inserted above it by scripts. */
+
+/* ── Shared ─────────────────────────────────────────────────────────────── */
+html body main.wrap > section:not(.cover) .ship-by-sub:empty{ display:none !important; }
+
+/* Title block */
+html body main.wrap > section:not(.cover) > .crumb{
+  font-size:12.5px !important; letter-spacing:0 !important; text-transform:none !important;
+  margin:0 0 12px !important; color:var(--t-muted) !important; font-weight:500 !important;
+}
+html body main.wrap > section:not(.cover) > .crumb a{ color:inherit !important; text-decoration:none !important; }
+html body main.wrap > section:not(.cover) > .crumb a:hover{ color:var(--t-ink) !important; text-decoration:underline !important; text-underline-offset:3px; }
+html body main.wrap > section:not(.cover) > h1{
+  font-size:clamp(27px,3vw,38px) !important; line-height:1.14 !important; letter-spacing:-.012em !important;
+  margin:0 0 8px !important; color:var(--t-ink) !important; text-wrap:balance;
+}
+html body main.wrap > section:not(.cover) > .author{
+  font-size:15px !important; line-height:1.5 !important; margin:0 0 6px !important; color:var(--t-muted) !important;
+}
+html body main.wrap > section:not(.cover) > .author a{ color:var(--t-ink-2) !important; font-weight:600 !important; text-decoration:none !important; }
+html body main.wrap > section:not(.cover) > .author a:hover{ text-decoration:underline !important; text-underline-offset:3px; }
+
+/* Price */
+html body main.wrap > section:not(.cover) > :is(.product-price-row,.price-row){
+  display:flex !important; align-items:baseline !important; flex-wrap:wrap !important; gap:4px 12px !important;
+  margin:14px 0 8px !important; padding:16px 0 0 !important; border-top:1px solid var(--t-line) !important;
+}
+html body main.wrap > section:not(.cover) > :is(.product-price-row,.price-row) .price{
+  font-size:30px !important; font-weight:800 !important; letter-spacing:-.02em !important;
+  font-variant-numeric:tabular-nums; color:var(--t-ink) !important; line-height:1.1 !important;
+}
+html body main.wrap > section:not(.cover) > :is(.product-price-row,.price-row) .orig{
+  font-size:15px !important; color:var(--t-muted) !important; text-decoration:line-through !important; font-weight:500 !important;
+}
+html body main.wrap > section:not(.cover) > :is(.product-price-row,.price-row) .save-badge{
+  align-self:center; font-size:12.5px !important; font-weight:700 !important; letter-spacing:0 !important;
+  text-transform:none !important; padding:3px 8px !important; border-radius:6px !important; line-height:1.4 !important;
+}
+
+/* Badges under the price: one height, one radius */
+html body main.wrap > section:not(.cover) > :is(.stock,.sold-count,.prod-scarcity){
+  display:inline-flex !important; align-items:center !important; min-height:28px; margin:4px 6px 4px 0 !important;
+  padding:0 10px !important; border-radius:6px !important; font-size:12.5px !important; font-weight:600 !important;
+  letter-spacing:0 !important; text-transform:none !important; line-height:1.2 !important; vertical-align:middle; border:0 !important;
+}
+html body main.wrap > section:not(.cover) > .bsr-badge{ margin:4px 6px 4px 0 !important; font-size:12.5px !important; vertical-align:middle; }
+html body main.wrap > section:not(.cover) > .bsr-badge > span:first-child{ border-radius:6px 0 0 6px !important; padding:.38rem .6rem !important; }
+
+/* Buy buttons */
+html body main.wrap > section:not(.cover) > .actions :is(button.primary,button.secondary){
+  min-height:52px !important; border-radius:10px !important; font-size:15px !important; font-weight:700 !important;
+  letter-spacing:.005em !important; text-transform:none !important; padding:0 18px !important;
+}
+html body main.wrap > section:not(.cover) > .actions button.primary{
+  box-shadow:0 1px 2px rgba(0,0,0,.14) !important;
+}
+html body main.wrap > section:not(.cover) > .actions button.primary:hover{ transform:none !important; box-shadow:0 2px 8px rgba(0,0,0,.18) !important; }
+html body main.wrap > section:not(.cover) > .actions button.secondary{
+  background:var(--t-surface) !important; border:1.5px solid var(--t-ink) !important; color:var(--t-ink) !important;
+}
+html body main.wrap > section:not(.cover) > .actions .pdp-qty{ border-radius:10px !important; min-height:52px !important; }
+html body main.wrap > section:not(.cover) > div:has(> .pol-trigger){ margin:2px 0 0 !important; }
+html body main.wrap > section:not(.cover) .pol-trigger{
+  min-height:0 !important; padding:4px 0 !important; border:0 !important; background:none !important; box-shadow:none !important;
+  font-size:13px !important; font-weight:600 !important; color:var(--t-ink-2) !important;
+  text-decoration:underline !important; text-underline-offset:3px; text-decoration-color:var(--t-line-2) !important;
+}
+html body main.wrap > section:not(.cover) .pol-trigger:hover{ color:var(--t-ink) !important; text-decoration-color:currentColor !important; background:none !important; }
+
+/* Ships-by card: neutral surface, "Ships by <date>" on one line, line icon */
+html body main.wrap > section:not(.cover) .ship-by-box{
+  display:flex !important; gap:12px !important; align-items:flex-start !important;
+  margin:18px 0 0 !important; padding:16px 18px !important; border-radius:12px !important;
+  background:var(--t-surface) !important; border:1px solid var(--t-line-2) !important; box-shadow:none !important;
+}
+html body main.wrap > section:not(.cover) .ship-by-icon{
+  flex:none; width:20px !important; height:20px !important; margin-top:2px !important; font-size:0 !important; line-height:0 !important;
+  color:var(--t-brand); background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7h11v9H3z'/%3E%3Cpath d='M14 10h4l3 3v3h-7z'/%3E%3Ccircle cx='7' cy='18' r='1.8'/%3E%3Ccircle cx='17.5' cy='18' r='1.8'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7h11v9H3z'/%3E%3Cpath d='M14 10h4l3 3v3h-7z'/%3E%3Ccircle cx='7' cy='18' r='1.8'/%3E%3Ccircle cx='17.5' cy='18' r='1.8'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+html body main.wrap > section:not(.cover) .ship-by-text{ display:block !important; flex:1; min-width:0; }
+html body main.wrap > section:not(.cover) .ship-by-label{
+  display:inline !important; font-size:15px !important; font-weight:500 !important; letter-spacing:0 !important;
+  text-transform:none !important; color:var(--t-ink-2) !important;
+}
+html body main.wrap > section:not(.cover) .ship-by-label::after{ content:" "; }
+html body main.wrap > section:not(.cover) .ship-by-date{
+  display:inline !important; font-size:15px !important; font-weight:700 !important; color:var(--t-ink) !important;
+}
+html body main.wrap > section:not(.cover) .ship-by-sub{
+  display:block; margin-top:2px !important; font-size:13px !important; color:var(--t-muted) !important;
+}
+html body main.wrap > section:not(.cover) .ship-by-limited{ margin-top:4px !important; font-size:12.5px !important; font-weight:600 !important; letter-spacing:0 !important; text-transform:none !important; color:var(--t-sale) !important; }
+html body main.wrap > section:not(.cover) .eta-block{
+  margin-top:14px !important; padding:14px 0 0 !important; border:0 !important; border-top:1px solid var(--t-line) !important;
+  border-radius:0 !important; background:none !important;
+}
+html body main.wrap > section:not(.cover) .eta-head{
+  font-size:11px !important; letter-spacing:.12em !important; color:var(--t-muted) !important; margin-bottom:8px !important;
+}
+html body main.wrap > section:not(.cover) .eta-row{ font-size:13.5px !important; color:var(--t-ink-2) !important; }
+html body main.wrap > section:not(.cover) .eta-date{ color:var(--t-ink) !important; }
+html body main.wrap > section:not(.cover) .eta-pin-row{ display:flex !important; gap:8px !important; margin:0 0 6px !important; max-width:420px; }
+html body main.wrap > section:not(.cover) .eta-pin-input{
+  min-height:44px !important; border-radius:10px !important; padding:0 14px !important; font-size:14.5px !important;
+  background:var(--t-paper) !important; border:1px solid var(--t-line-2) !important;
+}
+html body main.wrap > section:not(.cover) .eta-pin-input:focus{ outline:none !important; border-color:var(--t-ink) !important; box-shadow:0 0 0 3px var(--t-brand-soft) !important; }
+html body main.wrap > section:not(.cover) .eta-pin-btn{
+  min-height:44px !important; border-radius:10px !important; padding:0 18px !important; font-size:13.5px !important;
+  font-weight:700 !important; letter-spacing:.01em !important; text-transform:none !important; box-shadow:none !important;
+}
+html body main.wrap > section:not(.cover) .eta-pin-geo{
+  min-height:0 !important; padding:2px 0 !important; border:0 !important; background:none !important; box-shadow:none !important;
+  font-size:13px !important; font-weight:600 !important; color:var(--t-ink-2) !important; letter-spacing:0 !important;
+  text-decoration:underline !important; text-underline-offset:3px; text-decoration-color:var(--t-line-2) !important;
+}
+html body main.wrap > section:not(.cover) .eta-pin-geo:hover{ color:var(--t-ink) !important; background:none !important; }
+html body main.wrap > section:not(.cover) .eta-pin-result{ font-size:13.5px !important; color:var(--t-ink-2) !important; }
+
+/* Trust tiles */
+html body main.wrap > section:not(.cover) > .trust{ gap:8px !important; margin:12px 0 0 !important; }
+html body main.wrap > section:not(.cover) > .trust > span{
+  background:var(--t-surface) !important; border:1px solid var(--t-line) !important; border-radius:10px !important;
+  padding:10px 12px !important; box-shadow:none !important; transform:none !important; gap:10px !important;
+}
+html body main.wrap > section:not(.cover) > .trust .ti{
+  width:32px !important; height:32px !important; flex:none; border-radius:8px !important;
+  background:var(--t-brand-soft) !important; color:var(--t-brand) !important; display:inline-flex !important; align-items:center; justify-content:center;
+}
+html body main.wrap > section:not(.cover) > .trust .ti svg{ width:18px !important; height:18px !important; }
+html body main.wrap > section:not(.cover) > .trust .tt b{ font-size:13.5px !important; font-weight:700 !important; color:var(--t-ink) !important; }
+html body main.wrap > section:not(.cover) > .trust .tt i{ font-size:12.5px !important; font-style:normal !important; color:var(--t-muted) !important; }
+html body main.wrap > section:not(.cover) > .ship-free-note{ font-size:13px !important; color:var(--t-muted) !important; margin:10px 0 0 !important; }
+
+/* Baked pages: store credibility chip and the Bookstagram card */
+html body main.wrap > section:not(.cover) > .pdp-cred{ margin:10px 0 0 !important; }
+html body main.wrap > section:not(.cover) > .pdp-cred .cred-chip{
+  border-radius:6px !important; font-size:12.5px !important; font-weight:600 !important; letter-spacing:0 !important;
+  text-transform:none !important; background:var(--t-surface-2) !important; color:var(--t-ink-2) !important; border:0 !important;
+}
+html body main.wrap > section:not(.cover) > .insta-trust{
+  margin:10px 0 0 !important; border-radius:10px !important; background:var(--t-surface) !important;
+  border:1px solid var(--t-line) !important; box-shadow:none !important; padding:12px 14px !important;
+}
+html body main.wrap > section:not(.cover) > .insta-trust .insta-trust-title{ font-size:13.5px !important; }
+html body main.wrap > section:not(.cover) > .insta-trust .insta-trust-sub{ font-size:12.5px !important; }
+
+/* Genuine-copy note (inline-styled green panel → plain card) */
+html body main.wrap > section:not(.cover) > div[style*="110,170,110"]{
+  background:var(--t-surface) !important; border:1px solid var(--t-line) !important; border-radius:10px !important;
+  padding:14px 16px !important; margin:10px 0 0 !important; gap:12px !important;
+}
+html body main.wrap > section:not(.cover) > div[style*="110,170,110"] > div:first-child{ font-size:1.15rem !important; }
+html body main.wrap > section:not(.cover) > div[style*="110,170,110"] div[style*="#6daa6d"]{
+  color:var(--t-new) !important; font-size:11px !important; letter-spacing:.12em !important; margin-bottom:4px !important;
+}
+html body main.wrap > section:not(.cover) > div[style*="110,170,110"] div[style*="line-height:1.65"]{ font-size:13.5px !important; color:var(--t-ink-2) !important; }
+
+/* About / Details */
+html body main.wrap > section:not(.cover) > :is(.desc,.details){
+  border-top:1px solid var(--t-line) !important; border-radius:0 !important; padding-top:26px !important; margin-top:30px !important;
+}
+html body main.wrap > section:not(.cover) > :is(.desc,.details) > .label{
+  font-size:11.5px !important; letter-spacing:.14em !important; color:var(--t-muted) !important; margin-bottom:12px !important; display:block;
+}
+html body main.wrap > section:not(.cover) > .details dl{
+  display:grid !important; grid-template-columns:minmax(120px,170px) 1fr !important; gap:0 !important; margin:0 !important;
+}
+html body main.wrap > section:not(.cover) > .details :is(dt,dd){
+  padding:9px 0 !important; border-bottom:1px solid var(--t-line) !important; font-size:14px !important; line-height:1.5 !important; margin:0 !important;
+}
+html body main.wrap > section:not(.cover) > .details dt{ color:var(--t-muted) !important; font-weight:500 !important; }
+html body main.wrap > section:not(.cover) > .details dd{ color:var(--t-ink) !important; font-weight:500 !important; }
+html body main.wrap > section:not(.cover) > .ic-copyright{ border-radius:10px !important; }
+
+/* ── Desktop: buy controls first ────────────────────────────────────────── */
+@media (min-width:761px){
+  html body main.wrap > section.cover{ position:sticky; top:24px; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)){ display:flex !important; flex-wrap:wrap !important; align-items:center !important; column-gap:0 !important; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > *{ flex:0 0 100%; min-width:0; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > :is(.stock,.bsr-badge,.sold-count,.prod-scarcity){ flex:0 0 auto; }
+  /* 0 = stays where it is (title, price, badges, then the buy controls),
+     1 = Returns link under the buttons, 2 = the rest in page order. */
+  html body main.wrap > section:not(.cover) > :is(#shipBy,#staticShipBy),
+  html body main.wrap > section:not(.cover) > :is(#shipBy,#staticShipBy) ~ *{ order:2; }
+  html body main.wrap > section:not(.cover) > :is(#shipBy,#staticShipBy) ~ :is(.ic-qty-limit,.actions,.fmt-panel,.eb-buy){ order:0; }
+  html body main.wrap > section:not(.cover) > :is(#shipBy,#staticShipBy) ~ :is(div:has(> .pol-trigger),#addedBanner){ order:1; }
+  html body main.wrap > section:not(.cover) > .actions{ margin:18px 0 4px !important; gap:10px !important; }
+  html body main.wrap > section:not(.cover) > .ic-qty-limit{ margin:14px 0 0 !important; }
+  html body main.wrap > section:not(.cover) > .ic-qty-limit + .actions{ margin-top:8px !important; }
+}
+
+/* ── Phones: the fixed buy bar ──────────────────────────────────────────── */
+@media (max-width:760px){
+  html body main.wrap > section:not(.cover) > h1{ font-size:26px !important; }
+  html body main.wrap > section:not(.cover) > :is(.product-price-row,.price-row) .price{ font-size:27px !important; }
+  html body main.wrap > section:not(.cover) > .actions{ border-radius:18px !important; gap:8px !important; padding:8px 8px calc(8px + env(safe-area-inset-bottom)) !important; }
+  html body main.wrap > section:not(.cover) > .actions :is(button.primary,button.secondary){ min-height:48px !important; font-size:15px !important; }
+  html body main.wrap > section:not(.cover) .ship-by-box{ padding:14px !important; }
+  html body main.wrap > section:not(.cover) .eta-pin-row{ max-width:none; }
+  html body main.wrap > section:not(.cover) > .trust > span{ padding:9px 10px !important; gap:8px !important; }
+  html body main.wrap > section:not(.cover) > .trust .ti{ width:28px !important; height:28px !important; }
+  html body main.wrap > section:not(.cover) > .trust .ti svg{ width:16px !important; height:16px !important; }
+  html body main.wrap > section:not(.cover) > .trust .tt b{ font-size:13px !important; line-height:1.3 !important; }
+  html body main.wrap > section:not(.cover) > .trust .tt i{ font-size:12px !important; line-height:1.35 !important; }
+}

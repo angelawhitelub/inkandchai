@@ -54,7 +54,7 @@ function upcoming(items, now = Date.now()) {
 function shipHolidayTags(items, now = Date.now()) {
   const list = upcoming(items, now).map((h) => ({ from: h.from, to: h.to }));
   if (!list.length) return '';
-  return `<script>window.__iacShipHolidays=${JSON.stringify(list)};</script><script src="/js/ship-holidays.js?v=20261106"></script>`;
+  return `<script>window.__iacShipHolidays=${JSON.stringify(list)};</script><script src="/js/ship-holidays.js?v=20261114"></script>`;
 }
 
 async function readHolidays(now = Date.now()) {

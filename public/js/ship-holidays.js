@@ -77,7 +77,8 @@
 
   function subLine(p) {
     if (p.closedNow) return 'Shipping holiday: dispatch resumes on ' + fmt(p.resume, 'long');
-    return 'Allow ' + p.handling + ' extra ' + (p.handling === 1 ? 'day' : 'days') + ' before dispatch, plus a shipping holiday';
+    // The Ships-by date already counts handling days and the holiday (owner, 14 Nov 2026).
+    return '';
   }
 
   var api = { fromDay: fromDay, plan: plan, subLine: subLine };
@@ -105,7 +106,7 @@
     el.innerHTML = '<div class="ship-by-box"><div class="ship-by-icon">📦</div><div class="ship-by-text">'
       + '<div class="ship-by-label">Ships by</div>'
       + '<div class="ship-by-date">' + fmt(p.ship, 'long') + '</div>'
-      + '<div class="ship-by-sub">' + subLine(p) + '</div>'
+      + (subLine(p) ? '<div class="ship-by-sub">' + subLine(p) + '</div>' : '')
       + limited
       + '<div class="eta-block" data-delivery-eta data-extra-days="' + p.extra + '">'
       + '<div class="eta-head">Estimated delivery</div>' + rows + '</div>'

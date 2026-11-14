@@ -7768,8 +7768,9 @@ function renderStaticShipBy(handling) {{
     }}).format(d);
   }}
   var shipDate = addDays(nowIST, days);
+  // Handling-time books show the Ships-by date only (owner, 14 Nov 2026).
   var sub = handling > 0
-    ? 'Allow ' + handling + ' extra ' + (handling === 1 ? 'day' : 'days') + ' before dispatch'
+    ? ''
     : (days === 0 ? 'Order now and it is dispatched today' : 'Order now to get it dispatched tomorrow');
   var limited = handling > 0 ? '<div class="ship-by-limited">⚡ Limited stock</div>' : '';
   var rows = ZONES.map(function (z) {{

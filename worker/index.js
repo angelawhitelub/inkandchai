@@ -537,11 +537,29 @@ const SHIP_NOTE_HTML = '<div class="ship-free-note" data-ship-note style="margin
   + '🚚 <strong>Free delivery</strong> on prepaid orders above ₹399 · Cash on Delivery orders ship free from ₹499 (₹40 below)</div>';
 const PROMO_HTML = '<strong>Free delivery: prepaid above ₹399 · COD ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available';
 const OLD_FAQ_SHIPPING = 'Free shipping applies on orders above ₹499.';
+// Handling-time books show the Ships-by date only (owner, 14 Nov 2026). The
+// baked pages' inline renderer still writes "Allow N extra days before
+// dispatch" under it; that expression becomes '' and pdp.css hides the empty
+// line. product-page.js and ship-holidays.js no longer write it at all.
+const OLD_HANDLING_SUB = "'Allow ' + handling + ' extra ' + (handling === 1 ? 'day' : 'days') + ' before dispatch'";
+// Product page structure and polish (public/css/pdp.css), after the site theme.
+const PDP_CSS_TAG = '<link rel="stylesheet" href="/css/pdp.css?v=20261114">';
 const NEW_FAQ_SHIPPING = 'Free shipping applies on prepaid orders above ₹399 and on cash-on-delivery orders of ₹499 or more.';
 function withShippingCopy(response) {
   let noted = false;
   let ldBuf = '';
+  let jsBuf = '';
   const out = new HTMLRewriter()
+    .on('head', { element(el) { el.append(PDP_CSS_TAG, { html: true }); } })
+    .on('script:not([src]):not([type="application/ld+json"])', {
+      text(chunk) {
+        jsBuf += chunk.text;
+        if (!chunk.lastInTextNode) { chunk.remove(); return; }
+        const whole = jsBuf;
+        jsBuf = '';
+        chunk.replace(whole.includes(OLD_HANDLING_SUB) ? whole.split(OLD_HANDLING_SUB).join("''") : whole, { html: true });
+      },
+    })
     .on('div.promo', { element(el) { el.setInnerContent(PROMO_HTML, { html: true }); } })
     .on('div.trust', { element(el) { if (!noted) { el.after(SHIP_NOTE_HTML, { html: true }); noted = true; } } })
     .on('script[type="application/ld+json"]', {

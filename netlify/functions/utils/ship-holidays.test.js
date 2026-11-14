@@ -36,7 +36,7 @@ test('handling days count open days only', () => {
   assert.equal(iso(p.ship), '2026-11-10');
   assert.equal(p.moved, true);
   assert.equal(p.closedNow, false);
-  assert.match(page.subLine(p), /Allow 2 extra days.*shipping holiday/);
+  assert.equal(page.subLine(p), '');
 });
 
 test('handling that clears the holiday is not moved', () => {
