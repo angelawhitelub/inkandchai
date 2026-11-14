@@ -24,7 +24,6 @@ const { orderShipping } = require('./utils/free-delivery');
 const { resolveProductCoupon } = require('./utils/product-coupons');
 const { siteSaleDiscount, betterOfSale } = require('./utils/site-sale');
 const { storeCodeDiscount } = require('./utils/promotions');
-const firstOrder = require('./utils/first-order');
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -138,16 +137,8 @@ exports.handler = async (event) => {
     const isPartial  = payment_mode === 'partial_cod';
     // Partial COD is a COD order (free from ₹499); full prepaid is free above ₹399.
     const shipping   = orderShipping(cart, subtotal, isPartial ? 'cod' : 'prepaid');
-    // New customers: 5% off the first order when it beats the coupon/sale
-    // (utils/first-order). Partial COD takes it too, like the site sale.
-    const buyer = {
-      phone: (customer && customer.phone) || (clientNotes && clientNotes.customer_phone) || '',
-      email: (customer && customer.email) || (clientNotes && clientNotes.customer_email) || '',
-    };
-    const couponInfo = firstOrder.better(
-      await resolveCoupon(supabase, cart, subtotal, rawCoupon, { saleOnly: isPartial }),
-      await firstOrder.firstOrderOffer(supabase, buyer, subtotal));
-    const partialDiscount = (couponInfo.source === 'site_sale' || couponInfo.source === 'first_order') ? couponInfo.discount : 0;
+    const couponInfo = await resolveCoupon(supabase, cart, subtotal, rawCoupon, { saleOnly: isPartial });
+    const partialDiscount = couponInfo.source === 'site_sale' ? couponInfo.discount : 0;
     const appliedDiscount = isPartial ? partialDiscount : couponInfo.discount;
     const fullTotal  = Math.max(1, subtotal + shipping - appliedDiscount);
     const charged    = isPartial ? Math.max(1, Math.ceil(fullTotal * 0.10)) : fullTotal;

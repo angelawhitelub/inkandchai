@@ -534,9 +534,7 @@ async function withShipHolidays(response, env) {
 // "Free delivery on ₹499+" in the promo bar and their FAQ data, and they are
 // never regenerated locally, so the copy is set here for every product page.
 const SHIP_NOTE_HTML = '<div class="ship-free-note" data-ship-note style="margin:0.6rem 0 0.2rem;font-size:0.74rem;line-height:1.55;color:var(--cream);">'
-  + '🚚 <strong>Free delivery</strong> on prepaid orders above ₹399 · Cash on Delivery orders ship free from ₹499 (₹40 below)'
-  // New-customer offer (utils/first-order): applied by the till, no code.
-  + '<br/>🎉 <strong>New here?</strong> 5% off your first order, applied automatically at checkout</div>';
+  + '🚚 <strong>Free delivery</strong> on prepaid orders above ₹399 · Cash on Delivery orders ship free from ₹499 (₹40 below)</div>';
 const PROMO_HTML = '<strong>Free delivery: prepaid above ₹399 · COD ₹499+</strong> · Prepaid offers up to <strong>15% off</strong> · COD available';
 const OLD_FAQ_SHIPPING = 'Free shipping applies on orders above ₹499.';
 // Handling-time books show the Ships-by date only (owner, 14 Nov 2026). The
