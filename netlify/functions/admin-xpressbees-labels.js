@@ -66,8 +66,13 @@ const CHUNK = 50;
 // Hitting the cap is an error, never a silent cut: a missing label is a
 // parcel nobody packs.
 const MAX_LABELS = 3000;
-// Label batches asked of XpressBees at once (each is one POST + one S3 GET).
-const PARALLEL = 3;
+// Label batches asked of XpressBees at once. One: XpressBees hands back the
+// PDF link before it has finished writing the file, and three at a time made
+// a part-written download (13 pages of 50) likely on 14 Nov 2026.
+const PARALLEL = 1;
+// A short or unreadable label PDF is fetched again after these waits (ms),
+// then the batch is asked for once more with the same waits.
+const SETTLE_WAITS = [1500, 3000, 5000, 8000];
 // Labels of shipments not yet picked up come from the panel's S3 (xbees.in);
 // already-shipped ones from shipment.xpressbees.com/assets.
 const LABEL_HOST = /^https:\/\/([\w-]+\.)*(xbees\.in|xpressbees\.com)\//;
@@ -159,15 +164,43 @@ async function readyShipments(call, { days }) {
   return out;
 }
 
-async function labelPdf(call, awbs, fetchImpl = fetch) {
-  const out = await call('/ship/assets/label', { method: 'POST', body: { awbs: awbs.join(',') }, ms: 60000 });
-  const url = out.data?.data;
-  if (out.httpStatus !== 200 || out.data?.status !== true || typeof url !== 'string' || !LABEL_HOST.test(url)) {
-    throw new XbError(`XpressBees label download failed (HTTP ${out.httpStatus}): ${out.data?.message || out.raw}`, 502);
+/** Pages in a PDF, or 0 when it cannot be read (e.g. still being written). */
+async function pageCount(bytes) {
+  try {
+    const { PDFDocument } = require('pdf-lib');
+    return (await PDFDocument.load(bytes, { updateMetadata: false })).getPageCount();
+  } catch { return 0; }
+}
+
+/**
+ * One merged label PDF for `awbs`, with one page per AWB. XpressBees returns
+ * the link before the file is complete, so a download with too few pages (or
+ * a broken one) is fetched again after a wait, and if it stays short the
+ * batch is requested afresh once. Still short after that is an error.
+ */
+async function labelPdf(call, awbs, fetchImpl = fetch, { waits = SETTLE_WAITS, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  let last = 0;
+  for (let ask = 0; ask < 2; ask++) {
+    const out = await call('/ship/assets/label', { method: 'POST', body: { awbs: awbs.join(',') }, ms: 60000 });
+    const url = out.data?.data;
+    if (out.httpStatus !== 200 || out.data?.status !== true || typeof url !== 'string' || !LABEL_HOST.test(url)) {
+      throw new XbError(`XpressBees label download failed (HTTP ${out.httpStatus}): ${out.data?.message || out.raw}`, 502);
+    }
+    for (let i = 0; i <= waits.length; i++) {
+      if (i) await sleep(waits[i - 1]);
+      const res = await fetchImpl(url);
+      if (!res.ok) {
+        if (res.status === 403 || res.status === 404) { last = 0; continue; }   // not there yet
+        throw new XbError(`Label PDF download failed (HTTP ${res.status})`, 502);
+      }
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      last = await pageCount(bytes);
+      if (last === awbs.length) return bytes;
+      if (last > awbs.length) return bytes;   // label-sort refuses it with the exact counts
+    }
+    console.warn(`[xb-labels] batch of ${awbs.length} still ${last} pages after waiting${ask ? '' : '; asking again'}`);
   }
-  const res = await fetchImpl(url);
-  if (!res.ok) throw new XbError(`Label PDF download failed (HTTP ${res.status})`, 502);
-  return new Uint8Array(await res.arrayBuffer());
+  throw new XbError(`XpressBees returned ${last} label pages for ${awbs.length} AWBs even after waiting and asking again; nothing was built. Try again in a few minutes.`, 502);
 }
 
 const istDate = (d = new Date()) => {
@@ -255,4 +288,4 @@ exports.handler = (event) => handle(event, {});
 
 exports._test = { run, readyShipments, isReverse, makeCaller, istDate, UCP, readDownloaded, DOWNLOADED_KEY, handle };
 // Shared with admin-order-label.js (one order's label).
-exports.lib = { makeCaller, labelPdf, XbError };
+exports.lib = { makeCaller, labelPdf, XbError, pageCount };

@@ -255,6 +255,31 @@ test('reverse pickups (REVERSE / R- order ids) are left out of the labels', asyn
   assert.equal(out.reverseSkipped, 3);
 });
 
+test('a part-written label PDF is fetched again, then the batch re-asked, before giving up', async () => {
+  const { lib } = require('../admin-xpressbees-labels');
+  const full = await labelPdf(LABELS.slice(0, 3));
+  const short = await labelPdf(LABELS.slice(0, 1));
+  const awbs = ['1001', '1002', '1003'];
+  const call = async () => ({ httpStatus: 200, data: { status: true, data: 'https://shipment.xpressbees.com/assets/labels/x.pdf' } });
+  const opts = { waits: [1, 1], sleep: async () => {} };
+  const serve = (list) => { let n = 0; return async () => { const b = list[Math.min(n++, list.length - 1)];
+    return b === 404 ? { ok: false, status: 404 } : { ok: true, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; }; };
+
+  // Short, then a truncated file, then complete: returned on the third try.
+  let bytes = await lib.labelPdf(call, awbs, serve([short, full.slice(0, 200), full]), opts);
+  assert.equal(await lib.pageCount(bytes), 3);
+  // Not there yet (404) counts as "wait", not a failure.
+  bytes = await lib.labelPdf(call, awbs, serve([404, full]), opts);
+  assert.equal(await lib.pageCount(bytes), 3);
+  // Short for the first link's three tries, complete on the fresh ask.
+  let asks = 0;
+  const counting = async () => { asks++; return call(); };
+  bytes = await lib.labelPdf(counting, awbs, serve([short, short, short, full]), opts);
+  assert.equal(asks, 2);
+  // Never complete: a plain error with the counts.
+  await assert.rejects(lib.labelPdf(call, awbs, serve([short]), opts), /returned 1 label pages for 3 AWBs even after waiting/);
+});
+
 test('re-logs in once on a 401, and says plainly when the panel refuses the API login', async () => {
   const once = fakeXb({ total: 3, rejectFirst: 1 });
   const ok = await endpoint.run({ summaryOnly: true }, once);
