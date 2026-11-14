@@ -198,13 +198,23 @@ test('A4 sheets of four are cut into single labels, read, sorted and stamped lik
   const out = await D.load(pdf);
   // pick list + 5 labels + blank
   assert.equal(out.getPageCount(), 7);
-  const label = out.getPage(1);
-  const { width, height } = label.getSize();
-  assert.ok(width < 300 && height < 430, `cropped to one label: ${width} x ${height}`);
-  const box = label.getMediaBox();
-  // The cropped page shows exactly one requested AWB.
-  const r = readPage(label, { x: box.x, y: box.y, w: box.width, h: box.height });
-  assert.equal(r.texts.filter((t) => /^100\d$/.test(t.t)).length, 1);
+  // Every label page, and the pick list, is 4 x 6 inches.
+  for (let i = 0; i < out.getPageCount() - 1; i++) {
+    const z = out.getPage(i).getSize();
+    assert.deepEqual([z.width, z.height], [288, 432], `page ${i + 1}`);
+  }
+  // Each label page carries its own clip + transform: five distinct crops, not one shared page.
+  const firstOps = (pg) => {
+    const c = pg.node.Contents();
+    const ref = c.asArray ? c.asArray()[0] : c;
+    const raw = Buffer.from(out.context.lookup(ref).getContents());
+    try { return require('node:zlib').inflateSync(raw).toString('latin1'); } catch { return raw.toString('latin1'); }
+  };
+  const firstRef = (pg) => { const c = pg.node.Contents(); return String(c.asArray ? c.asArray()[0] : c); };
+  assert.equal(new Set([1, 2, 3, 4, 5].map((i) => firstRef(out.getPage(i)))).size, 5);
+  // Four quarters of sheet 1 = four different crops (sheet 2's one label repeats a quarter).
+  assert.equal(new Set([1, 2, 3, 4, 5].map((i) => firstOps(out.getPage(i)))).size, 4);
+  assert.match(firstOps(out.getPage(1)), /cm[\s\S]*re[\s\S]*W[\s\S]*n/);
 });
 
 test('an AWB on no A4 sheet stops the build', async () => {

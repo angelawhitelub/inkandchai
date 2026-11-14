@@ -240,11 +240,12 @@ const istDate = (d = new Date()) => {
 };
 
 /** `only(awb)`, when given, keeps just those AWBs (the WhatsApp send skips ones already sent). */
-async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = {}) {
+async function run({ days = 30, summaryOnly = false, only = null, limit = 0 } = {}, deps = {}) {
   const call = makeCaller(deps);
   const shipments = await readyShipments(call, { days });
   const ready = shipments.map((r) => String(r.awb_number).trim());
-  const awbs = only ? ready.filter(only) : ready;
+  const picked = only ? ready.filter(only) : ready;
+  const awbs = limit > 0 ? picked.slice(0, limit) : picked;
   if (summaryOnly || !awbs.length) return { awbs, ready, shipments, reverseSkipped: shipments.reverseSkipped || 0 };
 
   const chunks = [];
@@ -329,6 +330,13 @@ async function handle(event = {}, deps = {}) {
   try {
     const seen = await readDownloaded(kv);
     const only = latest ? (awb) => !seen[awb] : null;
+    if (q.preview) {
+      // The sorted PDF of the first N labels, to look at. Not marked downloaded.
+      const out = await run({ days, limit: Math.min(100, Math.max(1, parseInt(q.preview, 10) || 12)) }, deps);
+      if (!out.awbs.length) return json(200, { success: true, labels: 0 });
+      return new Response(out.pdf, { status: 200, headers: { ...CORS, 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store, private',
+        'X-Label-Count': String(out.summary.labels), 'X-Label-Unread': String(out.summary.unread.length) } });
+    }
     if (q.sample) {
       // Diagnosis: the first batch's PDF exactly as XpressBees sends it. Not sorted, not marked downloaded.
       const call = makeCaller(deps);

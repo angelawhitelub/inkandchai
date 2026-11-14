@@ -24,7 +24,31 @@
  */
 'use strict';
 
-const { PDFDocument, PDFArray, PDFRawStream, StandardFonts, rgb, decodePDFRawStream } = require('pdf-lib');
+const { PDFDocument, PDFArray, PDFRawStream, StandardFonts, rgb, decodePDFRawStream,
+  pushGraphicsState, popGraphicsState, concatTransformationMatrix, rectangle, clip, endPath } = require('pdf-lib');
+
+// A label cut from an A4 sheet goes on a 4 x 6 inch page.
+const LABEL_4X6 = { width: 288, height: 432 };
+
+/**
+ * Turn a copy of an A4 sheet into one 4 x 6 label: everything outside the
+ * label's frame is clipped away, and the frame is scaled to fit the page,
+ * centred. Drawing done later (the stamp) lands inside the same transform, so
+ * it is placed in sheet coordinates like the label itself.
+ */
+function cropTo4x6(page, box) {
+  const { width: PW, height: PH } = LABEL_4X6;
+  const k = Math.min(PW / box.w, PH / box.h);
+  const tx = (PW - k * box.w) / 2 - k * box.x;
+  const ty = (PH - k * box.h) / 2 - k * box.y;
+  page.node.normalize();
+  page.getContentStream();   // pdf-lib's own stream for later drawing: inside the wrap
+  const start = page.createContentStream(pushGraphicsState(), concatTransformationMatrix(k, 0, 0, k, tx, ty),
+    rectangle(box.x, box.y, box.w, box.h), clip(), endPath());
+  const end = page.createContentStream(popGraphicsState());
+  page.node.wrapContentStreams(page.doc.context.register(start), page.doc.context.register(end));
+  for (const set of ['setMediaBox', 'setCropBox', 'setTrimBox', 'setBleedBox', 'setArtBox']) page[set](0, 0, PW, PH);
+}
 
 // ── reading a label ─────────────────────────────────────────────────────────
 
@@ -452,10 +476,9 @@ async function buildSortedLabels(sources, { date = new Date() } = {}) {
       const copies = await out.copyPages(doc, cuts.map((c) => c.pageIndex));
       cuts.forEach((cut, i) => {
         const pg = copies[i];
-        const { x, y, w, h } = cut.box;
-        pg.setMediaBox(x, y, w, h); pg.setCropBox(x, y, w, h); pg.setTrimBox(x, y, w, h); pg.setBleedBox(x, y, w, h); pg.setArtBox(x, y, w, h);
+        cropTo4x6(pg, cut.box);
         const read = readPage(pages[cut.pageIndex], cut.box);
-        if (!size) size = { width: read.width, height: read.height };
+        if (!size) size = { ...LABEL_4X6 };
         labels.push({ awb: cut.awb, page: pg, box: cut.box, contentBottom: read.contentBottom, ...parseLabel(read.texts, read.segs) });
       });
       continue;
