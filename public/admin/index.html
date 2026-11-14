@@ -16105,7 +16105,8 @@ async function downloadCourierLabels(btn, courier, scope) {
     const what = latest
       ? info.labels + ' new ' + c.name + ' labels since the last download' + (info.downloaded_before ? ' (' + info.downloaded_before + ' downloaded before are left out)' : '') + ':'
       : info.labels + ' ' + c.name + ' labels are ready to pickup:';
-    if (!confirm(what + '\n' + statuses + '\n\nBuild the sorted label PDF now?')) return;
+    const rev = info.reverse_skipped ? '\n\n' + info.reverse_skipped + ' reverse pickup(s) (customer returns) are left out.' : '';
+    if (!confirm(what + '\n' + statuses + rev + '\n\nBuild the sorted label PDF now?')) return;
 
     if (btn) btn.innerHTML = '<span class="spinner"></span>Building ' + info.labels + ' labels\u2026';
     const res = await adminFetch(url);

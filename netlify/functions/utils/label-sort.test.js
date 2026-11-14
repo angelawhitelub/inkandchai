@@ -240,6 +240,21 @@ test('Latest gives only labels not downloaded before; either scope records what 
   assert.equal(count(res), 3);
 });
 
+test('reverse pickups (REVERSE / R- order ids) are left out of the labels', async () => {
+  const xb = fakeXb({ total: 5 });
+  const recs = [
+    { awb_number: '1', order_id: 'IC-20261111-AAAAA', order_payment_type: 'COD', ship_status: 'pending pickup' },
+    { awb_number: '2', order_id: 'R-R-20261110-RAEZ7', order_payment_type: 'REVERSE', ship_status: 'pending pickup' },
+    { awb_number: '3', order_id: 'IC-CW-20261113-HYTFU', order_payment_type: 'PREPAID', ship_status: 'pending pickup' },
+    { awb_number: '4', order_id: 'R-R-CW-20261107-52YX9', order_payment_type: 'PREPAID', ship_status: 'pending pickup' },
+    { awb_number: '5', order_id: 'IC-20261111-BBBBB', order_payment_type: 'reverse', ship_status: 'pending pickup' },
+  ];
+  const out = await endpoint.run({ summaryOnly: true }, { ...xb,
+    ucpFetch: async () => ({ httpStatus: 200, data: { data: { records: recs } } }) });
+  assert.deepEqual(out.awbs, ['1', '3']);
+  assert.equal(out.reverseSkipped, 3);
+});
+
 test('re-logs in once on a 401, and says plainly when the panel refuses the API login', async () => {
   const once = fakeXb({ total: 3, rejectFirst: 1 });
   const ok = await endpoint.run({ summaryOnly: true }, once);

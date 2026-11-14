@@ -75,7 +75,7 @@ const LABEL_HOST = /^https:\/\/([\w-]+\.)*(xbees\.in|xpressbees\.com)\//;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key, X-Admin-Token',
-  'Access-Control-Expose-Headers': 'Content-Disposition, X-Label-Count, X-Label-Units, X-Label-Mixed, X-Label-Unread',
+  'Access-Control-Expose-Headers': 'Content-Disposition, X-Label-Count, X-Label-Units, X-Label-Mixed, X-Label-Unread, X-Label-Reverse-Skipped',
 };
 const json = (statusCode, body) => ({
   statusCode, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body),
@@ -122,7 +122,15 @@ function makeCaller(deps) {
   };
 }
 
-/** Every shipment in the Ready to Pickup tab, oldest first (the panel's own order is newest first). */
+/**
+ * Reverse pickups (customer returns) sit in the same Ready to Pickup tab but
+ * are collected from the customer, not packed here. The panel marks them
+ * order_payment_type "REVERSE" with order ids "R-…" (19 of 1,194 on 14 Nov
+ * 2026, every one carrying both marks); either one leaves the label out.
+ */
+const isReverse = (r) => String(r.order_payment_type || '').toUpperCase() === 'REVERSE' || /^R-/i.test(String(r.order_id || ''));
+
+/** Every forward shipment in the Ready to Pickup tab (reverse pickups left out). */
 async function readyShipments(call, { days }) {
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;
@@ -141,12 +149,14 @@ async function readyShipments(call, { days }) {
     }
   }
   const seen = new Set();
-  return rows.filter((r) => {
+  const out = rows.filter((r) => {
     const awb = String(r.awb_number || '').trim();
-    if (!awb || seen.has(awb)) return false;
+    if (!awb || seen.has(awb) || isReverse(r)) return false;
     seen.add(awb);
     return true;
   });
+  out.reverseSkipped = new Set(rows.filter(isReverse).map((r) => String(r.awb_number || '').trim())).size;
+  return out;
 }
 
 async function labelPdf(call, awbs, fetchImpl = fetch) {
@@ -172,7 +182,7 @@ async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = 
   const shipments = await readyShipments(call, { days });
   const ready = shipments.map((r) => String(r.awb_number).trim());
   const awbs = only ? ready.filter(only) : ready;
-  if (summaryOnly || !awbs.length) return { awbs, ready, shipments };
+  if (summaryOnly || !awbs.length) return { awbs, ready, shipments, reverseSkipped: shipments.reverseSkipped || 0 };
 
   const chunks = [];
   for (let i = 0; i < awbs.length; i += CHUNK) chunks.push(awbs.slice(i, i + CHUNK));
@@ -183,7 +193,7 @@ async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = 
     }));
   }
   const built = await buildSortedLabels(sources, { date: new Date() });
-  return { awbs, ready, shipments, ...built };
+  return { awbs, ready, shipments, reverseSkipped: shipments.reverseSkipped || 0, ...built };
 }
 
 async function handle(event = {}, deps = {}) {
@@ -201,14 +211,14 @@ async function handle(event = {}, deps = {}) {
     const seen = await readDownloaded(kv);
     const only = latest ? (awb) => !seen[awb] : null;
     if (q.format === 'json') {
-      const { awbs, ready, shipments } = await run({ days, summaryOnly: true, only }, deps);
+      const { awbs, ready, shipments, reverseSkipped } = await run({ days, summaryOnly: true, only }, deps);
       const want = new Set(awbs);
       const byStatus = {};
       for (const r of shipments) {
         if (!want.has(String(r.awb_number).trim())) continue;
         byStatus[r.ship_status || '?'] = (byStatus[r.ship_status || '?'] || 0) + 1;
       }
-      return json(200, { success: true, scope, labels: awbs.length, ready: ready.length, downloaded_before: ready.length - awbs.length, by_status: byStatus, days });
+      return json(200, { success: true, scope, labels: awbs.length, ready: ready.length, downloaded_before: ready.length - awbs.length, reverse_skipped: reverseSkipped, by_status: byStatus, days });
     }
     const out = await run({ days, only }, deps);
     if (!out.awbs.length) {
@@ -231,6 +241,7 @@ async function handle(event = {}, deps = {}) {
         'X-Label-Units': String(s.units),
         'X-Label-Mixed': String(s.mixed),
         'X-Label-Unread': String(s.unread.length),
+        'X-Label-Reverse-Skipped': String(out.reverseSkipped || 0),
       },
     });
   } catch (e) {
@@ -242,6 +253,6 @@ async function handle(event = {}, deps = {}) {
 // The Worker passes its own context as the second argument; tests use handle().
 exports.handler = (event) => handle(event, {});
 
-exports._test = { run, readyShipments, makeCaller, istDate, UCP, readDownloaded, DOWNLOADED_KEY, handle };
+exports._test = { run, readyShipments, isReverse, makeCaller, istDate, UCP, readDownloaded, DOWNLOADED_KEY, handle };
 // Shared with admin-order-label.js (one order's label).
 exports.lib = { makeCaller, labelPdf, XbError };
