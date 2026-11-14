@@ -186,6 +186,60 @@ test('reads past 1,000 shipments (the panel stops at 500) and refuses rather tha
   await assert.rejects(endpoint.run({ summaryOnly: true }, big), /More than 3000/);
 });
 
+test('Latest gives only labels not downloaded before; either scope records what it built', async () => {
+  process.env.ADMIN_SECRET = process.env.ADMIN_SECRET || 'test-admin-key';
+  const ready = ['1001', '1002'];
+  const byAwb = Object.fromEntries(LABELS.map((l) => [l.awb, l]));
+  const deps = {
+    login: async () => 'tok',
+    ucpFetch: async (path, opts) => {
+      if (path.startsWith('/shipment/list')) {
+        const q = new URLSearchParams(path.split('?')[1]);
+        const recs = Number(q.get('page')) === 1 ? ready.map((a) => ({ awb_number: a, ship_status: 'pending pickup' })) : [];
+        return { httpStatus: 200, data: { data: { records: recs } } };
+      }
+      return { httpStatus: 200, data: { status: true, data: `https://xb-ucp-files-s3.xbees.in/labels/${opts.body.awbs.replace(/,/g, '_')}.pdf` } };
+    },
+    fetch: async (u) => {
+      const awbs = u.match(/labels\/([\d_]+)\.pdf$/)[1].split('_');
+      const bytes = await labelPdf(awbs.map((a) => byAwb[a]));
+      return { ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+    },
+  };
+  const store = {};
+  deps.kv = { get: async (k) => store[k] || null, put: async (k, v) => { store[k] = v; } };
+  const ev = (scope, format) => ({ httpMethod: 'GET', headers: { 'x-admin-key': process.env.ADMIN_SECRET },
+    queryStringParameters: { ...(scope && { scope }), ...(format && { format }) } });
+  const count = (r) => Number(r.headers.get('X-Label-Count'));
+
+  // Nothing downloaded yet: latest = everything waiting.
+  let res = await endpoint.handle(ev('latest', 'json'), deps);
+  assert.equal(JSON.parse(res.body).labels, 2);
+  res = await endpoint.handle(ev('latest'), deps);
+  assert.equal(count(res), 2);
+  assert.match(res.headers.get('Content-Disposition'), /xpressbees_labels_latest_2_sorted_/);
+
+  // Same batch again: nothing new, said plainly; All still prints them.
+  res = await endpoint.handle(ev('latest'), deps);
+  assert.match(JSON.parse(res.body).message, /No new XpressBees labels since the last download\. 2 are still waiting/);
+  res = await endpoint.handle(ev('all'), deps);
+  assert.equal(count(res), 2);
+
+  // A new booking: latest gives just it; All (and the default) gives all three.
+  ready.push('1004');
+  const sum = JSON.parse((await endpoint.handle(ev('latest', 'json'), deps)).body);
+  assert.deepEqual([sum.labels, sum.ready, sum.downloaded_before], [1, 3, 2]);
+  res = await endpoint.handle(ev(null), deps);
+  assert.equal(count(res), 3);
+  res = await endpoint.handle(ev('latest'), deps);
+  assert.match(JSON.parse(res.body).message, /No new/, 'the default (all) download marked 1004 too');
+
+  // An unreadable list never hides a label.
+  deps.kv = { get: async () => { throw new Error('kv down'); }, put: async () => {} };
+  res = await endpoint.handle(ev('latest'), deps);
+  assert.equal(count(res), 3);
+});
+
 test('re-logs in once on a 401, and says plainly when the panel refuses the API login', async () => {
   const once = fakeXb({ total: 3, rejectFirst: 1 });
   const ok = await endpoint.run({ summaryOnly: true }, once);

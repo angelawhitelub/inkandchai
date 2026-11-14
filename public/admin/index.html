@@ -1131,7 +1131,8 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-outline" onclick="orderReportPdf(this,'selected')" title="The same PDF for only the orders you have ticked in the list below.">📄 Selected Orders Report (PDF)</button>
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Checks which unshipped orders XpressBees can deliver first, then lets you push only the XpressBees-unserviceable ones to the NimbusPost Orders panel, or all of them. No couriers chosen, no AWBs generated.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
-      <button class="btn-green" onclick="downloadCourierLabels(this,'xpressbees')" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at XpressBees.">🏷️ XpressBees Labels (sorted)</button>
+      <button class="btn-green" onclick="downloadCourierLabels(this,'xpressbees','latest')" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Only the XpressBees labels you have not downloaded yet (from either label button): the fresh batch, so nothing is printed twice. One PDF sorted for packing: pick list first, same-book orders grouped, book names stamped under each label. Read-only at XpressBees.">🏷️ XpressBees Labels — Latest dispatched</button>
+      <button class="btn-outline" onclick="downloadCourierLabels(this,'xpressbees','all')" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Every XpressBees shipment in Ready to Pickup, downloaded before or not, as one label PDF sorted for packing (no 500 limit). Read-only at XpressBees.">🏷️ XpressBees Labels — All ready to pickup</button>
       <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'xpressbees')" style="border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="WhatsApp the sorted XpressBees label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send XpressBees Labels to Team</button>
       <button class="btn-green" onclick="downloadCourierLabels(this,'nimbuspost')" style="background:rgba(201,168,76,0.15);border-color:rgba(201,168,76,0.5);color:var(--gold);" title="Every NimbusPost shipment in Waiting for Pickup (DTDC, Delhivery…) as one label PDF sorted for packing: pick list first, same-book orders grouped with the biggest quantities first, mixed orders after, the book names stamped under each label, and a blank page last. Read-only at NimbusPost.">🏷️ NimbusPost Labels (sorted)</button>
       <button class="btn-outline" onclick="sendCourierLabelsToTeam(this,'nimbuspost')" style="border-color:rgba(201,168,76,0.5);color:var(--gold);" title="WhatsApp the sorted NimbusPost label PDF to the packing team now. Only labels not sent before (runs by itself at 09:00 and 14:00 IST). Shows what would go first.">📲 Send NimbusPost Labels to Team</button>
@@ -16083,18 +16084,28 @@ const LABEL_COURIERS = {
   xpressbees: { name: 'XpressBees', labels: 'admin-xpressbees-labels', send: 'xpressbees-labels-send-scheduled' },
   nimbuspost: { name: 'NimbusPost', labels: 'admin-nimbuspost-labels', send: 'nimbuspost-labels-send-scheduled' },
 };
-async function downloadCourierLabels(btn, courier) {
+// scope (XpressBees only): 'latest' = labels not downloaded before, 'all' = every one waiting.
+async function downloadCourierLabels(btn, courier, scope) {
   const c = LABEL_COURIERS[courier];
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking ' + c.name + '\u2026'; }
-  const url = '/.netlify/functions/' + c.labels;
+  const url = '/.netlify/functions/' + c.labels + (scope ? '?scope=' + scope : '');
+  const latest = scope === 'latest';
   try {
-    const head = await adminFetch(url + '?format=json');
+    const head = await adminFetch(url + (scope ? '&' : '?') + 'format=json');
     const info = await head.json();
     if (!head.ok) throw new Error(info.error || ('HTTP ' + head.status));
-    if (!info.labels) { alert('No ' + c.name + ' shipments are waiting for pickup' + (info.days ? ' (last ' + info.days + ' days).' : '.')); return; }
+    if (!info.labels) {
+      alert(latest && info.ready
+        ? 'No new ' + c.name + ' labels since the last download.\n\n' + info.ready + ' are still waiting for pickup \u2014 use \u201cAll ready to pickup\u201d to print them again.'
+        : 'No ' + c.name + ' shipments are waiting for pickup' + (info.days ? ' (last ' + info.days + ' days).' : '.'));
+      return;
+    }
     const statuses = Object.entries(info.by_status || info.by_courier || {}).map(([k, v]) => '  ' + k + ': ' + v).join('\n');
-    if (!confirm(info.labels + ' ' + c.name + ' labels are ready to pickup:\n' + statuses + '\n\nBuild the sorted label PDF now?')) return;
+    const what = latest
+      ? info.labels + ' new ' + c.name + ' labels since the last download' + (info.downloaded_before ? ' (' + info.downloaded_before + ' downloaded before are left out)' : '') + ':'
+      : info.labels + ' ' + c.name + ' labels are ready to pickup:';
+    if (!confirm(what + '\n' + statuses + '\n\nBuild the sorted label PDF now?')) return;
 
     if (btn) btn.innerHTML = '<span class="spinner"></span>Building ' + info.labels + ' labels\u2026';
     const res = await adminFetch(url);

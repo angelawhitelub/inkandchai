@@ -9,6 +9,11 @@
  *   GET            the sorted PDF (attachment)
  *   GET ?format=json   only the summary: how many labels / books, nothing built
  *   ?days=N        how far back to look for pending shipments (default 30, max 90)
+ *   ?scope=latest  only labels not downloaded before (the fresh batch);
+ *   ?scope=all     every label waiting for pickup (the default).
+ *   Every PDF built here, either scope, records its AWBs as downloaded (KV
+ *   DOWNLOADED_KEY, kept 45 days), so the next "latest" starts after it. An
+ *   unreadable list reads as empty: "latest" then gives everything, never less.
  *
  * The public XpressBees API has no label download. These are the panel's own
  * endpoints (the "Ready to Pickup" tab and its bulk "Download Label"), called
@@ -24,6 +29,33 @@
 const { requireAdmin } = require('./utils/admin-auth');
 const xb = require('./utils/xpressbees');
 const { buildSortedLabels } = require('./utils/label-sort');
+
+// Lazy: the runtime shim is Worker-only and tests pass their own kv.
+const defaultKv = () => { try { return require('../../worker/shims/runtime-bindings').get('ORDER_FALLBACK'); } catch { return null; } };
+const DOWNLOADED_KEY = 'xb-labels-downloaded:v1';
+const KEEP_DAYS = 45;
+
+/** { awb: iso time downloaded } from KV, pruned. A fault reads as empty. */
+async function readDownloaded(kv) {
+  if (!kv) return {};
+  try {
+    const raw = await kv.get(DOWNLOADED_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    const cutoff = Date.now() - KEEP_DAYS * 86400e3;
+    return Object.fromEntries(Object.entries(all).filter(([, at]) => Date.parse(at) > cutoff));
+  } catch (e) {
+    console.warn('[xb-labels] downloaded list unreadable:', e.message);
+    return {};
+  }
+}
+
+async function markDownloaded(kv, seen, awbs) {
+  if (!kv) return false;
+  const at = new Date().toISOString();
+  for (const a of awbs) seen[a] = at;
+  await kv.put(DOWNLOADED_KEY, JSON.stringify(seen), { expirationTtl: KEEP_DAYS * 86400 });
+  return true;
+}
 
 const UCP = 'https://xb-ucp-wallet-api-uat.xbees.in/api/v1';   // production, despite the name
 const READY = 'pending pickup,pickup reattempt,awaiting scan';
@@ -154,7 +186,7 @@ async function run({ days = 30, summaryOnly = false, only = null } = {}, deps = 
   return { awbs, ready, shipments, ...built };
 }
 
-exports.handler = async (event = {}) => {
+async function handle(event = {}, deps = {}) {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   const block = requireAdmin(event, CORS);
   if (block) return block;
@@ -162,23 +194,38 @@ exports.handler = async (event = {}) => {
 
   const q = event.queryStringParameters || {};
   const days = Math.min(90, Math.max(1, parseInt(q.days, 10) || 30));
+  const latest = q.scope === 'latest';
+  const scope = latest ? 'latest' : 'all';
+  const kv = 'kv' in deps ? deps.kv : defaultKv();
   try {
+    const seen = await readDownloaded(kv);
+    const only = latest ? (awb) => !seen[awb] : null;
     if (q.format === 'json') {
-      const { awbs, shipments } = await run({ days, summaryOnly: true });
+      const { awbs, ready, shipments } = await run({ days, summaryOnly: true, only }, deps);
+      const want = new Set(awbs);
       const byStatus = {};
-      for (const r of shipments) byStatus[r.ship_status || '?'] = (byStatus[r.ship_status || '?'] || 0) + 1;
-      return json(200, { success: true, labels: awbs.length, by_status: byStatus, days });
+      for (const r of shipments) {
+        if (!want.has(String(r.awb_number).trim())) continue;
+        byStatus[r.ship_status || '?'] = (byStatus[r.ship_status || '?'] || 0) + 1;
+      }
+      return json(200, { success: true, scope, labels: awbs.length, ready: ready.length, downloaded_before: ready.length - awbs.length, by_status: byStatus, days });
     }
-    const out = await run({ days });
-    if (!out.awbs.length) return json(200, { success: true, labels: 0, message: `No XpressBees shipments are waiting for pickup (last ${days} days).` });
+    const out = await run({ days, only }, deps);
+    if (!out.awbs.length) {
+      return json(200, { success: true, scope, labels: 0, ready: out.ready.length,
+        message: latest && out.ready.length
+          ? `No new XpressBees labels since the last download. ${out.ready.length} are still waiting for pickup; use "All ready to pickup" to print them again.`
+          : `No XpressBees shipments are waiting for pickup (last ${days} days).` });
+    }
     const s = out.summary;
-    console.log('[xb-labels]', JSON.stringify(s));
+    console.log('[xb-labels]', scope, JSON.stringify(s));
+    try { await markDownloaded(kv, seen, out.awbs); } catch (e) { console.warn('[xb-labels] mark downloaded:', e.message); }
     return new Response(out.pdf, {
       status: 200,
       headers: {
         ...CORS,
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="xpressbees_labels_${s.labels}_sorted_${istDate()}.pdf"`,
+        'Content-Disposition': `attachment; filename="xpressbees_labels_${latest ? 'latest_' : ''}${s.labels}_sorted_${istDate()}.pdf"`,
         'Cache-Control': 'no-store, private',
         'X-Label-Count': String(s.labels),
         'X-Label-Units': String(s.units),
@@ -190,8 +237,11 @@ exports.handler = async (event = {}) => {
     console.error('[xb-labels]', e);
     return json(e instanceof XbError ? e.status : 500, { error: e.message });
   }
-};
+}
 
-exports._test = { run, readyShipments, makeCaller, istDate, UCP };
+// The Worker passes its own context as the second argument; tests use handle().
+exports.handler = (event) => handle(event, {});
+
+exports._test = { run, readyShipments, makeCaller, istDate, UCP, readDownloaded, DOWNLOADED_KEY, handle };
 // Shared with admin-order-label.js (one order's label).
 exports.lib = { makeCaller, labelPdf, XbError };
