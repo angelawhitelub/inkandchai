@@ -15,6 +15,7 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { TOKEN_TTL_MS, ADMIN_COOKIE_NAME, signAdminToken } = require('./utils/admin-auth');
+const { verifyPassword: verifyStaffPassword } = require('./utils/staff-password');
 
 const REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -29,18 +30,6 @@ function timingEq(a, b) {
   const B = Buffer.from(String(b || ''));
   if (A.length !== B.length) return false;
   try { return crypto.timingSafeEqual(A, B); } catch { return false; }
-}
-
-function verifyStaffPassword(password, encoded) {
-  try {
-    const [prefix, nRaw, rRaw, saltHex, digestHex] = String(encoded || '').split('$');
-    if (prefix !== 'scrypt' || !saltHex || !digestHex) return false;
-    const derived = crypto.scryptSync(String(password || ''), Buffer.from(saltHex, 'hex'), digestHex.length / 2, {
-      N: Number(nRaw) || 16384, r: Number(rRaw) || 8, p: 1,
-    });
-    const expected = Buffer.from(digestHex, 'hex');
-    return expected.length === derived.length && crypto.timingSafeEqual(expected, derived);
-  } catch { return false; }
 }
 
 exports.handler = async (event) => {

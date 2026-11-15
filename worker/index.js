@@ -38,6 +38,7 @@ import qtyLimits from '../netlify/functions/utils/qty-limits.js';
 import noReturns from '../netlify/functions/utils/no-returns.js';
 import productIdUtil from '../netlify/functions/utils/product-id.js';
 import weeklyPriceUtil from '../netlify/functions/utils/weekly-price.js';
+import staffSessions from '../netlify/functions/utils/staff-sessions.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
 const { routes, schedules: declaredSchedules } = routeTable;
@@ -312,6 +313,29 @@ function toEdgeCache(response, key, ctx, env) {
 
   out.headers.set('X-Edge-Cache', 'MISS');
   return out;
+}
+
+// A staff (limited admin) login that the owner disabled or re-passworded, or
+// whose password the staff member changed, ends at once instead of when its
+// signed token expires (up to 8 h). Only requests carrying a STAFF token pay
+// the one KV read; owner tokens, the legacy key and the public never do.
+// Sign-in and sign-out stay reachable so the page can recover.
+async function refuseRevokedStaff(name, request, env) {
+  if (name === 'admin-login' || name === 'admin-logout') return null;
+  const tokens = staffSessions.requestTokens((h) => request.headers.get(h));
+  if (!tokens.some((t) => staffSessions.staffEmail(staffSessions.tokenClaims(t)))) return null;
+  let revoked = null;
+  try {
+    revoked = await env.ORDER_FALLBACK.get(staffSessions.KV_KEY, { type: 'json', cacheTtl: 60 });
+  } catch (e) {
+    console.warn('[staff-sessions] revocation list unreadable:', e && e.message);
+    return null;
+  }
+  if (!staffSessions.revokedStaffToken(tokens, revoked)) return null;
+  return new Response(JSON.stringify({ error: 'This staff session has ended. Please sign in again.' }), {
+    status: 401,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
 }
 
 async function runHandler(name, request, env, ctx) {
@@ -1113,6 +1137,8 @@ export default {
       // through fetch(), so they keep working without a key.
       const refused = refuseAnonymousJobRun(name, request, JOB_NAMES);
       if (refused) return refused;
+      const endedStaff = await refuseRevokedStaff(name, request, env);
+      if (endedStaff) return endedStaff;
       // The admin editors ask with ?raw=1 for the stored (base) price, so a
       // save can never write the weekly price back and compound it.
       if (name === 'get-product-overrides' && request.method === 'GET' && !url.searchParams.has('raw')) {

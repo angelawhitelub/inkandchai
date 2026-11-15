@@ -870,6 +870,7 @@ select,input,textarea{font-size:1rem;}
     </button>
     <button class="btn-outline" id="refreshBtn" style="display:none;" onclick="fetchOrders(true)">↻ Refresh</button>
     <button class="btn-outline" id="passkeyRegBtn" style="display:none;" onclick="passkeyRegister()" title="Register Face ID / Touch ID for this device">🔐 Set up Passkey</button>
+    <button class="btn-outline" id="changePwBtn" style="display:none;" onclick="openChangePassword()" title="Replace the temporary password you were given">🔑 Change password</button>
     <button class="btn-outline" id="logoutBtn" style="display:none;" onclick="logout()">Sign Out</button>
     <a href="/" class="btn-outline" style="text-decoration:none;">← Store</a>
   </div>
@@ -2846,7 +2847,8 @@ select,input,textarea{font-size:1rem;}
     <div class="abandoned-head">
       <div>
         <h2>🔐 Limited Admin Access</h2>
-        <p>Create staff logins for refunds, returns, replacements, order handling, and customer queries. Staff cannot manage products, prices, bots, shipping rules, or other admin users.</p>
+        <p>Create customer care logins. Staff see Orders, Replacements, Missing Books, Returns, Tickets, Not Picked Up, Bot Inbox, Recover and Reels: they can update and cancel orders, fix addresses, handle returns and replacements, answer tickets and WhatsApp, and <strong>issue refunds</strong>. They cannot export the order list, manage products, prices, coupons, bots, shipping rules, couriers' bulk tools, marketing broadcasts or other admin users.</p>
+        <p class="hint">Staff sessions last 8 hours. Disabling a login or resetting its password signs it out everywhere within about a minute. Staff should replace the temporary password with 🔑 Change password after their first sign-in.</p>
       </div>
       <div class="mini-actions"><button class="btn-outline" onclick="loadAdminUsers()">↻ Refresh</button></div>
     </div>
@@ -5811,7 +5813,7 @@ function logout() {
   hideBootCheck();
   ['loginPanel','loginErr'].forEach(id => document.getElementById(id).style.display = id === 'loginPanel' ? '' : 'none');
   document.getElementById('dashboard').style.display = 'none';
-  ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar','passkeyRegBtn']
+  ['adminChip','logoutBtn','refreshBtn','exportAllBtn','exportFilteredBtn','exportBar','passkeyRegBtn','changePwBtn']
     .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('adminPass').value = '';
   // Re-check if passkeys are available so the login UI is consistent.
@@ -7981,6 +7983,7 @@ async function npBulkShip(btn) {
 
 // ── Excel Export ───────────────────────────────────────────────────────────
 async function exportExcel(mode) {
+  if (adminRole !== 'owner') return;
   let orders = mode === 'all' ? allOrders : filtered;
 
   // If "all" and we haven't loaded everything, fetch all first
@@ -13301,6 +13304,7 @@ function showCancelWindow(on, updatedAt) {
   const t = document.getElementById('cancelWindowToggle');
   const st = document.getElementById('cancelWindowState');
   if (!box || !t || !st) return;
+  if (adminRole !== 'owner') { box.style.display = 'none'; return; }
   box.style.display = 'inline-flex';
   t.checked = !!on;
   st.textContent = on ? 'ON' : 'OFF (window closed)';
@@ -18752,18 +18756,28 @@ function renderOrderDerivedPanels() {
   render();
 }
 
+// Tabs a staff (customer care) login sees. One list: the tab bar and
+// switchTab() both read it, and every endpoint these tabs call is allowed for
+// the support role in utils/admin-auth STAFF_ENDPOINT_PERMISSIONS.
+const STAFF_TABS = new Set(['orders','replacements','missingbooks','returns','tickets','notpicked','botinbox','recover','reels']);
+
 function applyRoleVisibility() {
   const limited = adminRole !== 'owner';
   document.querySelectorAll('.owner-only').forEach(el => { el.style.display = limited ? 'none' : ''; });
   if (limited) {
     // Keep the staff workflow focused on support operations.
-    const allowed = new Set(['orders','replacements','returns','tickets','notpicked','botinbox','recover','reels']);
     document.querySelectorAll('.admin-tab').forEach(btn => {
-      if (!allowed.has(btn.dataset.tab)) btn.style.display = 'none';
+      if (!STAFF_TABS.has(btn.dataset.tab)) btn.style.display = 'none';
     });
+    // Owner-only header controls: whole-store exports (every customer's
+    // phone and address), passkeys (owner sign-in) and the cancel switch.
+    ['exportAllBtn','exportFilteredBtn','exportBar','passkeyRegBtn','cancelWindowBox']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   }
+  const pw = document.getElementById('changePwBtn');
+  if (pw) pw.style.display = limited ? '' : 'none';
   const chip = document.getElementById('adminChip');
-  if (chip && limited) chip.textContent = '● Support staff';
+  if (chip && limited) chip.textContent = '● Customer care';
   if (typeof refreshTicketBadge === 'function') refreshTicketBadge();
   if (typeof refreshNotPickedBadge === 'function') refreshNotPickedBadge();
 }
@@ -19874,7 +19888,7 @@ async function delistEbook(slug) {
 
 function switchTab(tab, pushState = true) {
   if (!TABS.includes(tab)) tab = 'orders';
-  if (adminRole !== 'owner' && !new Set(['orders','replacements','missingbooks','returns','tickets','notpicked','npcancelled','botinbox','recover','reels']).has(tab)) tab = 'orders';
+  if (adminRole !== 'owner' && !STAFF_TABS.has(tab)) tab = 'orders';
 
   // Show/hide panels
   TABS.forEach(t => {
@@ -20499,7 +20513,9 @@ async function loadAdminUsers() {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const users = data.users || [];
     empty.style.display = users.length ? 'none' : '';
-    body.innerHTML = users.map(u => `<tr><td>${esc(u.email)}</td><td>Support</td><td>${u.active ? 'Active' : 'Disabled'}</td><td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td><td>${u.active ? `<button class="btn-outline" onclick="disableAdminUser('${u.id}')">Disable</button>` : '—'}</td></tr>`).join('');
+    body.innerHTML = users.map(u => `<tr><td>${esc(u.email)}</td><td>Customer care</td><td>${u.active ? 'Active' : 'Disabled'}</td><td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td><td>${u.active
+      ? `<button class="btn-outline" onclick="resetAdminUserPassword('${esc(u.email)}')">Reset password</button> <button class="btn-outline" onclick="disableAdminUser('${esc(u.id)}')">Disable</button>`
+      : `<button class="btn-outline" onclick="resetAdminUserPassword('${esc(u.email)}', true)">Re-enable</button>`}</td></tr>`).join('');
   } catch (e) {
     body.innerHTML = `<tr><td colspan="5" style="color:#c93636">${esc(e.message)}</td></tr>`;
   }
@@ -20510,6 +20526,7 @@ async function saveAdminUser() {
   const password = document.getElementById('staffPassword')?.value || '';
   const msg = document.getElementById('adminUsersMsg');
   if (!email || password.length < 10) { if (msg) msg.textContent = 'Enter an email and a password of at least 10 characters.'; return; }
+  if (!confirm(`Give ${email} customer care access? They will be able to cancel orders and issue refunds.`)) return;
   try {
     const res = await adminFetch('/.netlify/functions/admin-users', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password, role:'support' }) });
     const data = await res.json().catch(() => ({}));
@@ -20521,11 +20538,83 @@ async function saveAdminUser() {
 }
 
 async function disableAdminUser(id) {
-  if (!confirm('Disable this staff login? They will be signed out when their current token expires.')) return;
+  if (!confirm('Disable this staff login? They will be signed out everywhere within about a minute.')) return;
   const res = await adminFetch('/.netlify/functions/admin-users?id=' + encodeURIComponent(id), { method:'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return alert(data.error || 'Could not disable account');
   loadAdminUsers();
+}
+
+// Reset (or re-enable) a staff login with a new temporary password: granting
+// again on the same email replaces the password and ends its sessions.
+function resetAdminUserPassword(email, reenable) {
+  openPasswordDialog({
+    title: reenable ? `Re-enable ${email}` : `Reset password for ${email}`,
+    note: 'Set a new temporary password and share it with them privately. Their current sessions end within about a minute.',
+    fields: [{ id: 'new', label: 'New temporary password (min 10 characters)' }],
+    submit: reenable ? 'Re-enable' : 'Reset password',
+    async onSubmit(v) {
+      const res = await adminFetch('/.netlify/functions/admin-users', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password: v.new, role:'support' }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const msg = document.getElementById('adminUsersMsg');
+      if (msg) msg.textContent = `${email}: new temporary password saved. Share it privately.`;
+      loadAdminUsers();
+    },
+  });
+}
+
+// Staff: replace the temporary password. Signs this login out everywhere.
+function openChangePassword() {
+  openPasswordDialog({
+    title: 'Change your password',
+    note: 'At least 10 characters. You will be signed out and sign in again with the new password.',
+    fields: [
+      { id: 'current', label: 'Current password', autocomplete: 'current-password' },
+      { id: 'new', label: 'New password', autocomplete: 'new-password' },
+      { id: 'again', label: 'New password again', autocomplete: 'new-password' },
+    ],
+    submit: 'Change password',
+    async onSubmit(v) {
+      if (v.new !== v.again) throw new Error('The two new passwords do not match.');
+      const res = await adminFetch('/.netlify/functions/admin-change-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ current_password: v.current, new_password: v.new }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      alert('Password changed. Please sign in again with the new password.');
+      logout();
+    },
+  });
+}
+
+// A small modal with password inputs (window.prompt would show them in clear).
+function openPasswordDialog({ title, note, fields, submit, onSubmit }) {
+  const dlg = document.createElement('dialog');
+  dlg.style.cssText = 'border:1px solid var(--border,#444);border-radius:12px;padding:1.2rem 1.3rem;max-width:min(420px,92vw);background:var(--surface,#16130f);color:inherit;';
+  dlg.innerHTML = `<form method="dialog" style="display:flex;flex-direction:column;gap:.7rem;">
+      <strong style="font-size:1rem;">${esc(title)}</strong>
+      ${note ? `<span class="hint">${esc(note)}</span>` : ''}
+      ${fields.map(f => `<label style="display:flex;flex-direction:column;gap:.3rem;font-size:.8rem;">${esc(f.label)}<input type="password" data-k="${esc(f.id)}" autocomplete="${esc(f.autocomplete || 'new-password')}" required minlength="${f.id === 'current' ? 1 : 10}" style="padding:.55rem .7rem;border-radius:8px;border:1px solid var(--border,#444);background:transparent;color:inherit;"/></label>`).join('')}
+      <span class="hint" data-err style="color:#e06060;"></span>
+      <div style="display:flex;gap:.6rem;justify-content:flex-end;">
+        <button type="button" class="btn-outline" data-cancel>Cancel</button>
+        <button type="submit" class="btn-gold">${esc(submit)}</button>
+      </div></form>`;
+  document.body.appendChild(dlg);
+  const form = dlg.querySelector('form');
+  const err = dlg.querySelector('[data-err]');
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.querySelector('[data-cancel]').onclick = close;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = {};
+    form.querySelectorAll('input[data-k]').forEach(i => { v[i.dataset.k] = i.value; });
+    const btn = form.querySelector('[type=submit]');
+    btn.disabled = true; err.textContent = '';
+    try { await onSubmit(v); close(); }
+    catch (x) { err.textContent = x.message || String(x); btn.disabled = false; }
+  });
+  dlg.showModal();
+  dlg.querySelector('input')?.focus();
 }
 
 async function loadGmailStatus() {

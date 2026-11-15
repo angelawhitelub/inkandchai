@@ -52,8 +52,22 @@ const STAFF_ENDPOINT_PERMISSIONS = {
   'upload-site-reel': 'content.reels',
   'sign-product-video-upload': 'content.reels',
   'bot-inbox': 'support.inbox',
-  'whatsapp-broadcast': 'support.inbox',
+  // NOT whatsapp-broadcast: that is a marketing blast to every customer of the
+  // last 60-90 days, never a support action (removed 16 Nov 2026).
   'retry-missed-bot-replies': 'support.inbox',
+  // Customer care screens that refused staff until 16 Nov 2026 although their
+  // tabs were open to staff: Not Picked Up, Missing Books, replacements' book
+  // picker, returns' live tracking (GET only; the function refuses a staff POST).
+  'admin-not-picked-up': 'orders.read',
+  'admin-pickup-live': 'orders.read',
+  'admin-product-search': 'orders.read',
+  'get-products-admin': 'orders.read',
+  'resend-confirmation': 'orders.manage',
+  'admin-create-replacement': 'replacements.manage',
+  'return-tracking-scheduled': 'returns.read',
+  'admin-not-picked-up-cancel': 'refunds.issue',
+  // A staff member's own password.
+  'admin-change-password': 'self.password',
   'phonepe-refund': 'refunds.issue',
   'razorpay-refund': 'refunds.issue',
   'cancel-replacement': 'refunds.issue',
@@ -66,6 +80,7 @@ const STAFF_ROLE_PERMISSIONS = {
   support: new Set([
     'orders.read', 'orders.manage', 'returns.read', 'returns.manage',
     'replacements.manage', 'support.inbox', 'refunds.issue', 'content.reels',
+    'self.password',
   ]),
 };
 

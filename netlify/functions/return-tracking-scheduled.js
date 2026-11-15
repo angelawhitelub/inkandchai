@@ -34,7 +34,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { requireAdmin } = require('./utils/admin-auth');
+const { requireAdmin, getAdminPayload } = require('./utils/admin-auth');
 const { trackReturns } = require('./utils/return-tracking');
 
 const CORS = {
@@ -219,6 +219,11 @@ exports.handler = async (event = {}) => {
   if (!fromCron) {
     const block = requireAdmin(event, CORS);
     if (block) return block;
+    // Staff may read live return tracking (GET); running the refresh job is the owner's.
+    const who = getAdminPayload(event);
+    if (event.httpMethod === 'POST' && who && who.role && who.role !== 'owner') {
+      return json(403, { error: 'Only the owner can run the return tracking refresh.' });
+    }
   }
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return json(500, { error: 'Supabase is not configured' });
   const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
