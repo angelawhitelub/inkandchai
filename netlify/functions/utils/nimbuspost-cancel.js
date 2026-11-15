@@ -14,6 +14,8 @@
  * the owner notification email if needed.
  */
 
+const { cancelNimbusOrderForGood } = require('./nimbuspost-order-cancel');
+
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
 async function npAuthenticate() {
@@ -36,9 +38,33 @@ async function npAuthenticate() {
  * @param {string} awb
  * @returns {Promise<{ok:boolean, alreadyCancelled?:boolean, error?:string, data?:any}>}
  */
-async function cancelNimbusShipment(awb) {
+/**
+ * Map a v2 cancel-for-good result onto the { ok, alreadyCancelled, error }
+ * shape every caller of this file already reads.
+ */
+function fromForGood(r) {
+  return { ok: !!r.ok, alreadyCancelled: !!r.alreadyCancelled, error: r.ok ? undefined : (r.error || r.message), data: r, forGood: true };
+}
+
+/**
+ * Stop the NimbusPost order behind this AWB.
+ *
+ * Since 15 Nov 2026 this cancels the ORDER for good (v2, scope "order", see
+ * utils/nimbuspost-order-cancel), plus any re-push of the same order number:
+ * a bare shipment cancel puts the order back in New and the next bulk Ship
+ * books it again. Falls back to the v1 shipment cancel only when v2 is not set
+ * up or does not know the AWB.
+ *
+ * opts.siblings=false: cancel only the order behind this AWB (stray-AWB tool,
+ * where the same order number is live with another booking that must stay).
+ */
+async function cancelNimbusShipment(awb, opts = {}) {
   const tracking = String(awb || '').trim();
   if (!tracking) return { ok: false, error: 'No AWB provided' };
+
+  const forGood = await cancelNimbusOrderForGood({ awb: tracking, orderNumber: opts.orderNumber, siblings: opts.siblings !== false, reason: opts.reason });
+  if (forGood.handled) return fromForGood(forGood);
+  if (forGood.error && !/not configured|not found/i.test(forGood.error)) console.warn('[nimbuspost-cancel] v2 cancel unavailable, using v1 shipment cancel:', forGood.error);
 
   try {
     const token = await npAuthenticate();
@@ -158,9 +184,13 @@ async function findNimbusOrder(orderNumber, apiKey) {
   return null;
 }
 
-async function cancelNimbusOrder(orderNumber) {
+async function cancelNimbusOrder(orderNumber, opts = {}) {
   const num = String(orderNumber || '').trim();
   if (!num) return { ok: false, error: 'No order_number provided' };
+
+  // v2 first: cancels the order for good, booked or not, and every re-push of it.
+  const forGood = await cancelNimbusOrderForGood({ orderNumber: num, reason: opts.reason });
+  if (forGood.handled) return fromForGood(forGood);
   const key = process.env.NIMBUSPOST_API_KEY;
   if (!key) return { ok: false, error: 'NIMBUSPOST_API_KEY not configured' };
 

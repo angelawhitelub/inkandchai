@@ -31,6 +31,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
+const { cancelNimbusOrderForGood, withNimbus } = require('./utils/nimbuspost-order-cancel');
 const { clearXbQueueRows } = require('./utils/xb-queue-clear');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { readCancelReason } = require('./utils/cancel-reasons');
@@ -334,8 +335,17 @@ exports.handler = async (event) => {
       let courierCancel = null;
       if (status === 'cancelled' && order.status !== 'cancelled' && saved && order.tracking_id) {
         courierCancel = await cancelCourierShipment(order);
-        await recordCourierCancel(supabase, order.id, courierCancel);
       }
+      // NimbusPost: the ORDER for good, every copy (see update-order-status).
+      if (status === 'cancelled' && order.status !== 'cancelled' && saved) {
+        const np = await cancelNimbusOrderForGood({
+          orderNumber: order.razorpay_order_id || order.id,
+          awb: /xpress|xbees/i.test(String(order.courier_name || '')) ? undefined : order.tracking_id,
+          reason: (cancelReason && !cancelReason.error && cancelReason.label) || 'Order cancelled by the store',
+        }).catch((e) => ({ handled: false, error: e.message }));
+        courierCancel = withNimbus(courierCancel, np);
+      }
+      if (courierCancel) await recordCourierCancel(supabase, order.id, courierCancel);
       if (status === 'cancelled' && order.status !== 'cancelled' && saved && order.razorpay_order_id) {
         xbQueueIds.push(order.razorpay_order_id);
       }

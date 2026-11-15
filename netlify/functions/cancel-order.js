@@ -416,12 +416,15 @@ exports.handler = async (event) => {
     const displayId = order.razorpay_order_id || order.id;
     let npResult, npWhat;
     if (xbStop && xbStop.ok) {
-      // Stopped at XpressBees above; NimbusPost does not know this AWB.
+      // Stopped at XpressBees above. A copy pushed to NimbusPost as well is a
+      // second booking waiting to happen: cancel that ORDER for good too.
       npWhat = `XpressBees AWB ${order.tracking_id}`;
-      npResult = { ok: true, skipped: 'xpressbees' };
+      npResult = order.nimbus_pushed_at ? await cancelNimbusOrder(displayId) : { ok: true, skipped: 'xpressbees' };
     } else if (order.tracking_id) {
+      // Cancels the NimbusPost ORDER for good (v2 scope "order"), not just the
+      // AWB, so it cannot sit in New and be booked again.
       npWhat = `AWB ${order.tracking_id}`;
-      npResult = await cancelNimbusShipment(order.tracking_id);
+      npResult = await cancelNimbusShipment(order.tracking_id, { orderNumber: displayId, reason: 'Buyer cancelled' });
     } else {
       npWhat = `order ${displayId}`;
       npResult = await cancelNimbusOrder(displayId);

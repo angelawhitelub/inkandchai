@@ -20,6 +20,7 @@ const { sendWhatsApp } = require('./utils/whatsapp');
 const { sendEmail } = require('./utils/email');
 const { requireAdmin } = require('./utils/admin-auth');
 const { cancelCourierShipment, recordCourierCancel } = require('./utils/courier-shipment-cancel');
+const { cancelNimbusOrderForGood, withNimbus } = require('./utils/nimbuspost-order-cancel');
 const { clearXbQueueRows } = require('./utils/xb-queue-clear');
 const { buildTrackingUrl } = require('./utils/tracking-url');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
@@ -212,8 +213,20 @@ exports.handler = async (event) => {
     let courierCancel = null;
     if (status === 'cancelled' && previousOrder.status !== 'cancelled' && previousOrder.tracking_id) {
       courierCancel = await cancelCourierShipment(previousOrder);
-      await recordCourierCancel(supabase, id, courierCancel);
     }
+    // NimbusPost: cancel the ORDER for good (v2 scope "order"), every copy of
+    // it, booked or still in New -- not just the AWB, which would leave it in
+    // New to be booked again (owner, 15 Nov 2026). Looked up even when our row
+    // has no NimbusPost AWB: a second booking there is exactly what slipped by.
+    if (status === 'cancelled' && previousOrder.status !== 'cancelled') {
+      const np = await cancelNimbusOrderForGood({
+        orderNumber: previousOrder.razorpay_order_id || previousOrder.id,
+        awb: /xpress|xbees/i.test(String(previousOrder.courier_name || '')) ? undefined : previousOrder.tracking_id,
+        reason: (cancelReason && !cancelReason.error && cancelReason.label) || 'Order cancelled by the store',
+      }).catch((e) => ({ handled: false, error: e.message }));
+      courierCancel = withNimbus(courierCancel, np);
+    }
+    if (courierCancel) await recordCourierCancel(supabase, id, courierCancel);
 
     // And take it off the XpressBees panel's Pending list, where the channel
     // importer leaves it bookable (unbooked rows only; see utils/xb-queue-clear).

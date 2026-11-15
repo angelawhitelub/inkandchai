@@ -45,5 +45,7 @@ test('the WhatsApp bot stops XpressBees first too', () => {
   const stop = src.indexOf('xbStop = await stopXpressbeesFirst(target)');
   const flip = src.indexOf("// Cancel + auto-refund (notifyOrderCancelled");
   assert.ok(stop > 0 && stop < flip);
-  assert.match(src, /xbStop && xbStop\.ok\s*\? \{ ok: true, skipped: 'xpressbees' \}/);
+  // The XpressBees AWB is not sent to NimbusPost; a copy of the order pushed
+  // there too is cancelled for good (15 Nov 2026), or it could be booked again.
+  assert.match(src, /xbStop && xbStop\.ok\s*\? \(target\.nimbus_pushed_at \? await cancelNimbusOrder\(displayId\) : \{ ok: true, skipped: 'xpressbees' \}\)/);
 });

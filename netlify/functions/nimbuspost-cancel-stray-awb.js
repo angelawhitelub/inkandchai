@@ -75,7 +75,10 @@ async function cancelStray({ orderId, awb, dryRun }, deps = {}) {
   }
   if (dryRun) return { status: 200, body: { ...summary, action: 'would_cancel', dry_run: true } };
 
-  const r = await (deps.cancel || np.cancelNimbusShipment)(awb);
+  // Cancels the NimbusPost ORDER behind this AWB for good. Its siblings (same
+  // order number) only when our order is cancelled too; otherwise the order is
+  // live on another booking that must stay.
+  const r = await (deps.cancel || np.cancelNimbusShipment)(awb, { siblings: reason === 'order_cancelled_here', orderNumber: orderId });
   if (!r.ok) return { status: 502, body: { ...summary, action: 'error', error: r.error || 'NimbusPost refused' } };
   return { status: 200, body: { ...summary, action: r.alreadyCancelled ? 'already_cancelled' : 'cancelled' } };
 }

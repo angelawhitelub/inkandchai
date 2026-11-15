@@ -1816,10 +1816,12 @@ async function cancelOrderViaBot(phone, args = {}) {
     // and could still be shipped. Mirror the website cancellation endpoint:
     // cancel by AWB when present, otherwise by the IC order number in the panel.
     const displayId = target.razorpay_order_id || target.id;
+    // NimbusPost: the ORDER for good (v2 scope "order"), every copy of it, so
+    // nothing is left in New to be booked again.
     const npResult = xbStop && xbStop.ok
-      ? { ok: true, skipped: 'xpressbees' }
+      ? (target.nimbus_pushed_at ? await cancelNimbusOrder(displayId) : { ok: true, skipped: 'xpressbees' })
       : target.tracking_id
-        ? await cancelNimbusShipment(target.tracking_id)
+        ? await cancelNimbusShipment(target.tracking_id, { orderNumber: displayId, reason: 'Buyer cancelled on WhatsApp' })
         : await cancelNimbusOrder(displayId);
     if (!npResult.ok) {
       console.error(`[WHATSAPP-CANCEL] NimbusPost cancel failed for ${displayId}: ${npResult.error}`);
