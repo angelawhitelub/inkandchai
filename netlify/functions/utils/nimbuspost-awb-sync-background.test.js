@@ -78,3 +78,18 @@ test('a re-push suffix maps back to the order, and a code that merely starts wit
   collectRows({ data: [{ order_number: 'IC-20260925-10SZ9-c', awb_number: '1234567890', id: 9 }] }, map);
   assert.equal(map.get('IC-20260925-10SZ9').awb, '1234567890');
 });
+
+test('a cancel by us or the customer is never re-shipped on a new AWB (15 Nov 2026)', () => {
+  const { storeCancelled } = require('../nimbuspost-awb-sync-background')._test;
+  // admin cancel with a reason
+  assert.equal(storeCancelled({ status: 'cancelled', cancellation_source: 'admin', cancellation_reason: 'Customer request' }), true);
+  // bulk/admin cancel with no stamps and no courier cancel event
+  assert.equal(storeCancelled({ status: 'cancelled' }), true);
+  // customer asked to cancel; the row says shipped
+  assert.equal(storeCancelled({ status: 'shipped', cancellation_requested_at: '2026-11-15T13:27:44Z' }), true);
+  assert.equal(storeCancelled({ status: 'shipped', late_cancel_at: '2026-10-13T00:00:00Z' }), true);
+  // the courier cancelled it (NimbusPost webhook), nothing of ours: re-ship allowed
+  assert.equal(storeCancelled({ status: 'cancelled', last_nimbuspost_status: 'Cancelled' }), false);
+  assert.equal(storeCancelled({ status: 'shipped' }), false);
+  assert.equal(storeCancelled({ status: 'paid' }), false);
+});

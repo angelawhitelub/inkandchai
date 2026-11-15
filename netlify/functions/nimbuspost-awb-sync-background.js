@@ -320,6 +320,25 @@ function reshipPatch(order, hit, now) {
   };
 }
 
+/**
+ * Cancelled by US or by the customer -- never re-shipped on a new AWB.
+ *
+ * 15 Nov 2026: the old cancels only cancelled the NimbusPost SHIPMENT, which
+ * left the order in NimbusPost's New tab; the next bulk Ship booked it again,
+ * and this job then took the new AWB as a deliberate re-ship: it flipped
+ * cancelled orders back to shipped, cleared the cancellation and told the
+ * customer it had shipped (IC-20261111-XQJGD, whose customer had asked to
+ * cancel that same day, and IC-20261110-JA289). Only a cancel that came from
+ * the courier (the webhook's last_nimbuspost_status, nothing of ours stamped)
+ * is still the "re-shipped by hand in the panel" case this job exists for.
+ */
+function storeCancelled(order) {
+  if (order.late_cancel_at || order.cancellation_requested_at) return true;
+  if (String(order.status || '').toLowerCase() !== 'cancelled') return false;
+  if (order.cancellation_source || order.cancellation_reason) return true;
+  return !/cancel/i.test(String(order.last_nimbuspost_status || ''));
+}
+
 // A re-ship older than this gets its tracking corrected silently. Telling
 // someone their order "has shipped" weeks after they received it reads as a
 // broken system, and the tracking link is what actually needed fixing.
@@ -355,7 +374,9 @@ async function syncReassignedAwbs(supabase, awbMap, summary) {
   // Matches are rare, so the full row is fetched per match instead, below.
   // late_cancel_at: a customer cancel whose status later slid back to
   // 'shipped' must still never be re-shipped (IC-20261006-HF8JF, 13 Oct 2026).
-  const SCAN_COLS = 'id,razorpay_order_id,tracking_id,status,late_cancel_at';
+  // cancellation_*, last_nimbuspost_status: storeCancelled() below (15 Nov 2026).
+  const SCAN_COLS = 'id,razorpay_order_id,tracking_id,status,late_cancel_at,'
+    + 'cancellation_requested_at,cancellation_source,cancellation_reason,last_nimbuspost_status';
   const orders = [];
   for (let from = 0; from < 6000; from += 1000) {
     const { data, error } = await supabase
@@ -382,7 +403,7 @@ async function syncReassignedAwbs(supabase, awbMap, summary) {
 
     // Never act on an order whose money or delivery is already settled. Report
     // it so a human decides — silence here is how a refunded order gets shipped.
-    if (REVIEW_ONLY_STATUSES.includes(order.status) || order.late_cancel_at) {
+    if (REVIEW_ONLY_STATUSES.includes(order.status) || storeCancelled(order)) {
       summary.reawb_needs_review.push({
         order: order.razorpay_order_id || order.id,
         status: order.status,
@@ -589,6 +610,7 @@ exports.handler = async (event) => {
 };
 
 exports._test = {
+  storeCancelled,
   normalizeOrderNumber, orderRowsFromResponse, paginationFromResponse,
   awbFromRow, orderNumberFromRow, collectRows, buildListUrl,
   fetchNimbusAwbMap, rowSeq, rowCreated, reshipPatch, appendPreviousAwb, updateOrderTolerant,
