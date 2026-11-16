@@ -100,6 +100,60 @@ gtag('config', 'G-ZPZDFWMDP6');
 </script>
 <!-- End Google Analytics 4 -->
 <!--IAC-THEME--><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"/><link rel="stylesheet" href="/css/theme-886fa54b.css"/><script src="/js/site-feedback.js" defer></script><script src="/js/ad-click.js" defer></script><script src="/js/festive-sale.js" defer></script><!--/IAC-THEME-->
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1702042431242274');
+fbq('init', '1639520197322862');
+fbq('init', '2412319575856664');
+fbq('init', '2143315862989059');
+fbq('track', 'PageView');
+
+// Standard-event helper. Lives here because it is the only code guaranteed on
+// every page — checkout has its own cart implementation and does not load
+// cart.js, so a helper defined there would not exist where Purchase fires.
+// fbq('track') reports to every initialised pixel, so one call feeds both.
+// dedupKey (optional) makes an event fire once per order however many times the
+// success screen is re-rendered or reloaded.
+window.iacMeta = function(event, params, dedupKey) {
+  if (typeof fbq !== 'function') return;
+  if (dedupKey) {
+    try { if (localStorage.getItem(dedupKey)) return; } catch (e) {}
+  }
+  try {
+    fbq('track', event, params || {});
+    if (dedupKey) localStorage.setItem(dedupKey, '1');
+  } catch (e) {}
+};
+// content_ids for a cart, in the shape Meta matches catalogue items on.
+window.iacMetaIds = function(cart) {
+  try {
+    return (cart || []).map(function(i) {
+      return String(i.id || i.url || i.slug || '');
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1702042431242274&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1639520197322862&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=2412319575856664&ev=PageView&noscript=1"
+/></noscript>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=2143315862989059&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
 </head>
 <body>
 <!--IAC-SHELL--><!-- Mobile bottom nav — injected site-wide by the app-shell pass in generate_site.py. Edit it there, not here. -->

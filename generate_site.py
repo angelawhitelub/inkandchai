@@ -12739,6 +12739,30 @@ if GA4_MEASUREMENT_ID:
 else:
     print("Skipped: GA4 tag (set GA4_MEASUREMENT_ID to enable)")
 
+# ── Meta pixels, everywhere a shopper browses ─────────────────────────────────
+#
+# Same reasoning as the GA4 pass: only some writers call with_meta_pixel(), so
+# the SEO landing pages (books-under-299, dark-romance-books, …; also the shell
+# the /best-books/ reading lists render into), category sub-pages and the
+# hand-written policy pages shipped with no pixel at all until 17 Nov 2026.
+#
+# Left out on purpose: admin (staff traffic), offline (service-worker
+# fallback), and pages opened from a customer's personal link — order-help,
+# refund-upi, review, support, copyright — whose URLs carry order ids or
+# signed tokens that a pixel would send to Meta.
+_NO_PIXEL_DIRS = {"admin", "offline", "order-help", "refund-upi", "review", "support", "copyright"}
+_public = Path(__file__).parent / "public"
+_pixeled = 0
+for _page in sorted(_public.rglob("*.html")):
+    if _NO_PIXEL_DIRS.intersection(_page.relative_to(_public).parts):
+        continue
+    _html = _page.read_text(encoding="utf-8")
+    if "connect.facebook.net/en_US/fbevents.js" in _html or "</head>" not in _html:
+        continue
+    _page.write_text(_html.replace("</head>", META_PIXEL_CODE + "\n</head>", 1), encoding="utf-8")
+    _pixeled += 1
+print(f"Generated: Meta pixels on {_pixeled} more pages")
+
 # ── Site theme ────────────────────────────────────────────────────────────────
 # Last pass on purpose: site_theme.css has to be the final stylesheet in <head>
 # on every page to settle type, pills and palette over the per-page styles.
