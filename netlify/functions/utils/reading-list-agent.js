@@ -149,6 +149,10 @@ Rules:
 - Choose 12 to 20 picks, ONLY from the candidates, by id, best and most fitting first. Never invent books.
 - Skip candidates that do not truly fit the topic, duplicates of the same book, and used/"preloved" copies.
 - If the topic is "Books like X", never pick X itself, nor its other editions, summaries, workbooks or combos that include it.
+- Prefer books you recognise. If you are not sure a candidate is a genuine published book by that author (catalogue listings can be wrong), skip it.
+- For a series, pick the first book or one strong entry point, not several volumes of the same series, unless the topic is that series.
+- Never call a book new, upcoming, anticipated or the latest: the page stays up for years.
+- Write author names in natural order ("Paulo Coelho", not "Coelho Paulo").
 - The candidate "author" field is sometimes a shelf or series label (e.g. "Crossword Recommends", "Daily Habits", "Emotional Intelligence"). In "by", give only a real person's name you are sure of; otherwise leave it empty.
 - FAQ answers may only state facts about books on this list or give general reading advice. Never say other editions, translations or formats are available.
 - Use "group" only when 2-4 groups genuinely help readers (e.g. "Start here", "If you want something lighter"); otherwise leave it out of every pick.
@@ -208,7 +212,7 @@ async function searchCandidates(queries, supabase, { perQuery = 10, max = 90 } =
 }
 
 // ── Validation ──────────────────────────────────────────────────────────────
-const BANNED = /https?:|www\.|<|>|\bdelve|\btapestry|\bgame-?changer/i;
+const BANNED = /https?:|www\.|<|>|\bdelve|\btapestry|\bgame-?changer|\bupcoming\b|\banticipated\b|\blatest (?:book|release|instal)/i;
 function checkText(label, value, min, max, errors) {
   const s = String(value || '').trim();
   if (s.length < min || s.length > max) errors.push(`${label} is ${s.length} characters (want ${min}-${max})`);
@@ -226,16 +230,23 @@ function likeSubject(topic) {
 }
 
 /** A shelf or series label in the author field is not an author. */
-const NOT_A_PERSON = /\b(recommends?|habits?|intelligence|editions?|collections?|combo|bestsellers?|series|books?|classics?|publications?|press|publishers?|unknown|various)\b/i;
+const NOT_A_PERSON = /\b(recommends?|habits?|intelligence|editions?|collections?|combo|bestsellers?|series|books?|classics?|publications?|press|publishers?|unknown|various|paperback|hardcover|hb|pb)\b/i;
 function personName(by) {
   const t = String(by || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   // A full name: "Stephen" alone (a cut-off catalogue field) is not credited.
   return t && !NOT_A_PERSON.test(t) && /\S\s+\S/.test(t) ? t : '';
 }
 
+/** Catalogue junk out of a display name: hashtags, "| Hindi", format words, "by Author". */
+const FORMAT = /\s*\((?:paperback|hardcover|hard cover|hb|pb|lead title|pocket classic|penguin classics|tbp|[^)]*\bedition)\)|\s+\b(?:paperback|hardcover|hb)\b\.?$/gi;
+function cleanName(name) {
+  return String(name || '').replace(/#\w+/g, ' ').split(/\s*\|/)[0].replace(FORMAT, '').replace(FORMAT, '')
+    .replace(/\s+by\s+[^,()]+$/i, '').replace(/\s+/g, ' ').replace(/[\s.,:;–—-]+$/, '').trim();
+}
+
 /** A long catalogue title is cut at a word, not a reason to throw the list away. */
 function shortName(name) {
-  const t = String(name || '').replace(/\s+/g, ' ').trim();
+  const t = cleanName(name);
   if (t.length <= 90) return t;
   const cut = t.slice(0, 88);
   return `${cut.slice(0, cut.lastIndexOf(' ') > 40 ? cut.lastIndexOf(' ') : 88).replace(/[\s,:;–—-]+$/, '')}…`;
@@ -259,11 +270,16 @@ function validateWritten(out, candidates, { slug, topic, maxPrice }) {
   for (const p of Array.isArray(out.picks) ? out.picks : []) {
     const c = byId.get(String(p && p.id || ''));
     if (!c) { errors.push(`pick ${p && p.id} is not a candidate`); continue; }
-    if (seen.has(c.slug) || seen.has(`t:${titleKey(c.title)}`)) continue;
-    seen.add(c.slug); seen.add(`t:${titleKey(c.title)}`);
+    const tk = titleKey(cleanName(c.title)).replace(/(?: \d+)+$/, '');   // "… 2.0", "… 20"
+    // Same book, other edition: one key starts with the other ("A Short History
+    // of Nearly Everything 2.0", "The Little Prince & Letter to a Hostage").
+    const sameBook = [...seen].some((k) => k.startsWith('t:') && Math.min(k.length - 2, tk.length) >= 10
+      && (k.slice(2).startsWith(tk) || tk.startsWith(k.slice(2))));
+    if (seen.has(c.slug) || sameBook) continue;
+    seen.add(c.slug); seen.add(`t:${tk}`);
     list.picks.push({
       slug: c.slug,
-      name: checkText(`name of ${p.id}`, shortName(String(p.name || cleanTitle(c.title) || c.title).replace(/\s+by\s+[^,()]+$/i, '')), 1, 90, errors),
+      name: checkText(`name of ${p.id}`, shortName(p.name || cleanTitle(c.title) || c.title), 1, 90, errors),
       by: personName(p.by),
       note: checkText(`note for ${p.id}`, p.note, 50, 320, errors),
       ...(p.group ? { group: checkText(`group of ${p.id}`, p.group, 2, 50, errors) } : {}),
@@ -282,8 +298,10 @@ function validateWritten(out, candidates, { slug, topic, maxPrice }) {
 }
 
 function slugFor(planSlug, topic, taken) {
-  let s = String(planSlug || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
-  if (!SLUG_RE.test(s) || s.length < 8) s = topicKey(topic).replace(/₹/g, '').trim().replace(/\s+/g, '-').slice(0, 80);
+  // The URL is the search: "Books like Ikigai" -> books-like-ikigai, not the
+  // planner's padded "books-like-ikigai-mindfulness-purpose".
+  let s = topicKey(topic).replace(/₹/g, '').trim().replace(/\s+/g, '-').slice(0, 80);
+  if (!SLUG_RE.test(s) || s.length < 8) s = String(planSlug || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
   let out = s;
   for (let i = 2; taken.has(out); i += 1) out = `${s}-${i}`;
   return out;
@@ -407,7 +425,7 @@ function isDue(doc, now = Date.now()) {
 }
 
 module.exports = {
-  likeSubject, personName,
+  likeSubject, personName, cleanName,
   readDoc, writeDoc, generateOne, applyAction, isDue, nextTopic, cleanTitle, searchCandidates,
   validateWritten, slugFor, openaiJson, SEED_TOPICS, DEFAULT_SETTINGS, KEY,
 };

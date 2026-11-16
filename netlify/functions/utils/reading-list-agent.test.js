@@ -92,9 +92,26 @@ test('"books like X" never lists X; shelf labels are not authors', () => {
   assert.equal(v.list.picks[0].by, '');
 });
 
+test('catalogue junk is cleaned out of names; editions of one book count once', () => {
+  assert.equal(agent.cleanName("Man's Search for Meaning #Trending"), "Man's Search for Meaning");
+  assert.equal(agent.cleanName('The Perfect Widow Psychological Thriller|Suspense |Crime Mystery'), 'The Perfect Widow Psychological Thriller');
+  assert.equal(agent.cleanName('Invisible Girl (Lead Title)'), 'Invisible Girl');
+  assert.equal(agent.cleanName('The Zahir: A Novel of Obsession Paperback'), 'The Zahir: A Novel of Obsession');
+  assert.equal(agent.cleanName('Mother of Death and Dawn (HB)'), 'Mother of Death and Dawn');
+  assert.equal(agent.personName('Harmann Hardcover'), '');
+  const eds = ['A Short History of Nearly Everything 20 (Tbp)', 'A Short History of Nearly Everything 2.0', 'The Little Prince (Pocket Classic)', 'The Little Prince & Letter to a Hostage']
+    .map((title, i) => ({ slug: `e-${i}`, title, author: '' }));
+  const v = agent.validateWritten(fakeWriter(), [...eds, ...candidateBooks.slice(4)], { slug: 's', topic: 't' });
+  assert.ok(v.list, JSON.stringify(v.errors));
+  assert.deepEqual(v.list.picks.slice(0, 2).map((p) => p.slug), ['e-0', 'e-2']);
+  const upcoming = fakeWriter(); upcoming.picks[0].note = 'The upcoming fourth book in the series, a must for every fan of dragons and duels.';
+  assert.match(agent.validateWritten(upcoming, candidateBooks, { slug: 's', topic: 't' }).errors.join(' '), /banned word/);
+});
+
 test('slugs are clean and never collide', () => {
   const taken = new Set(['books-like-atomic-habits', ...RL.LISTS.map((l) => l.slug)]);
-  assert.equal(agent.slugFor('Books Like Atomic Habits!', 'x', taken), 'books-like-atomic-habits-2');
+  assert.equal(agent.slugFor('x', 'Books Like Atomic Habits!', taken), 'books-like-atomic-habits-2');
+  assert.equal(agent.slugFor('books-like-ikigai-mindfulness-purpose', 'Books like Ikigai', new Set()), 'books-like-ikigai');
   assert.equal(agent.slugFor('', 'Gift books for book lovers under ₹500', new Set()), 'gift-books-for-book-lovers-under-500');
 });
 
@@ -150,7 +167,7 @@ test('a failed check gets one retry with the problems listed', async () => {
   const r = await agent.generateOne({ topic: 'Books like Ikigai' }, { supabase: null, priceBooks, ai });
   assert.equal(r.ok, true, r.error);
   assert.equal(calls, 3);
-  assert.match(feedback, /3 picks/);
+  assert.match(feedback, /\d picks \(want 10-20\)/);
 });
 
 test('too few books in stock: no list, topic set aside', async () => {
