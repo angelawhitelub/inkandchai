@@ -206,7 +206,9 @@ function shownPicks(list, books) {
     const b = books[p.slug.toLowerCase()];
     if (!b || !(Number(b.price) > 0)) continue;
     if (list.maxPrice && Number(b.price) > list.maxPrice) continue;
-    out.push({ ...p, ...b, name: p.name || b.title, by: p.by || b.author || '' });
+    // Generated lists credit only the author the agent checked: the catalogue
+    // author field is sometimes a shelf label ("Crossword Recommends", "Various").
+    out.push({ ...p, ...b, name: p.name || b.title, by: p.by || (list.generated ? '' : b.author || '') });
   }
   return out;
 }

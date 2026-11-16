@@ -130,6 +130,8 @@ test('one run: plans, keeps in-stock books only, writes a draft; the page render
   const parts = RL.renderList(list, books, all);
   assert.equal(parts.count, 12);
   assert.match(parts.main, /Delivery and payment/);
+  const shelf = RL.shownPicks({ ...list, picks: [{ ...list.picks[0], by: '' }] }, { [list.picks[0].slug.toLowerCase()]: { price: 199, author: 'Crossword Recommends' } });
+  assert.equal(shelf[0].by, '', 'a generated list never falls back to the catalogue author field');
   assert.ok(!parts.main.includes('<script'));
 });
 
