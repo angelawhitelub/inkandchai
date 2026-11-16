@@ -207,3 +207,14 @@ class_name = "XbBookingJob"
 [[migrations]]
 tag = "v4-xb-booking-job"
 new_sqlite_classes = ["XbBookingJob"]
+
+# Admin JSON documents that need strongly consistent read-modify-write (the
+# reading lists, utils/reading-list-agent.js). KV reads can be 60 s stale and
+# lost back-to-back saves. worker/doc-store.js; one instance per document.
+[[durable_objects.bindings]]
+name = "DOC_STORE"
+class_name = "DocStore"
+
+[[migrations]]
+tag = "v5-doc-store"
+new_sqlite_classes = ["DocStore"]

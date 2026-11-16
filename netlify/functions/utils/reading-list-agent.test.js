@@ -179,6 +179,37 @@ test('too few books in stock: no list, topic set aside', async () => {
   assert.equal((await agent.readDoc()).topics.done.length, 1);
 });
 
+test('with the Durable Object store, back-to-back saves never undo each other', async () => {
+  mem.clear();
+  const bindings = require('../../../worker/shims/runtime-bindings');
+  // A DocStore stand-in plus a KV mirror that always answers with a stale copy.
+  let value = null; let rev = 0; let puts = 0;
+  const stub = { async fetch(_u, init) {
+    const b = JSON.parse(init.body);
+    if (b.op === 'get') return new Response(JSON.stringify({ value, rev }));
+    if (b.ifRev !== rev) return new Response(JSON.stringify({ rev }), { status: 409 });
+    value = b.value; rev += 1; puts += 1;
+    return new Response(JSON.stringify({ rev }));
+  } };
+  bindings.bindEnv({ DOC_STORE: { idFromName: (n) => n, get: () => stub } });
+  try {
+    const list = (slug) => ({ slug, topic: slug, status: 'draft', picks: [], created_at: '2026-11-17T00:00:00Z' });
+    value = { lists: [list('a'), list('b'), list('c')] };
+    // Two changes made from the same old read: the second must not win blindly.
+    const stale = await agent.readDoc();
+    await agent.applyAction('publish', { slug: 'a' });
+    stale.lists = stale.lists.filter((l) => l.slug !== 'b');
+    await assert.rejects(agent.writeDoc(stale), /changed while saving/);
+    // updateDoc retries on the newer doc, so sequential actions all land.
+    await agent.applyAction('delete', { slug: 'b' });
+    await agent.applyAction('publish', { slug: 'c' });
+    const doc = await agent.readDoc();
+    assert.deepEqual(doc.lists.map((l) => `${l.slug}:${l.status}`), ['a:published', 'c:published']);
+    assert.equal(puts, 3);
+    assert.ok(mem.get(`catalog:${agent.KEY}`), 'the Worker copy in KV is written too');
+  } finally { bindings.bindEnv(null); }
+});
+
 test('scheduled runs honour the switch and the interval', () => {
   const now = Date.parse('2026-11-20T22:00:00Z');
   const doc = (over) => ({ lists: [{ created_at: '2026-11-18T22:00:00Z' }], settings: { enabled: true, every_days: 3, ...over } });

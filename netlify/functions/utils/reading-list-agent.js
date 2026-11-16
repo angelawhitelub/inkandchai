@@ -21,6 +21,7 @@
 
 const crypto = require('crypto');
 const { getStore } = require('@netlify/blobs');
+const bindings = require('../../../worker/shims/runtime-bindings');
 const { makeSlug } = require('./pricing');
 const { LISTS, SLUG_RE } = require('./reading-lists');
 const CATALOGUE = require('../../../data/ALL_BOOKS.json');
@@ -68,8 +69,23 @@ const SEED_TOPICS = [
 
 const store = () => getStore(STORE);
 
-async function readDoc() {
-  const doc = await store().get(KEY, { type: 'json' });
+// The document lives in the DOC_STORE Durable Object (strongly consistent, and
+// a save from a stale read is refused), mirrored to KV for the Worker's public
+// pages. KV alone lost back-to-back saves (2026-11-17). Without the binding
+// (local tests) KV is used directly.
+function docStub() {
+  const ns = bindings.get('DOC_STORE');
+  return ns ? ns.get(ns.idFromName(KEY)) : null;
+}
+async function stubCall(stub, body) {
+  const res = await stub.fetch('https://doc-store.internal/', { method: 'POST', body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 409) return { conflict: true, ...data };
+  if (!res.ok) throw new Error(`doc store: HTTP ${res.status}`);
+  return data;
+}
+
+function shape(doc) {
   return {
     lists: Array.isArray(doc && doc.lists) ? doc.lists : [],
     topics: { queued: (doc && doc.topics && doc.topics.queued) || [], done: (doc && doc.topics && doc.topics.done) || [] },
@@ -78,9 +94,44 @@ async function readDoc() {
   };
 }
 
+async function readDoc() {
+  const stub = docStub();
+  let raw; let rev = null;
+  if (stub) {
+    const got = await stubCall(stub, { op: 'get' });
+    rev = got.rev || 0;
+    // First use: start from what KV holds.
+    raw = got.value != null ? got.value : await store().get(KEY, { type: 'json' });
+  } else {
+    raw = await store().get(KEY, { type: 'json' });
+  }
+  const doc = shape(raw);
+  Object.defineProperty(doc, '_rev', { value: rev, writable: true, enumerable: false });
+  return doc;
+}
+
+class StaleWrite extends Error {}
+
 async function writeDoc(doc) {
-  const lists = doc.lists.slice(-MAX_STORED);
-  await store().setJSON(KEY, { ...doc, lists, updated_at: new Date().toISOString() });
+  const value = { ...doc, lists: doc.lists.slice(-MAX_STORED), updated_at: new Date().toISOString() };
+  const stub = docStub();
+  if (stub && doc._rev != null) {
+    const r = await stubCall(stub, { op: 'put', value, ifRev: doc._rev });
+    if (r.conflict) throw new StaleWrite('The reading lists changed while saving. Reload and try again.');
+    doc._rev = r.rev;
+  }
+  await store().setJSON(KEY, value);   // the Worker's copy for /best-books/
+}
+
+/** Read, change, save; if someone saved in between, do it again on the newer doc. */
+async function updateDoc(change) {
+  for (let attempt = 1; ; attempt += 1) {
+    const doc = await readDoc();
+    const out = await change(doc);
+    try { await writeDoc(doc); return out === undefined ? doc : out; } catch (err) {
+      if (!(err instanceof StaleWrite) || attempt >= 5) throw err;
+    }
+  }
 }
 
 const topicKey = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9₹]+/g, ' ').trim();
@@ -316,17 +367,22 @@ async function generateOne({ topic: asked, trigger = 'manual' } = {}, deps) {
   const next = asked ? { topic: String(asked).trim().slice(0, 120), source: 'owner' } : nextTopic(doc, deps);
   const run = { at: new Date().toISOString(), trigger, topic: next && next.topic, model: MODEL() };
   const finish = async (result) => {
-    const fresh = await readDoc();   // re-read: another run or an admin action may have saved meanwhile
-    fresh.last_run = { ...run, ...result, finished_at: new Date().toISOString() };
-    if (next && result.markDone) {
-      fresh.topics.done = [...new Set([...fresh.topics.done, next.topic])].slice(-500);
-      fresh.topics.queued = fresh.topics.queued.filter((q) => topicKey(typeof q === 'string' ? q : q.topic) !== topicKey(next.topic));
-    }
-    if (result.list) fresh.lists.push(result.list);
-    delete fresh.last_run.list;
-    delete fresh.last_run.markDone;
-    await writeDoc(fresh);
-    return { ok: !!result.list, ...result };
+    await updateDoc((fresh) => {   // the newest doc: an admin action may have saved meanwhile
+      fresh.last_run = { ...run, ...result, finished_at: new Date().toISOString() };
+      if (next && result.markDone) {
+        fresh.topics.done = [...new Set([...fresh.topics.done, next.topic])].slice(-500);
+        fresh.topics.queued = fresh.topics.queued.filter((q) => topicKey(typeof q === 'string' ? q : q.topic) !== topicKey(next.topic));
+      }
+      if (result.list) {
+        // A slug taken meanwhile gets the next free one.
+        const taken = new Set([...LISTS.map((l) => l.slug), ...fresh.lists.map((l) => l.slug)]);
+        if (taken.has(result.list.slug)) result.list.slug = slugFor('', result.list.slug, taken);
+        fresh.lists.push(result.list);
+      }
+      delete fresh.last_run.list;
+      delete fresh.last_run.markDone;
+    });
+    return { ok: !!result.list, ...result, ...(result.list ? { slug: result.list.slug } : {}) };
   };
   if (!next) return finish({ error: 'No topics left. Add one in admin.' });
 
@@ -381,7 +437,10 @@ async function generateOne({ topic: asked, trigger = 'manual' } = {}, deps) {
 
 /** Owner actions from admin. Returns the updated doc. */
 async function applyAction(action, body = {}) {
-  const doc = await readDoc();
+  return updateDoc((doc) => applyTo(doc, action, body));
+}
+
+function applyTo(doc, action, body) {
   const find = () => doc.lists.find((l) => l.slug === String(body.slug || ''));
   const now = new Date().toISOString();
   if (action === 'publish' || action === 'unpublish' || action === 'reject') {
@@ -413,7 +472,6 @@ async function applyAction(action, body = {}) {
   } else {
     throw new Error('Unknown action');
   }
-  await writeDoc(doc);
   return doc;
 }
 
