@@ -52,6 +52,12 @@ test('a written list is checked: only candidates, 10-20 picks, sane lengths, no 
   const few = agent.validateWritten(fakeWriter({ ids: ['c1', 'c2', 'c3'] }), candidateBooks, { slug: 's', topic: 't' });
   assert.match(few.errors.join(' '), /3 picks/);
 
+  const long = fakeWriter();
+  long.picks[0].name = 'The Subtle Art of Not Giving a F*ck A Counterintuitive Approach to Living a Good Life Paperback Edition';
+  const trimmed = agent.validateWritten(long, candidateBooks, { slug: 's', topic: 't' });
+  assert.ok(trimmed.list, JSON.stringify(trimmed.errors));
+  assert.ok(trimmed.list.picks[0].name.length <= 90 && trimmed.list.picks[0].name.endsWith('…'));
+
   const linky = agent.validateWritten(fakeWriter({ extra: { intro: 'Buy now at https://example.com — the best habit books, all in one place for you to enjoy today and every day after.' } }), candidateBooks, { slug: 's', topic: 't' });
   assert.match(linky.errors.join(' '), /intro has a link/);
 });
@@ -106,6 +112,24 @@ test('one run: plans, keeps in-stock books only, writes a draft; the page render
   assert.equal(parts.count, 12);
   assert.match(parts.main, /Delivery and payment/);
   assert.ok(!parts.main.includes('<script'));
+});
+
+test('a failed check gets one retry with the problems listed', async () => {
+  mem.clear();
+  let calls = 0; let feedback = '';
+  const ai = async (messages) => {
+    calls += 1;
+    if (calls === 1) return { slug: 'books-like-ikigai', queries: ['atomic habits', 'power of habit', 'deep work', 'james clear', 'charles duhigg', 'cal newport', 'habits'] };
+    const cands = JSON.parse(messages[1].content).candidates;
+    if (calls === 2) return fakeWriter({ ids: cands.slice(0, 3).map((c) => c.id) });
+    feedback = messages[messages.length - 1].content;
+    return fakeWriter({ ids: cands.slice(0, 11).map((c) => c.id) });
+  };
+  const priceBooks = async (slugs) => Object.fromEntries(slugs.map((s) => [s, { price: 250 }]));
+  const r = await agent.generateOne({ topic: 'Books like Ikigai' }, { supabase: null, priceBooks, ai });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(calls, 3);
+  assert.match(feedback, /3 picks/);
 });
 
 test('too few books in stock: no list, topic set aside', async () => {

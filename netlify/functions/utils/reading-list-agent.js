@@ -214,6 +214,14 @@ function checkText(label, value, min, max, errors) {
 }
 
 /** The writer's JSON as a stored list, or { errors }. */
+/** A long catalogue title is cut at a word, not a reason to throw the list away. */
+function shortName(name) {
+  const t = String(name || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= 90) return t;
+  const cut = t.slice(0, 88);
+  return `${cut.slice(0, cut.lastIndexOf(' ') > 40 ? cut.lastIndexOf(' ') : 88).replace(/[\s,:;–—-]+$/, '')}…`;
+}
+
 function validateWritten(out, candidates, { slug, topic, maxPrice }) {
   const errors = [];
   const byId = new Map(candidates.map((c, i) => [`c${i + 1}`, c]));
@@ -234,7 +242,7 @@ function validateWritten(out, candidates, { slug, topic, maxPrice }) {
     seen.add(c.slug);
     list.picks.push({
       slug: c.slug,
-      name: checkText(`name of ${p.id}`, p.name || cleanTitle(c.title), 1, 90, errors),
+      name: checkText(`name of ${p.id}`, shortName(p.name || cleanTitle(c.title) || c.title), 1, 90, errors),
       by: String(p.by || c.author || '').slice(0, 80),
       note: checkText(`note for ${p.id}`, p.note, 50, 320, errors),
       ...(p.group ? { group: checkText(`group of ${p.id}`, p.group, 2, 50, errors) } : {}),
@@ -305,14 +313,20 @@ async function generateOne({ topic: asked, trigger = 'manual' } = {}, deps) {
   const taken = new Set([...LISTS.map((l) => l.slug), ...doc.lists.map((l) => l.slug)]);
   const slug = slugFor(plan.slug, next.topic, taken);
   const payload = candidates.map((c, i) => ({ id: `c${i + 1}`, title: c.title, author: c.author, price: c.price, description: c.description }));
-  let written;
-  try {
-    written = await ai([
-      { role: 'system', content: WRITE_PROMPT },
-      { role: 'user', content: JSON.stringify({ topic: next.topic, budget_rupees: maxPrice || null, candidates: payload }) },
-    ]);
-  } catch (err) { return finish({ error: `write: ${err.message}`, candidates: candidates.length }); }
-  const checked = validateWritten(written, candidates, { slug, topic: next.topic, maxPrice });
+  const messages = [
+    { role: 'system', content: WRITE_PROMPT },
+    { role: 'user', content: JSON.stringify({ topic: next.topic, budget_rupees: maxPrice || null, candidates: payload }) },
+  ];
+  let checked;
+  // One retry: the writer sees what failed and fixes it.
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    let written;
+    try { written = await ai(messages); } catch (err) { return finish({ error: `write: ${err.message}`, candidates: candidates.length }); }
+    checked = validateWritten(written, candidates, { slug, topic: next.topic, maxPrice });
+    if (!checked.errors) break;
+    messages.push({ role: 'assistant', content: JSON.stringify(written) },
+      { role: 'user', content: `Fix these problems and return the whole JSON again: ${checked.errors.slice(0, 12).join('; ')}` });
+  }
   if (checked.errors) return finish({ error: `checks failed: ${checked.errors.slice(0, 6).join('; ')}`, candidates: candidates.length });
 
   const status = doc.settings.auto_publish ? 'published' : 'draft';
