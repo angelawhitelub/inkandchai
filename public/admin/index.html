@@ -954,6 +954,7 @@ select,input,textarea{font-size:1rem;}
         <div class="admin-menu-divider" aria-hidden="true"></div>
         <a class="admin-tab" data-tab="bundles" href="/admin/#bundles" onclick="return adminTabClick(event,'bundles')">📦 Bundles</a>
         <a class="admin-tab owner-only" data-tab="bestsellers" href="/admin/#bestsellers" onclick="return adminTabClick(event,'bestsellers')">📈 Bestsellers <span id="bestsellersBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab owner-only" data-tab="readinglists" href="/admin/#readinglists" onclick="return adminTabClick(event,'readinglists')">📚 Reading Lists <span id="readingListsBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
         <a class="admin-tab" data-tab="bookreq" href="/admin/#bookreq" onclick="return adminTabClick(event,'bookreq')">📥 Book Requests <span id="bookReqBadge" style="display:none;background:#5d9b55;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
       </div>
     </div>
@@ -3552,6 +3553,28 @@ select,input,textarea{font-size:1rem;}
     </div>
   </div><!-- /tab-bestsellers -->
 
+  <!-- ═══ READING LISTS TAB (AI-written /best-books/ pages) ═══ -->
+  <div class="admin-section" id="tab-readinglists">
+    <div style="max-width:760px;margin-bottom:0.8rem;">
+      <h2 style="margin:0;font-size:1.1rem;">📚 Reading lists</h2>
+      <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;line-height:1.5;">The agent writes SEO list pages at <a href="/best-books/" target="_blank" rel="noopener">/best-books/</a> with OpenAI, choosing only books we have in stock (it cannot add a book we don't sell). It works through your topics first, then its own list of popular topics, then “Books like …” for our bestsellers. Open the preview, check the notes, then publish. Sold-out or taken-down books drop off a live page by themselves.</div>
+    </div>
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;margin-bottom:0.6rem;">
+      <input id="rlTopic" placeholder="Topic, e.g. Books like Atomic Habits" style="flex:1;min-width:16rem;padding:0.5rem;font-size:0.78rem;">
+      <button class="btn-green" id="rlGenBtn" onclick="rlGenerate()">✨ Write this list now</button>
+      <button class="btn-outline" onclick="rlQueue()">＋ Add to queue</button>
+    </div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;font-size:0.72rem;margin-bottom:0.6rem;">
+      <label style="display:flex;gap:0.3rem;align-items:center;"><input type="checkbox" id="rlEnabled" onchange="rlSaveSettings()"> Write a new list automatically every</label>
+      <select id="rlEvery" onchange="rlSaveSettings()" style="padding:0.3rem;font-size:0.72rem;"><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option></select>
+      <label style="display:flex;gap:0.3rem;align-items:center;"><input type="checkbox" id="rlAuto" onchange="rlSaveSettings()"> Publish automatically (skip my review)</label>
+      <select id="rlStatus" onchange="rlRender()" style="padding:0.3rem;font-size:0.72rem;"><option value="draft">Waiting for review</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="">All</option></select>
+      <button class="btn-outline" onclick="loadReadingLists()">↻ Refresh</button>
+    </div>
+    <div id="rlMeta" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.7rem;line-height:1.6;"></div>
+    <div id="rlList" style="display:flex;flex-direction:column;gap:0.7rem;"><div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div></div>
+  </div><!-- /tab-readinglists -->
+
   <!-- ═══ INSIGHTS TAB ═══ -->
   <div class="admin-section" id="tab-insights">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
@@ -5276,6 +5299,95 @@ function renderBestsellers() {
   list.innerHTML = rows.map((b) => bsCard(b, status)).join('');
 }
 const bsEsc = (v) => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+// ── Reading lists (admin-reading-lists, utils/reading-list-agent) ─────────
+const RL_API = '/.netlify/functions/admin-reading-lists';
+let rlData = null;
+async function rlCall(body) {
+  const res = await adminFetch(RL_API, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok && !data.lists) throw new Error(data.error || ('HTTP ' + res.status));
+  if (data.lists) rlData = data;
+  return data;
+}
+async function loadReadingLists() {
+  const list = document.getElementById('rlList');
+  if (!list) return;
+  try { await rlCall(); rlRender(); }
+  catch (e) { list.innerHTML = '<div style="color:#c93636;font-size:0.8rem;">' + esc(e.message) + '</div>'; }
+}
+function rlWhen(iso) { return iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
+function rlRender() {
+  const d = rlData; if (!d) return;
+  document.getElementById('rlEnabled').checked = !!d.settings.enabled;
+  document.getElementById('rlAuto').checked = !!d.settings.auto_publish;
+  document.getElementById('rlEvery').value = String(d.settings.every_days || 3);
+  const badge = document.getElementById('readingListsBadge');
+  if (badge) { badge.textContent = d.counts.draft || ''; badge.style.display = d.counts.draft ? '' : 'none'; }
+  const r = d.last_run;
+  document.getElementById('rlMeta').innerHTML = `${d.counts.draft || 0} waiting · ${d.counts.published || 0} published · ${d.counts.rejected || 0} rejected`
+    + (d.next_topic ? `<br>Next topic: <b>${esc(d.next_topic)}</b>` : '<br>No topics left: add one above.')
+    + (d.queued.length ? `<br>Your queue: ${d.queued.map((t) => `${esc(t)} <a href="#" onclick="rlUnqueue(${esc(JSON.stringify(t))});return false;" title="Remove from queue">✕</a>`).join(' · ')}` : '')
+    + (r ? `<br>Last run ${esc(rlWhen(r.finished_at || r.at))} (${esc(r.trigger || '')}, ${esc(r.topic || '')}): ${r.error ? `<span style="color:#c93636">${esc(r.error)}</span>` : `wrote ${esc(r.slug || '')} with ${r.picks || 0} books from ${r.candidates || 0} in stock`}` : '');
+  const want = document.getElementById('rlStatus').value;
+  const rows = d.lists.filter((l) => !want || l.status === want);
+  const box = document.getElementById('rlList');
+  if (!rows.length) { box.innerHTML = '<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Nothing here.</div>'; return; }
+  box.innerHTML = rows.map((l) => {
+    const url = '/best-books/' + encodeURIComponent(l.slug) + '/' + (l.status === 'published' ? '' : '?preview=' + encodeURIComponent(l.preview_token || ''));
+    const color = l.status === 'published' ? '#5d9b55' : l.status === 'rejected' ? '#c93636' : '#b8860b';
+    const btn = (label, action, cls) => `<button class="${cls || 'btn-outline'}" style="padding:0.35rem 0.8rem;font-size:0.6rem;" onclick="rlAct('${action}','${esc(l.slug)}')">${label}</button>`;
+    const picks = (l.picks || []).map((p, i) => `<li style="margin:0.35rem 0;"><b>${esc(p.name)}</b>${p.by ? ' · ' + esc(p.by) : ''}${p.group ? ` <span style="color:var(--cream-dim,#8a7a62)">[${esc(p.group)}]</span>` : ''}<br><span style="color:var(--cream-dim,#8a7a62)">${esc(p.note)}</span> <a href="#" onclick="rlRemovePick('${esc(l.slug)}',${i});return false;" style="color:#c93636;">remove</a></li>`).join('');
+    return `<div style="border:1px solid var(--border,#333);border-radius:6px;padding:0.8rem;">
+      <div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;align-items:flex-start;">
+        <div><span style="background:${color};color:#fff;border-radius:3px;padding:0 6px;font-size:0.6rem;text-transform:uppercase;">${esc(l.status)}</span>
+          <b style="margin-left:0.4rem;">${esc(l.h1 || l.title)}</b>
+          <div style="font-size:0.68rem;color:var(--cream-dim,#8a7a62);margin-top:0.2rem;">${esc(l.topic || '')} · ${(l.picks || []).length} books · ${esc(rlWhen(l.created_at))} · /best-books/${esc(l.slug)}/</div></div>
+        <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+          <a class="btn-outline" style="padding:0.35rem 0.8rem;font-size:0.6rem;text-decoration:none;" href="${url}" target="_blank" rel="noopener">${l.status === 'published' ? 'Open' : 'Preview'}</a>
+          ${l.status !== 'published' ? btn('✓ Publish', 'publish', 'btn-green') : btn('Unpublish', 'unpublish')}
+          ${l.status === 'draft' ? btn('✕ Reject', 'reject') : ''}
+          ${btn('Delete', 'delete')}
+        </div>
+      </div>
+      <details style="margin-top:0.5rem;font-size:0.72rem;"><summary style="cursor:pointer;">Intro and books</summary>
+        <p style="margin:0.5rem 0;">${esc(l.intro || '')}</p><ol style="margin:0;padding-left:1.2rem;">${picks}</ol></details>
+    </div>`;
+  }).join('');
+}
+async function rlAct(action, slug) {
+  if (action === 'delete' && !confirm('Delete this list? Its page stops working.')) return;
+  try { await rlCall({ action, slug }); rlRender(); } catch (e) { alert(e.message); }
+}
+async function rlRemovePick(slug, i) {
+  if (!confirm('Remove this book from the list?')) return;
+  try { await rlCall({ action: 'edit', slug, pick: i, remove: true }); rlRender(); } catch (e) { alert(e.message); }
+}
+async function rlQueue() {
+  const t = document.getElementById('rlTopic').value.trim(); if (!t) return;
+  try { await rlCall({ action: 'queue', topic: t }); document.getElementById('rlTopic').value = ''; rlRender(); } catch (e) { alert(e.message); }
+}
+async function rlUnqueue(t) { try { await rlCall({ action: 'unqueue', topic: t }); rlRender(); } catch (e) { alert(e.message); } }
+async function rlSaveSettings() {
+  try {
+    await rlCall({ action: 'settings', enabled: document.getElementById('rlEnabled').checked,
+      auto_publish: document.getElementById('rlAuto').checked, every_days: Number(document.getElementById('rlEvery').value) });
+    rlRender();
+  } catch (e) { alert(e.message); }
+}
+async function rlGenerate() {
+  const btn = document.getElementById('rlGenBtn');
+  const topic = document.getElementById('rlTopic').value.trim();
+  btn.disabled = true; btn.textContent = '✍️ Writing… (about a minute)';
+  try {
+    const d = await rlCall({ action: 'generate', topic: topic || undefined });
+    if (d.result && !d.result.ok) alert('Could not write this list: ' + (d.result.error || 'unknown error'));
+    else document.getElementById('rlTopic').value = '';
+    document.getElementById('rlStatus').value = d.result && d.result.status === 'published' ? 'published' : 'draft';
+    rlRender();
+  } catch (e) { alert(e.message); }
+  finally { btn.disabled = false; btn.textContent = '✨ Write this list now'; }
+}
 
 async function loadBestsellers() {
   const list = document.getElementById('bsList');
@@ -18715,7 +18827,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','titlealerts','copyright','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','titlealerts','copyright','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','readinglists','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -19933,6 +20045,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();
   if (tab === 'bestsellers' && _authed && adminRole === 'owner') loadBestsellers();
+  if (tab === 'readinglists' && _authed && adminRole === 'owner') loadReadingLists();
   if (tab === 'bot' && _authed) { loadBotSettings(); loadInkAiQuestions(false); }
   if (tab === 'feedback' && _authed) loadSiteFeedback();
   if (tab === 'bugs' && _authed) loadBugReports();

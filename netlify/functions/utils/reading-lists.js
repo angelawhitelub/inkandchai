@@ -146,19 +146,49 @@ const LISTS = [
   },
 ];
 
-const bySlug = new Map(LISTS.map((l) => [l.slug, l]));
-const listFor = (slug) => bySlug.get(String(slug || '').toLowerCase()) || null;
+const DELIVERY = 'Prepaid orders above ₹399 ship free across India, and cash on delivery is free from ₹499. Every order comes with 7-day returns and a free replacement if a copy arrives damaged.';
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Generated lists (utils/reading-list-agent, KV catalog:reading-lists) in the
+ * shape the renderer uses. Only well-formed lists survive, and a generated list
+ * never shadows a hand-written one. `status` picks published or draft lists.
+ */
+function storedLists(doc, { status = 'published' } = {}) {
+  const taken = new Set(LISTS.map((l) => l.slug));
+  const out = [];
+  for (const l of (doc && Array.isArray(doc.lists) ? doc.lists : [])) {
+    if (!l || l.status !== status || !SLUG_RE.test(String(l.slug || '')) || taken.has(l.slug)) continue;
+    const picks = (Array.isArray(l.picks) ? l.picks : []).filter((p) => p && /^[\w-]{1,200}$/.test(String(p.slug || '')));
+    if (picks.length < 3) continue;
+    taken.add(l.slug);
+    out.push({
+      slug: l.slug, generated: true, preview_token: l.preview_token || '',
+      title: String(l.title || ''), h1: String(l.h1 || l.title || ''), description: String(l.description || ''),
+      intro: String(l.intro || ''), maxPrice: Number(l.maxPrice) > 0 ? Number(l.maxPrice) : undefined,
+      picks: picks.map((p) => ({ slug: String(p.slug), name: String(p.name || ''), by: String(p.by || ''), note: String(p.note || ''), group: p.group ? String(p.group) : undefined })),
+      body: (Array.isArray(l.body) ? l.body : []).filter((b) => b && b.heading && b.text).map((b) => ({ heading: String(b.heading), text: String(b.text) })),
+      faq: (Array.isArray(l.faq) ? l.faq : []).filter((f) => f && f.q && f.a).map((f) => ({ q: String(f.q), a: String(f.a) })),
+    });
+  }
+  return out;
+}
+
+/** Hand-written lists first, then published generated ones. */
+function allLists(doc) { return [...LISTS, ...storedLists(doc)]; }
+
+const listFor = (slug, lists = LISTS) => lists.find((l) => l.slug === String(slug || '').toLowerCase()) || null;
 const urlOf = (list) => `${BASE}${list.slug}/`;
 
 /** Every list that features this product slug (for "Featured in" on product pages). */
-function listsFeaturing(productSlug) {
+function listsFeaturing(productSlug, lists = LISTS) {
   const s = String(productSlug || '').toLowerCase();
-  return LISTS.filter((l) => l.picks.some((p) => p.slug.toLowerCase() === s));
+  return lists.filter((l) => l.picks.some((p) => p.slug.toLowerCase() === s));
 }
 
-/** Every product slug any list needs, for one batched read. */
-function allPickSlugs(lists = LISTS) {
-  return [...new Set(lists.flatMap((l) => l.picks.map((p) => p.slug.toLowerCase())))];
+/** Every product slug the lists need, for one batched read (`perList` caps each list, for the index). */
+function allPickSlugs(lists = LISTS, { perList = Infinity } = {}) {
+  return [...new Set(lists.flatMap((l) => l.picks.slice(0, perList).map((p) => p.slug.toLowerCase())))];
 }
 
 const esc = (s) => String(s == null ? '' : s)
@@ -200,7 +230,7 @@ const STYLE = `<style>
 .rl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;margin-top:1.6rem}
 .rl-card{display:block;padding:1.1rem;border:1px solid var(--border,#e5e0d8);border-radius:6px;text-decoration:none;color:inherit}
 .rl-card strong{display:block;font-size:1.05rem;margin-bottom:.4rem}
-.rl-card .rl-covers{display:flex;gap:.3rem;margin-bottom:.7rem}
+.rl-card .rl-covers{display:flex;gap:.3rem;margin-bottom:.7rem;min-height:1px}
 .rl-card .rl-covers img{width:52px;height:auto;border-radius:2px}
 @media (max-width:520px){.rl-item{grid-template-columns:72px 1fr}.rl-cover img{width:72px}}
 </style>`;
@@ -226,15 +256,25 @@ function itemHtml(b, n) {
     </li>`;
 }
 
-function moreLinks(current) {
-  const others = LISTS.filter((l) => l.slug !== current);
+/** Up to 8 other lists: hand-written ones first, then the newest generated ones. */
+function moreLinks(current, lists = LISTS) {
+  const others = lists.filter((l) => l.slug !== current);
+  const pick = [...others.filter((l) => !l.generated), ...others.filter((l) => l.generated).reverse()].slice(0, 8);
   return `<h2>More reading lists</h2><nav class="rl-more" aria-label="More reading lists">${
-    others.map((l) => `<a href="${urlOf(l)}">${esc(l.h1)}</a>`).join('')
-  }<a href="/bestsellers/">Best sellers</a><a href="/booktok-bestsellers/">BookTok bestsellers</a></nav>`;
+    pick.map((l) => `<a href="${urlOf(l)}">${esc(l.h1)}</a>`).join('')
+  }<a href="${BASE}">All reading lists</a><a href="/bestsellers/">Best sellers</a></nav>`;
+}
+
+/** Hand-written copy is trusted HTML; generated copy is plain text and escaped. */
+function introHtml(list) { return list.generated ? esc(list.intro) : list.intro; }
+function bodyHtml(list) {
+  if (!list.generated) return (list.body || []).join('\n');
+  return [...(list.body || []).map((b) => `<h2>${esc(b.heading)}</h2><p>${esc(b.text)}</p>`),
+    `<h2>Delivery and payment</h2><p>${DELIVERY}</p>`].join('\n');
 }
 
 /** Everything the Worker writes into the page shell for one list. */
-function renderList(list, books) {
+function renderList(list, books, lists = LISTS) {
   const shown = shownPicks(list, books);
   const canonical = `${SITE}${urlOf(list)}`;
   let n = 0;
@@ -258,10 +298,10 @@ function renderList(list, books) {
   const main = `${STYLE}
   <div class="crumb"><a href="/">Home</a> / <a href="${BASE}">Reading lists</a> / ${esc(list.h1)}</div>
   <h1>${esc(list.h1)}</h1>
-  <p class="intro">${list.intro}</p>
+  <p class="intro">${introHtml(list)}</p>
   ${TRUST}
   ${items.join('\n')}
-  <div class="body-copy">${(list.body || []).join('\n')}${faq}${moreLinks(list.slug)}</div>`;
+  <div class="body-copy">${bodyHtml(list)}${faq}${moreLinks(list.slug, lists)}</div>`;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -296,9 +336,10 @@ function renderList(list, books) {
 }
 
 /** The /best-books/ index: one card per list with a few covers. */
-function renderIndex(books) {
+function renderIndex(books, lists = LISTS) {
   const canonical = `${SITE}${BASE}`;
-  const cards = LISTS.map((l) => {
+  const ordered = [...lists.filter((l) => !l.generated), ...lists.filter((l) => l.generated).reverse()];
+  const cards = ordered.map((l) => {
     const shown = shownPicks(l, books);
     const covers = shown.filter((b) => b.img).slice(0, 4)
       .map((b) => `<img src="${esc(b.img)}" alt="" loading="lazy" onerror="this.style.display='none'"/>`).join('');
@@ -313,8 +354,8 @@ function renderIndex(books) {
   <div class="body-copy"><h2>Looking for something else?</h2><nav class="rl-more"><a href="/bestsellers/">Best sellers</a><a href="/booktok-bestsellers/">BookTok bestsellers</a><a href="/best-romance-books-india/">Romance</a><a href="/best-self-help-books-india/">Self-help</a><a href="/best-hindi-books/">Hindi books</a><a href="/books-under-299/">Books under ₹299</a></nav></div>`;
   const jsonLd = {
     '@context': 'https://schema.org',
-    '@type': 'ItemList', name: 'Reading lists', numberOfItems: LISTS.length,
-    itemListElement: LISTS.map((l, i) => ({ '@type': 'ListItem', position: i + 1, url: `${SITE}${urlOf(l)}`, name: l.h1 })),
+    '@type': 'ItemList', name: 'Reading lists', numberOfItems: ordered.length,
+    itemListElement: ordered.map((l, i) => ({ '@type': 'ListItem', position: i + 1, url: `${SITE}${urlOf(l)}`, name: l.h1 })),
   };
   return {
     title: 'Reading Lists: Hand-Picked Books to Read Next | Ink & Chai',
@@ -324,36 +365,36 @@ function renderIndex(books) {
     image: '',
     main,
     jsonLd: JSON.stringify(jsonLd).replace(/</g, '\\u003c'),
-    count: LISTS.length,
+    count: ordered.length,
   };
 }
 
-/** The "Featured in" line on a product page, or '' when no list has the book. */
-function featuredInHtml(productSlug) {
-  const lists = listsFeaturing(productSlug);
-  if (!lists.length) return '';
+/** The "Featured in" line on a product page, or '' when no list has the book (at most 3 lists). */
+function featuredInHtml(productSlug, lists = LISTS) {
+  const found = listsFeaturing(productSlug, lists).slice(0, 3);
+  if (!found.length) return '';
   return `<p class="rl-featured" style="margin:1rem 0;font-size:.9rem;">📚 Featured in: ${
-    lists.map((l) => `<a href="${urlOf(l)}" style="color:var(--gold,#b8860b);">${esc(l.h1)}</a>`).join(' · ')
+    found.map((l) => `<a href="${urlOf(l)}" style="color:var(--gold,#b8860b);">${esc(l.h1)}</a>`).join(' · ')
   }</p>`;
 }
 
 /** Sitemap entries for the lists and the index. */
-function sitemapUrls() {
-  return [`${SITE}${BASE}`, ...LISTS.map((l) => `${SITE}${urlOf(l)}`)];
+function sitemapUrls(lists = LISTS) {
+  return [`${SITE}${BASE}`, ...lists.map((l) => `${SITE}${urlOf(l)}`)];
 }
 
 /** sitemap.xml with the reading-list URLs added (each once). */
-function addToSitemap(xml) {
+function addToSitemap(xml, lists = LISTS) {
   const s = String(xml || '');
   const end = s.lastIndexOf('</urlset>');
   if (end < 0) return { xml: s, added: 0 };
-  const lines = sitemapUrls().filter((u) => !s.includes(`<loc>${u}</loc>`))
+  const lines = sitemapUrls(lists).filter((u) => !s.includes(`<loc>${u}</loc>`))
     .map((u) => `  <url><loc>${u}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>`);
   if (!lines.length) return { xml: s, added: 0 };
   return { xml: `${s.slice(0, end)}${lines.join('\n')}\n${s.slice(end)}`, added: lines.length };
 }
 
 module.exports = {
-  LISTS, BASE, listFor, urlOf, listsFeaturing, allPickSlugs, shownPicks,
+  LISTS, BASE, SLUG_RE, listFor, urlOf, listsFeaturing, allPickSlugs, shownPicks, storedLists, allLists,
   renderList, renderIndex, featuredInHtml, sitemapUrls, addToSitemap,
 };

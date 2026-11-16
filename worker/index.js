@@ -989,7 +989,7 @@ async function sitemapWithCustom(request, env, ctx, origin) {
   }
   // The reading lists are added even when the custom-book read fails.
   const merged = customSitemap.mergeSitemap(await asset.text(), _customUrls || [], { deleted: await deletedSlugs(env) });
-  const { xml } = readingLists.addToSitemap(merged.xml);
+  const { xml } = readingLists.addToSitemap(merged.xml, await readingListsAll(env));
   const { added } = merged;
   const headers = new Headers(asset.headers);
   for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
@@ -1036,8 +1036,34 @@ async function bestsellersPage(request, env, url) {
 // SEO pages rendered into the baked /books-under-299/ shell with live till
 // prices. Books that are sold out, taken down or over the list's budget drop
 // out. A failed price read is a 503, never an empty list Google could index.
+// Generated lists (utils/reading-list-agent) live in KV catalog:reading-lists.
+const RL_TTL_MS = 5 * 60_000;
+let _rlDoc = null;
+let _rlAt = 0;
+async function readingListDoc(env) {
+  if (_rlDoc && Date.now() - _rlAt < RL_TTL_MS) return _rlDoc;
+  try {
+    _rlDoc = (await env.ORDER_FALLBACK.get('catalog:reading-lists', 'json')) || {};
+    _rlAt = Date.now();
+  } catch (err) {
+    console.warn('[reading-list] KV read failed:', err && err.message);
+    if (!_rlDoc) return {};
+  }
+  return _rlDoc;
+}
+async function readingListsAll(env) { return readingLists.allLists(await readingListDoc(env)); }
+
 async function readingListPage(request, env, ctx, url, slug) {
-  const list = slug ? readingLists.listFor(slug) : null;
+  const doc = await readingListDoc(env);
+  const lists = readingLists.allLists(doc);
+  let list = slug ? readingLists.listFor(slug, lists) : null;
+  // A draft is visible only with its preview token (admin link), never indexed.
+  let preview = false;
+  const token = url.searchParams.get('preview');
+  if (slug && !list && token) {
+    list = readingLists.storedLists(doc, { status: 'draft' }).find((l) => l.slug === slug && l.preview_token && l.preview_token === token) || null;
+    preview = !!list;
+  }
   if (slug && !list) return null;
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method Not Allowed', { status: 405 });
   const unavailable = () => new Response('Reading list temporarily unavailable, please try again in a minute.', {
@@ -1047,7 +1073,8 @@ async function readingListPage(request, env, ctx, url, slug) {
   if (shell.status !== 200 || !/text\/html/i.test(shell.headers.get('content-type') || '')) return unavailable();
   let books;
   try {
-    const res = await runHandler('reading-list', new Request(`${url.origin}${FN_PREFIX}reading-list${list ? `?slug=${encodeURIComponent(list.slug)}` : ''}`), env, ctx);
+    const slugs = list ? readingLists.allPickSlugs([list]) : readingLists.allPickSlugs(lists, { perList: 4 });
+    const res = await runHandler('reading-list', new Request(`${url.origin}${FN_PREFIX}reading-list?slugs=${encodeURIComponent(slugs.slice(0, 200).join(','))}`), env, ctx);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     books = (await res.json()).books || {};
   } catch (err) {
@@ -1056,7 +1083,7 @@ async function readingListPage(request, env, ctx, url, slug) {
   }
   const gone = await deletedSlugs(env);
   for (const s of Object.keys(books)) if (gone.has(s)) delete books[s];
-  const parts = list ? readingLists.renderList(list, books) : readingLists.renderIndex(books);
+  const parts = list ? readingLists.renderList(list, books, lists) : readingLists.renderIndex(books, lists);
   if (list && parts.count < 3) return unavailable();
   const once = (fn) => { let done = false; return { element(el) { if (!done) { done = true; fn(el); } } }; };
   const out = new HTMLRewriter()
@@ -1071,17 +1098,19 @@ async function readingListPage(request, env, ctx, url, slug) {
     .on('meta[name="twitter:description"]', { element(el) { el.setAttribute('content', parts.description); } })
     .on('script[type="application/ld+json"]', once((el) => el.setInnerContent(parts.jsonLd, { html: true })))
     .on('main', once((el) => el.setInnerContent(parts.main, { html: true })))
+    .on('meta[name="robots"]', { element(el) { if (preview) el.setAttribute('content', 'noindex,nofollow'); } })
     .transform(shell);
   const headers = new Headers(out.headers);
   for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
-  headers.set('Cache-Control', 'public, max-age=600');
+  headers.set('Cache-Control', preview ? 'private, no-store' : 'public, max-age=600');
+  if (preview) headers.set('X-Robots-Tag', 'noindex, nofollow');
   headers.set('X-Reading-List', `${list ? list.slug : 'index'}:${parts.count}`);
   return new Response(request.method === 'HEAD' ? null : out.body, { status: 200, headers });
 }
 
 // "Featured in" a reading list, under About this book on the product page.
-function withReadingLists(response, slug) {
-  const line = readingLists.featuredInHtml(slug);
+async function withReadingLists(response, slug, env) {
+  const line = readingLists.featuredInHtml(slug, await readingListsAll(env));
   if (!line || !response || response.status !== 200) return response;
   let done = false;
   return new HTMLRewriter().on('.desc', { element(el) { if (!done) { done = true; el.after(line, { html: true }); } } }).transform(response);
@@ -1309,7 +1338,7 @@ export default {
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(page, contentSlug)), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env), contentSlug);
+      return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env), contentSlug, env);
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -1327,9 +1356,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(markSoldOutPage(rendered), slug)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug);
+          return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(markSoldOutPage(rendered), slug)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug, env);
         }
-        if (rendered.status !== 404) return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(withWeeklyPrice(rendered, slug)) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug);
+        if (rendered.status !== 404) return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(withWeeklyPrice(rendered, slug)) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug, env);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a

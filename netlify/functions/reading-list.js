@@ -1,6 +1,8 @@
 /**
  * Netlify Function: reading-list   (public, read-only)
- * GET /.netlify/functions/reading-list?slug=<list slug>   (no slug = every list)
+ * GET /.netlify/functions/reading-list?slug=<list slug>   (a hand-written list)
+ * GET /.netlify/functions/reading-list?slugs=a,b,c        (any books, at most 200;
+ *     the Worker uses this for generated lists and the index)
  *
  * The books a reading list (utils/reading-lists) needs, at the till's price:
  *   { books: { "<slug>": { price, mrp, img, title, author } } }
@@ -73,16 +75,18 @@ exports.handler = async (event) => {
   const q = event.queryStringParameters || {};
   const list = q.slug ? listFor(q.slug) : null;
   if (q.slug && !list) return { statusCode: 404, headers: CORS, body: JSON.stringify({ error: 'No such list' }) };
-  const key = list ? list.slug : '*';
+  const asked = q.slugs ? [...new Set(String(q.slugs).split(',').map((s) => s.trim().toLowerCase()).filter((s) => /^[\w-]{1,200}$/.test(s)))].slice(0, 200) : null;
+  const key = list ? list.slug : asked ? asked.slice().sort().join(',') : '*';
   const hit = _cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) {
     return { statusCode: 200, headers: { ...CORS, 'Cache-Control': 'public, max-age=600' }, body: hit.body };
   }
   try {
-    const slugs = list ? [...new Set(list.picks.map((p) => p.slug.toLowerCase()))] : allPickSlugs();
+    const slugs = list ? [...new Set(list.picks.map((p) => p.slug.toLowerCase()))] : asked || allPickSlugs();
     const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
       ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY) : null;
     const body = JSON.stringify({ books: await booksFor(slugs, supabase) });
+    if (_cache.size > 300) _cache.clear();
     _cache.set(key, { at: Date.now(), body });
     return { statusCode: 200, headers: { ...CORS, 'Cache-Control': 'public, max-age=600' }, body };
   } catch (err) {
@@ -92,4 +96,5 @@ exports.handler = async (event) => {
   }
 };
 
+exports.booksFor = booksFor;
 exports._test = { booksFor, catalogue };

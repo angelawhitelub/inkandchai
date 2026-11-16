@@ -485,6 +485,12 @@
 [functions."ai-related-scheduled"]
   schedule = "0 22 * * *"
 
+# Nightly 03:30 IST: the reading-list agent (utils/reading-list-agent) writes one
+# new /best-books/ list with OpenAI when the last is every_days old (admin
+# setting, default 3). Drafts for review unless auto-publish is on. No messages.
+[functions."reading-list-agent-scheduled"]
+  schedule = "0 22 * * *"
+
 # Daily 09:00 IST: cancel XpressBees panel queue rows for orders another courier
 # already carries (the channel importer keeps pulling them in). Only unbooked
 # 'new' rows; see xpressbees-order-cancel. Switched by XPRESSBEES_QUEUE_CLEANUP.
