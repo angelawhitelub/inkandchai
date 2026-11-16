@@ -631,9 +631,8 @@ exports.handler = async (event) => {
       return null;
     });
     if (sponsored) {
-      const taken = new Set(sponsored.picks.map((p) => p.slug));
-      const fill = takeDistinct(ranked.filter((row) => !taken.has(row.product.slug)),
-        Math.max(0, Math.min(limit, 3) - sponsored.picks.length), (row) => row.product).map((row) => row.product);
+      // Only the sponsored set: the bundle is "this book + the others in its group".
+      const fill = [];
       return {
         statusCode: 200,
         headers: HEADERS,

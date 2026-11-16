@@ -814,6 +814,8 @@ function injectFbtStyles() {
     .iac-fbt-img{width:52px;aspect-ratio:2/3;border:1px solid var(--border,rgba(138,106,31,.22));background:rgba(138,106,31,.06);overflow:hidden}
     .iac-fbt-img img{width:100%;height:100%;object-fit:cover;display:block}
     .iac-fbt-name{font-family:"Cormorant Garamond",serif;font-size:1rem;line-height:1.2;color:var(--cream,#2a2018);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .iac-fbt-link{color:inherit;text-decoration:none;cursor:pointer}
+    .iac-fbt-link:hover,.iac-fbt-link:focus-visible{text-decoration:underline;text-underline-offset:3px;color:var(--gold,#8a6a1f)}
     .iac-fbt-author{font-size:.64rem;letter-spacing:.06em;color:var(--muted,#5a4a38);margin-top:.15rem}
     .iac-fbt-pill{display:inline-block;margin-left:.45rem;font:600 .52rem Montserrat,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--gold,#8a6a1f);border:1px solid var(--border,rgba(138,106,31,.28));padding:.12rem .35rem;vertical-align:middle}
     .iac-fbt-price{text-align:right;font-family:"Cormorant Garamond",serif;font-size:1.08rem;color:var(--gold,#8a6a1f);font-weight:600;white-space:nowrap}
@@ -918,7 +920,7 @@ function renderInjectedFbt(data) {
           ${item.img ? `<img src="${esc(iacImg(item.img,140))}" alt="${esc(item.title)} cover" loading="lazy">` : ''}
         </a>
         <div>
-          <div class="iac-fbt-name">${esc(item.title)}${index === 0 ? '<span class="iac-fbt-pill">This item</span>' : ''}</div>
+          <div class="iac-fbt-name">${index === 0 ? esc(item.title) : `<a class="iac-fbt-link" href="${esc(href)}">${esc(item.title)}</a>`}${index === 0 ? '<span class="iac-fbt-pill">This item</span>' : ''}</div>
           <div class="iac-fbt-author">${esc(item.author || '')}</div>
         </div>
         <div class="iac-fbt-price">
