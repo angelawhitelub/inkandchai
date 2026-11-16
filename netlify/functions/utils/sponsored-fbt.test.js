@@ -50,3 +50,11 @@ test('no till price, no sponsored panel', async () => {
   });
   assert.equal(out, null);
 });
+
+test('a taken-down page is recognised by slug or alias, whatever the case', () => {
+  const { isRemoved } = require('../frequently-bought')._test;
+  const removed = new Set(['vol-2-system-design-interview-81725']);
+  assert.equal(isRemoved({ slug: 'vol-2-system-design-interview-81725' }, removed), true);
+  assert.equal(isRemoved({ slug: 'x', aliases: ['VOL-2-System-Design-Interview-81725'] }, removed), true);
+  assert.equal(isRemoved({ slug: 'designing-data-intensive-applications-by-martin-kleppmann' }, removed), false);
+});

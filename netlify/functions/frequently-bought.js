@@ -570,7 +570,25 @@ async function sponsoredFor(base, products, deps = {}) {
   return picks.length ? { group, picks } : null;
 }
 
-exports._test = { relatedFor, targetedCandidates, sponsoredFor, sponsoredGroupFor, SPONSORED_GROUPS };
+async function removedSlugs() {
+  try { return await require('./utils/deleted-products').deletedSlugSet(); } catch { return new Set(); }
+}
+// Same array while neither list changes, so the related-shelf index (built per
+// products array) is not rebuilt on every request.
+let _shownFor = null, _shownRemoved = null, _shown = null;
+function liveProducts(all, removed) {
+  if (!removed.size) return all;
+  if (_shownFor !== all || _shownRemoved !== removed) {
+    _shown = all.filter((p) => !isRemoved(p, removed));
+    _shownFor = all; _shownRemoved = removed;
+  }
+  return _shown;
+}
+function isRemoved(p, removed) {
+  return [p && p.slug, ...((p && p.aliases) || [])].some((s) => s && removed.has(String(s).toLowerCase()));
+}
+
+exports._test = { isRemoved, relatedFor, targetedCandidates, sponsoredFor, sponsoredGroupFor, SPONSORED_GROUPS };
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: HEADERS, body: '' };
@@ -583,8 +601,12 @@ exports.handler = async (event) => {
       .split('/')
       .filter(Boolean)[0]
       .toLowerCase();
-    const products = await loadProducts();
-    let base = products.find((p) => p.slug === slug || (p.aliases || []).includes(slug)) || null;
+    const allProducts = await loadProducts();
+    // Taken-down pages (admin / copyright, utils/deleted-products) are never
+    // recommended: the Worker refuses them, so a card would lead nowhere.
+    const removed = await removedSlugs();
+    const products = liveProducts(allProducts, removed);
+    let base = allProducts.find((p) => p.slug === slug || (p.aliases || []).includes(slug)) || null;
     if (!base) base = await findCustomBase(slug).catch((err) => {
       console.warn('frequently-bought base lookup failed:', err.message);
       return null;
@@ -615,7 +637,8 @@ exports.handler = async (event) => {
     if (event.queryStringParameters?.mode === 'related') {
       const relLimit = Math.min(Math.max(Number(event.queryStringParameters?.limit) || 12, 1), 18);
       const body = await relatedFor(base, products, signals, { limit: relLimit, exclude });
-      return { statusCode: 200, headers: HEADERS, body: JSON.stringify(body) };
+      const shown = removed.size ? { ...body, recommendations: body.recommendations.filter((p) => !isRemoved(p, removed)) } : body;
+      return { statusCode: 200, headers: HEADERS, body: JSON.stringify(shown) };
     }
 
     const limit = Math.min(Math.max(Number(event.queryStringParameters?.limit) || 3, 1), 6);
