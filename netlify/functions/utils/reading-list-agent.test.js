@@ -74,6 +74,19 @@ test('topics: the owner queue first, then seeds, then our bestsellers; never one
   assert.ok(!/^Books Like It Ends With Us$/i.test(String((agent.nextTopic({ lists: [], topics: { queued: [{ topic: 'Books like It Ends With Us' }], done: agent.SEED_TOPICS }, settings: {} }) || {}).topic)));
 });
 
+test('"books like X" never lists X; shelf labels are not authors', () => {
+  assert.equal(agent.likeSubject('Books like Atomic Habits'), 'atomic habits');
+  assert.equal(agent.likeSubject('Thriller books under 300'), '');
+  assert.equal(agent.personName('Crossword Recommends'), '');
+  assert.equal(agent.personName('Daily Habits'), '');
+  assert.equal(agent.personName('Charles Duhigg'), 'Charles Duhigg');
+  const out = fakeWriter();
+  out.picks[0].name = 'Essentialism by Greg McKeown'; out.picks[0].by = 'Crossword Recommends';
+  const v = agent.validateWritten(out, candidateBooks, { slug: 's', topic: 't' });
+  assert.equal(v.list.picks[0].name, 'Essentialism');
+  assert.equal(v.list.picks[0].by, '');
+});
+
 test('slugs are clean and never collide', () => {
   const taken = new Set(['books-like-atomic-habits', ...RL.LISTS.map((l) => l.slug)]);
   assert.equal(agent.slugFor('Books Like Atomic Habits!', 'x', taken), 'books-like-atomic-habits-2');
@@ -85,7 +98,7 @@ test('one run: plans, keeps in-stock books only, writes a draft; the page render
   const prompts = [];
   const ai = async (messages) => {
     prompts.push(messages);
-    if (prompts.length === 1) return { slug: 'books-like-atomic-habits', max_price: null, queries: ['atomic habits', 'power of habit', 'deep work', 'james clear', 'charles duhigg', 'cal newport', 'habits'] };
+    if (prompts.length === 1) return { slug: 'books-like-atomic-habits', max_price: null, queries: ['atomic habits', 'power of habit', 'deep work', 'charles duhigg', 'cal newport', 'habits', 'productivity', 'mindset', 'self discipline', 'focus'] };
     const cands = JSON.parse(messages[1].content).candidates;
     return fakeWriter({ ids: cands.slice(0, 12).map((c) => c.id) });
   };
@@ -95,6 +108,7 @@ test('one run: plans, keeps in-stock books only, writes a draft; the page render
   assert.equal(r.status, 'draft');
   const sent = JSON.parse(prompts[1][1].content).candidates;
   assert.ok(sent.every((c) => c.price > 0), 'only priced books reach the writer');
+  assert.ok(sent.length && !sent.some((c) => /atomic habits/i.test(c.title)), 'the subject book is not a candidate');
 
   const doc = await agent.readDoc();
   assert.equal(doc.lists.length, 1);

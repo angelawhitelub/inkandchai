@@ -142,14 +142,17 @@ You get a topic and CANDIDATES: books we have in stock, each with an id. Return 
  "h1": "the page heading, under 60 characters",
  "description": "meta description, 120-160 characters, names a few authors or titles",
  "intro": "2-3 sentences, 200-450 characters, plain text",
- "picks": [{"id": "c12", "name": "clean book title without author or edition junk", "by": "author name(s), or empty", "note": "1-2 sentences, 80-260 characters", "group": "optional short group heading"}],
+ "picks": [{"id": "c12", "name": "the book's title only: no 'by Author', no edition or format words", "by": "the real author's name(s), or empty", "note": "1-2 sentences, 80-260 characters", "group": "optional short group heading"}],
  "body": [{"heading": "short heading", "text": "one paragraph, 250-700 characters"}],
  "faq": [{"q": "a question readers search for", "a": "1-3 sentences"}]}
 Rules:
 - Choose 12 to 20 picks, ONLY from the candidates, by id, best and most fitting first. Never invent books.
 - Skip candidates that do not truly fit the topic, duplicates of the same book, and used/"preloved" copies.
-- If the topic names a book, put that book first when it is a candidate.
+- If the topic is "Books like X", never pick X itself, nor its other editions, summaries, workbooks or combos that include it.
+- The candidate "author" field is sometimes a shelf or series label (e.g. "Crossword Recommends", "Daily Habits", "Emotional Intelligence"). In "by", give only a real person's name you are sure of; otherwise leave it empty.
+- FAQ answers may only state facts about books on this list or give general reading advice. Never say other editions, translations or formats are available.
 - Use "group" only when 2-4 groups genuinely help readers (e.g. "Start here", "If you want something lighter"); otherwise leave it out of every pick.
+- Do not call a book "official", "bestselling" or "award-winning" unless the candidate description says so.
 - Notes say why a reader of this topic would enjoy the book. Base specifics only on the candidate description or facts you are certain of. Never invent plot details, awards, sales figures or quotes. No spoilers.
 - Body: 2-3 sections (e.g. how we picked, where to start). FAQ: 3-4 questions.
 - Plain text only: no HTML, no markdown, no links, no emojis. Do not mention prices, discounts, delivery or the store's policies.
@@ -214,6 +217,21 @@ function checkText(label, value, min, max, errors) {
 }
 
 /** The writer's JSON as a stored list, or { errors }. */
+/** "Books like X" -> "x" (normalised), so X, its combos and workbooks stay off its own list. */
+const norm = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function likeSubject(topic) {
+  const m = String(topic || '').match(/^books?\s+(?:like|similar to)\s+(.+)$/i);
+  const k = m ? norm(m[1]) : '';
+  return k.length >= 4 ? k : '';
+}
+
+/** A shelf or series label in the author field is not an author. */
+const NOT_A_PERSON = /\b(recommends?|habits?|intelligence|editions?|collections?|combo|bestsellers?|series|books?|classics?|publications?|press|publishers?|unknown|various)\b/i;
+function personName(by) {
+  const t = String(by || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return t && !NOT_A_PERSON.test(t) ? t : '';
+}
+
 /** A long catalogue title is cut at a word, not a reason to throw the list away. */
 function shortName(name) {
   const t = String(name || '').replace(/\s+/g, ' ').trim();
@@ -242,8 +260,8 @@ function validateWritten(out, candidates, { slug, topic, maxPrice }) {
     seen.add(c.slug);
     list.picks.push({
       slug: c.slug,
-      name: checkText(`name of ${p.id}`, shortName(p.name || cleanTitle(c.title) || c.title), 1, 90, errors),
-      by: String(p.by || c.author || '').slice(0, 80),
+      name: checkText(`name of ${p.id}`, shortName(String(p.name || cleanTitle(c.title) || c.title).replace(/\s+by\s+[^,()]+$/i, '')), 1, 90, errors),
+      by: personName(p.by),
       note: checkText(`note for ${p.id}`, p.note, 50, 320, errors),
       ...(p.group ? { group: checkText(`group of ${p.id}`, p.group, 2, 50, errors) } : {}),
     });
@@ -300,11 +318,13 @@ async function generateOne({ topic: asked, trigger = 'manual' } = {}, deps) {
   const maxPrice = Number(plan.max_price) > 0 ? Math.round(Number(plan.max_price)) : 0;
   if (queries.length < 5) return finish({ error: 'plan had too few searches' });
 
+  const subject = likeSubject(next.topic);
   const found = await searchCandidates(queries, deps.supabase);
   const prices = found.length ? await deps.priceBooks(found.map((b) => b.slug.toLowerCase())) : {};
   const candidates = found
     .map((b) => ({ ...b, price: prices[b.slug.toLowerCase()] && prices[b.slug.toLowerCase()].price }))
     .filter((b) => Number(b.price) > 0 && (!maxPrice || b.price <= maxPrice))
+    .filter((b) => !subject || !(` ${norm(b.title)} `).includes(` ${subject} `))
     .slice(0, 70);
   if (candidates.length < 12) {
     return finish({ error: `only ${candidates.length} in-stock books match "${next.topic}"`, candidates: candidates.length, markDone: !asked });
@@ -383,6 +403,7 @@ function isDue(doc, now = Date.now()) {
 }
 
 module.exports = {
+  likeSubject, personName,
   readDoc, writeDoc, generateOne, applyAction, isDue, nextTopic, cleanTitle, searchCandidates,
   validateWritten, slugFor, openaiJson, SEED_TOPICS, DEFAULT_SETTINGS, KEY,
 };
