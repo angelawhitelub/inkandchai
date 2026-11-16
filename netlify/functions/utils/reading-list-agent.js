@@ -467,8 +467,15 @@ function applyTo(doc, action, body) {
     const i = Number(body.pick);
     if (Number.isInteger(i) && l.picks[i] && typeof body.note === 'string') l.picks[i].note = body.note.trim().slice(0, 320);
     else if (Number.isInteger(i) && l.picks[i] && typeof body.by === 'string') l.picks[i].by = body.by.trim().slice(0, 80);
+    else if (Number.isInteger(i) && l.picks[i] && typeof body.name === 'string' && body.name.trim()) l.picks[i].name = body.name.trim().slice(0, 90);
     else if (Number.isInteger(i) && l.picks[i] && body.remove === true) l.picks.splice(i, 1);
     for (const k of ['title', 'h1', 'description', 'intro']) if (typeof body[k] === 'string' && body[k].trim()) l[k] = body[k].trim().slice(0, 600);
+    // FAQ: { faq: n, q?, a? } rewrites one, { faq: n, remove: true } drops it.
+    const f = Number(body.faq);
+    if (Number.isInteger(f) && l.faq && l.faq[f]) {
+      if (body.remove === true) l.faq.splice(f, 1);
+      else for (const k of ['q', 'a']) if (typeof body[k] === 'string' && body[k].trim()) l.faq[f][k] = body[k].trim().slice(0, 400);
+    }
   } else {
     throw new Error('Unknown action');
   }

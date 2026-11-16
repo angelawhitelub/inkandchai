@@ -206,6 +206,14 @@ test('with the Durable Object store, back-to-back saves never undo each other', 
     const doc = await agent.readDoc();
     assert.deepEqual(doc.lists.map((l) => `${l.slug}:${l.status}`), ['a:published', 'c:published']);
     assert.equal(puts, 3);
+    value.lists[0].picks = [{ slug: 'x', name: 'Early India the Penguin History of as 1300', by: '', note: 'n' }];
+    value.lists[0].faq = [{ q: 'q1', a: 'a1' }, { q: 'q2', a: 'a2' }];
+    await agent.applyAction('edit', { slug: 'a', pick: 0, name: 'The Penguin History of Early India' });
+    await agent.applyAction('edit', { slug: 'a', faq: 1, a: 'better answer' });
+    await agent.applyAction('edit', { slug: 'a', faq: 0, remove: true });
+    const a = (await agent.readDoc()).lists[0];
+    assert.equal(a.picks[0].name, 'The Penguin History of Early India');
+    assert.deepEqual(a.faq, [{ q: 'q2', a: 'better answer' }]);
     assert.ok(mem.get(`catalog:${agent.KEY}`), 'the Worker copy in KV is written too');
   } finally { bindings.bindEnv(null); }
 });
