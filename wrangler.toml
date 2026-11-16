@@ -47,6 +47,9 @@ run_worker_first = [
   # The live Best Sellers Top 100 (utils/bestseller-rank, worker/index.js).
   "/bestsellers",
   "/bestsellers/",
+  # Reading lists (utils/reading-lists): rendered with live prices, no baked file.
+  "/best-books",
+  "/best-books/*",
   "/custom-feed-bulk/*",
   "/.netlify/functions/*",
   # The WooCommerce-shaped order feed XpressBees polls. Both patterns are

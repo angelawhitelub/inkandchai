@@ -38,6 +38,7 @@ import qtyLimits from '../netlify/functions/utils/qty-limits.js';
 import noReturns from '../netlify/functions/utils/no-returns.js';
 import productIdUtil from '../netlify/functions/utils/product-id.js';
 import weeklyPriceUtil from '../netlify/functions/utils/weekly-price.js';
+import readingLists from '../netlify/functions/utils/reading-lists.js';
 import staffSessions from '../netlify/functions/utils/staff-sessions.js';
 import { ENABLED_JOBS, scheduledJobNames, refuseAnonymousJobRun } from './scheduled-jobs.mjs';
 
@@ -984,10 +985,12 @@ async function sitemapWithCustom(request, env, ctx, origin) {
       _customUrlsAt = now;
     } catch (err) {
       console.warn('[sitemap] custom products read failed:', err && err.message);
-      if (!_customUrls) return asset;
     }
   }
-  const { xml, added } = customSitemap.mergeSitemap(await asset.text(), _customUrls, { deleted: await deletedSlugs(env) });
+  // The reading lists are added even when the custom-book read fails.
+  const merged = customSitemap.mergeSitemap(await asset.text(), _customUrls || [], { deleted: await deletedSlugs(env) });
+  const { xml } = readingLists.addToSitemap(merged.xml);
+  const { added } = merged;
   const headers = new Headers(asset.headers);
   for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
   headers.set('Content-Type', 'application/xml; charset=utf-8');
@@ -1027,6 +1030,61 @@ async function bestsellersPage(request, env, url) {
   headers.set('Cache-Control', 'public, max-age=300');
   headers.set('X-Bestsellers', `${parts.shelf || 'all'}:${parts.count}`);
   return new Response(out.body, { status: 200, headers });
+}
+
+// Reading lists (/best-books/ and /best-books/<slug>/; utils/reading-lists):
+// SEO pages rendered into the baked /books-under-299/ shell with live till
+// prices. Books that are sold out, taken down or over the list's budget drop
+// out. A failed price read is a 503, never an empty list Google could index.
+async function readingListPage(request, env, ctx, url, slug) {
+  const list = slug ? readingLists.listFor(slug) : null;
+  if (slug && !list) return null;
+  if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method Not Allowed', { status: 405 });
+  const unavailable = () => new Response('Reading list temporarily unavailable, please try again in a minute.', {
+    status: 503, headers: { 'Retry-After': '120', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+  const shell = await env.ASSETS.fetch(new Request(`${url.origin}/books-under-299/`, { headers: request.headers }));
+  if (shell.status !== 200 || !/text\/html/i.test(shell.headers.get('content-type') || '')) return unavailable();
+  let books;
+  try {
+    const res = await runHandler('reading-list', new Request(`${url.origin}${FN_PREFIX}reading-list${list ? `?slug=${encodeURIComponent(list.slug)}` : ''}`), env, ctx);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    books = (await res.json()).books || {};
+  } catch (err) {
+    console.warn('[reading-list] books unavailable:', err && err.message);
+    return unavailable();
+  }
+  const gone = await deletedSlugs(env);
+  for (const s of Object.keys(books)) if (gone.has(s)) delete books[s];
+  const parts = list ? readingLists.renderList(list, books) : readingLists.renderIndex(books);
+  if (list && parts.count < 3) return unavailable();
+  const once = (fn) => { let done = false; return { element(el) { if (!done) { done = true; fn(el); } } }; };
+  const out = new HTMLRewriter()
+    .on('title', once((el) => el.setInnerContent(parts.title)))
+    .on('meta[name="description"]', { element(el) { el.setAttribute('content', parts.description); } })
+    .on('link[rel="canonical"]', { element(el) { el.setAttribute('href', parts.canonical); } })
+    .on('meta[property="og:title"]', { element(el) { el.setAttribute('content', parts.ogTitle); } })
+    .on('meta[property="og:description"]', { element(el) { el.setAttribute('content', parts.description); } })
+    .on('meta[property="og:url"]', { element(el) { el.setAttribute('content', parts.canonical); } })
+    .on('meta[property="og:image"]', { element(el) { if (parts.image) el.setAttribute('content', parts.image); else el.remove(); } })
+    .on('meta[name="twitter:title"]', { element(el) { el.setAttribute('content', parts.ogTitle); } })
+    .on('meta[name="twitter:description"]', { element(el) { el.setAttribute('content', parts.description); } })
+    .on('script[type="application/ld+json"]', once((el) => el.setInnerContent(parts.jsonLd, { html: true })))
+    .on('main', once((el) => el.setInnerContent(parts.main, { html: true })))
+    .transform(shell);
+  const headers = new Headers(out.headers);
+  for (const h of ['etag', 'last-modified', 'content-length', 'content-encoding']) headers.delete(h);
+  headers.set('Cache-Control', 'public, max-age=600');
+  headers.set('X-Reading-List', `${list ? list.slug : 'index'}:${parts.count}`);
+  return new Response(request.method === 'HEAD' ? null : out.body, { status: 200, headers });
+}
+
+// "Featured in" a reading list, under About this book on the product page.
+function withReadingLists(response, slug) {
+  const line = readingLists.featuredInHtml(slug);
+  if (!line || !response || response.status !== 200) return response;
+  let done = false;
+  return new HTMLRewriter().on('.desc', { element(el) { if (!done) { done = true; el.after(line, { html: true }); } } }).transform(response);
 }
 
 // /new-arrivals/ and /new-arrivals-2026/ are baked from the catalogue, so books
@@ -1231,6 +1289,14 @@ export default {
     if (/^\/new-arrivals(?:-2026)?\/?$/.test(url.pathname)) return newArrivalsPage(request, env, ctx, url.origin);
     if (url.pathname === '/bestsellers') return Response.redirect(`${url.origin}/bestsellers/${url.search}`, 301);
     if (url.pathname === '/bestsellers/') return bestsellersPage(request, env, url);
+    {
+      const rl = url.pathname.match(/^\/best-books(?:\/([a-z0-9-]+))?(\/?)$/);
+      if (rl) {
+        if (!rl[2]) return Response.redirect(`${url.origin}${url.pathname}/${url.search}`, 301);
+        const page = await readingListPage(request, env, ctx, url, rl[1] || '');
+        if (page) return page;
+      }
+    }
 
     const assetResponse = await env.ASSETS.fetch(request);
 
@@ -1243,7 +1309,7 @@ export default {
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(page, contentSlug)), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env);
+      return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env), contentSlug);
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -1261,9 +1327,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(markSoldOutPage(rendered), slug)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
+          return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(markSoldOutPage(rendered), slug)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug);
         }
-        if (rendered.status !== 404) return withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(withWeeklyPrice(rendered, slug)) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env);
+        if (rendered.status !== 404) return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(withWeeklyPrice(rendered, slug)) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a
