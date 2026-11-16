@@ -229,7 +229,8 @@ function likeSubject(topic) {
 const NOT_A_PERSON = /\b(recommends?|habits?|intelligence|editions?|collections?|combo|bestsellers?|series|books?|classics?|publications?|press|publishers?|unknown|various)\b/i;
 function personName(by) {
   const t = String(by || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-  return t && !NOT_A_PERSON.test(t) ? t : '';
+  // A full name: "Stephen" alone (a cut-off catalogue field) is not credited.
+  return t && !NOT_A_PERSON.test(t) && /\S\s+\S/.test(t) ? t : '';
 }
 
 /** A long catalogue title is cut at a word, not a reason to throw the list away. */
@@ -253,11 +254,13 @@ function validateWritten(out, candidates, { slug, topic, maxPrice }) {
     picks: [], body: [], faq: [],
   };
   const seen = new Set();
+  // Two listings of one book ("The Power of Habit" / "Power of Habit") count once.
+  const titleKey = (t) => norm(cleanTitle(t) || t).replace(/^(the|a|an) /, '');
   for (const p of Array.isArray(out.picks) ? out.picks : []) {
     const c = byId.get(String(p && p.id || ''));
     if (!c) { errors.push(`pick ${p && p.id} is not a candidate`); continue; }
-    if (seen.has(c.slug)) continue;
-    seen.add(c.slug);
+    if (seen.has(c.slug) || seen.has(`t:${titleKey(c.title)}`)) continue;
+    seen.add(c.slug); seen.add(`t:${titleKey(c.title)}`);
     list.picks.push({
       slug: c.slug,
       name: checkText(`name of ${p.id}`, shortName(String(p.name || cleanTitle(c.title) || c.title).replace(/\s+by\s+[^,()]+$/i, '')), 1, 90, errors),
@@ -386,6 +389,7 @@ async function applyAction(action, body = {}) {
     if (!l) throw new Error('No such list');
     const i = Number(body.pick);
     if (Number.isInteger(i) && l.picks[i] && typeof body.note === 'string') l.picks[i].note = body.note.trim().slice(0, 320);
+    else if (Number.isInteger(i) && l.picks[i] && typeof body.by === 'string') l.picks[i].by = body.by.trim().slice(0, 80);
     else if (Number.isInteger(i) && l.picks[i] && body.remove === true) l.picks.splice(i, 1);
     for (const k of ['title', 'h1', 'description', 'intro']) if (typeof body[k] === 'string' && body[k].trim()) l[k] = body[k].trim().slice(0, 600);
   } else {

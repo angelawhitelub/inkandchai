@@ -5380,7 +5380,17 @@ async function rlGenerate() {
   const topic = document.getElementById('rlTopic').value.trim();
   btn.disabled = true; btn.textContent = '✍️ Writing… (about a minute)';
   try {
-    const d = await rlCall({ action: 'generate', topic: topic || undefined });
+    // The list is saved on the server even if this request's answer is lost,
+    // so after 2½ minutes stop waiting and just reload what is there.
+    const d = await Promise.race([
+      rlCall({ action: 'generate', topic: topic || undefined }),
+      new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 150000)),
+    ]);
+    if (d.timedOut) {
+      await rlCall(); rlRender();
+      alert('Still no answer after 2½ minutes. If the list was written it is now in Drafts; if not, press the button again.');
+      return;
+    }
     if (d.result && !d.result.ok) alert('Could not write this list: ' + (d.result.error || 'unknown error'));
     else document.getElementById('rlTopic').value = '';
     document.getElementById('rlStatus').value = d.result && d.result.status === 'published' ? 'published' : 'draft';

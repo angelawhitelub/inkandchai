@@ -6,7 +6,7 @@
  * POST { action: 'publish'|'unpublish'|'reject'|'delete', slug }
  * POST { action: 'queue'|'unqueue', topic }
  * POST { action: 'settings', enabled?, auto_publish?, every_days? }
- * POST { action: 'edit', slug, pick?, note?, remove?, title?, h1?, description?, intro? }
+ * POST { action: 'edit', slug, pick?, note?, by?, remove?, title?, h1?, description?, intro? }
  *
  * utils/reading-list-agent does the work. Not on the staff allow-list, so
  * customer-care logins get 403.

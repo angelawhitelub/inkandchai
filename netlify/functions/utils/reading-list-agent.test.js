@@ -80,6 +80,11 @@ test('"books like X" never lists X; shelf labels are not authors', () => {
   assert.equal(agent.personName('Crossword Recommends'), '');
   assert.equal(agent.personName('Daily Habits'), '');
   assert.equal(agent.personName('Charles Duhigg'), 'Charles Duhigg');
+  assert.equal(agent.personName('Stephen'), '');
+  const twice = [{ slug: 'the-power-of-habit', title: 'The Power of Habit', author: '' }, { slug: 'power-of-habit-x', title: 'Power of Habit', author: '' }, ...candidateBooks.slice(2)];
+  const dup = agent.validateWritten(fakeWriter(), twice, { slug: 's', topic: 't' });
+  assert.ok(dup.list, JSON.stringify(dup.errors));
+  assert.equal(dup.list.picks.length, 13, 'the second listing of the same book is dropped');
   const out = fakeWriter();
   out.picks[0].name = 'Essentialism by Greg McKeown'; out.picks[0].by = 'Crossword Recommends';
   const v = agent.validateWritten(out, candidateBooks, { slug: 's', topic: 't' });
