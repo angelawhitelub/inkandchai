@@ -58,6 +58,8 @@ function stageOf(raw) {
   return 'unknown';
 }
 
+const PICKED_UP_OR_LATER = new Set(['picked_up', 'in_transit', 'out_for_delivery', 'delivered']);
+
 const XB_CODES = {
   // XpressBees reverse shipments report their own short codes.
   PP: 'awaiting_pickup', OFP: 'awaiting_pickup', PND: 'pickup_failed',
@@ -116,10 +118,20 @@ function normalise(payload, source) {
     stage = history[0].stage;
   }
 
+  // Picked up from the customer: a scan that says so in words (XpressBees files
+  // "Pick up done" under its pending code PP), or any scan of the parcel moving
+  // on towards us. Store credit goes out on this (owner, 16 Nov 2026).
+  const pickedScans = history.filter((h) => PICKED_UP_OR_LATER.has(h.stage) || stageOf(h.status) === 'picked_up');
+  const pickedUp = !['cancelled', 'returned_to_customer'].includes(stage)
+    && (PICKED_UP_OR_LATER.has(stage) || pickedScans.length > 0);
+  const pickedAt = pickedScans.length ? pickedScans[pickedScans.length - 1].at : '';
+
   const latest = history[0] || null;
   return {
     source,
     stage,
+    picked_up: pickedUp,
+    picked_up_at: pickedUp ? (pickedAt || latest?.at || '') : '',
     label: STAGES[stage].label,
     status: headline || latest?.status || '',
     last_scan: latest ? [latest.status, latest.location].filter(Boolean).join(' · ') : '',

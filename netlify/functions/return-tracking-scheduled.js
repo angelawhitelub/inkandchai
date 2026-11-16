@@ -129,7 +129,7 @@ async function backfillAwbs(db, rows, awbMap, summary) {
 async function refresh(db, deps = {}) {
   const track = deps.trackReturns || trackReturns;
   const ownerAlert = deps.ownerAlert || defaultOwnerAlert;
-  const settle = deps.settleRefund || ((awb) => require('./utils/return-auto-refund').handleReturnAwbDelivered(db, awb));
+  const settle = deps.settleRefund || ((awb, opts) => require('./utils/return-auto-refund').handleReturnAwbDelivered(db, awb, opts));
   const summary = { tracked: 0, saved: 0, delivered: [], alerted: [], refunded: [], awb_backfilled: [], awb_missing: 0, columns_missing: [], errors: [] };
 
   const rows = await openReturns(db);
@@ -169,12 +169,16 @@ async function refresh(db, deps = {}) {
     }
     if ((r.dropped || []).length < TRACKING_COLUMNS.length) summary.saved++;
 
-    if (v.stage !== 'delivered') continue;
+    // Store credit (COD / partial COD returns) goes out as soon as the courier
+    // has picked the books up (owner, 16 Nov 2026); a refund to the original
+    // payment method still waits for the parcel to reach us.
+    const creditOnPickup = ret.refund_method === 'wallet' && v.picked_up && v.stage !== 'delivered';
+    if (v.stage !== 'delivered' && !creditOnPickup) continue;
     // A live "delivered" on the reverse AWB is the courier's own scan of the
     // parcel reaching us (an RTO back to the customer is its own stage).
     if (ret.refund_status === 'awaiting_return_delivery') {
       try {
-        const paid = await settle(String(ret.awb).trim());
+        const paid = await settle(String(ret.awb).trim(), { on: creditOnPickup ? 'picked_up' : 'delivered' });
         if (paid && paid.refunded) {
           ret.refund_status = paid.provider === 'wallet' ? 'wallet_issued' : 'refunded';
           if (paid.code) ret.wallet_code = paid.code;
@@ -183,6 +187,7 @@ async function refresh(db, deps = {}) {
         else if (paid && paid.error) summary.errors.push(`refund ${ret.order_display_id || ret.order_id}: ${paid.error}`);
       } catch (e) { summary.errors.push(`refund ${ret.id}: ${e.message}`); }
     }
+    if (v.stage !== 'delivered') continue;
     // Claim the alert first: only the run whose claim lands sends it.
     const claim = await db.from('return_requests').update({ delivered_alerted_at: now })
       .eq('id', ret.id).is('delivered_alerted_at', null).select('id');

@@ -239,3 +239,45 @@ test('a cancelled return tells the bot the pickup is off and no refund is due, a
   await returnsContext({ from: () => b }, '919876543210', [], { trackReturns: async () => { tracked = true; return new Map(); } });
   assert.equal(tracked, false);
 });
+
+// ── Store credit at pickup (owner, 16 Nov 2026) ────────────────────────────
+// The XpressBees scans of a real return: "Pick up done" arrives under the
+// pending code PP, then In Transit.
+const XB_PICKED = {
+  status: 'In Transit',
+  history: [
+    { status_code: 'IT', message: 'In Transit', location: 'RTO/Dummy, Delhi NCR, DELHI', event_time: '2026-11-15 22:26' },
+    { status_code: 'PP', message: 'Pick up done', location: 'Dibrugarh, ASSAM', event_time: '2026-11-08 17:00' },
+    { status_code: 'PP', message: 'Out for PickUp', location: 'Dibrugarh, ASSAM', event_time: '2026-11-08 11:10' },
+    { status_code: 'PP', message: 'Pick up not attempted', location: 'Dibrugarh, ASSAM', event_time: '2026-11-08 02:32' },
+    { status_code: 'PP', message: 'Data receieved but not picked up', location: 'Dibrugarh, ASSAM', event_time: '2026-11-05 13:50' },
+  ],
+};
+
+test('a pickup is seen from the "Pick up done" words even under XpressBees code PP', () => {
+  const v = normalise(XB_PICKED, 'xpressbees');
+  assert.equal(v.picked_up, true);
+  assert.equal(v.picked_up_at, '2026-11-08T11:30:00.000Z');
+  const waiting = normalise({ status: 'Out for PickUp', history: XB_PICKED.history.slice(2) }, 'xpressbees');
+  assert.equal(waiting.picked_up, false);
+  assert.equal(waiting.picked_up_at, '');
+  const cancelled = normalise({ status: 'Cancelled', history: [{ status_code: 'CAN', message: 'Cancelled', event_time: '2026-11-09 10:00' }, ...XB_PICKED.history.slice(1)] }, 'xpressbees');
+  assert.equal(cancelled.picked_up, false);
+});
+
+test('store credit goes out at pickup; a refund to the payment method still waits for the parcel', async () => {
+  const PICKED = normalise(XB_PICKED, 'xpressbees');
+  const rows = [
+    { id: 'w', status: 'pickup_scheduled', awb: '701', order_display_id: 'IC-W', refund_method: 'wallet', refund_status: 'awaiting_return_delivery', refund_amount_paise: 57800 },
+    { id: 'p', status: 'pickup_scheduled', awb: '702', order_display_id: 'IC-P', refund_method: 'original', refund_status: 'awaiting_return_delivery', refund_amount_paise: 49900 },
+  ];
+  const calls = [];
+  const s = await job.refresh(fakeDb(rows), {
+    trackReturns: async () => new Map([['701', PICKED], ['702', PICKED]]),
+    settleRefund: async (awb, opts) => { calls.push([awb, opts && opts.on]); return { matched: true, refunded: true, provider: 'wallet', code: 'SCRATCH-TEST01' }; },
+    ownerAlert: async () => assert.fail('no "received back" alert at pickup'), awbMap: async () => new Map(),
+  });
+  assert.deepEqual(calls, [['701', 'picked_up']]);
+  assert.deepEqual(s.refunded, ['IC-W (wallet)']);
+  assert.equal(rows[0].return_delivered_at, undefined);
+});

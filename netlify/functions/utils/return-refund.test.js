@@ -95,3 +95,17 @@ test('the customer-facing label never repeats a full account number back', () =>
   assert.equal(payoutLabelMasked({ upiId: 'a@b' }), 'UPI a@b');
   assert.equal(payoutLabelMasked({}), 'the details you gave us');
 });
+
+test('at pickup only store credit is issued, never money back', async () => {
+  const { handleReturnAwbDelivered } = require('./return-auto-refund');
+  const ret = { id: 'r1', awb: '702', refund_method: 'original', payment_type: 'prepaid', refund_status: 'awaiting_return_delivery', status: 'pickup_scheduled' };
+  let updates = 0;
+  const db = { from: () => ({
+    select() { return this; }, eq() { return this; },
+    maybeSingle: async () => ({ data: ret, error: null }),
+    update() { updates++; return this; },
+  }) };
+  const r = await handleReturnAwbDelivered(db, '702', { on: 'picked_up' });
+  assert.equal(r.matched, false);
+  assert.equal(updates, 0);
+});

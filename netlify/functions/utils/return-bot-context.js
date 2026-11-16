@@ -33,7 +33,7 @@ function refundLine(ret, received) {
       if (ret.refund_method === 'wallet') {
         // COD and partial COD returns: store credit only (owner's rule, 30 Oct 2026).
         const bonus = walletBonusRupees(ret.created_at);
-        return `Store credit${amt}${bonus ? ` + ₹${bonus} bonus` : ''} (a COD order, so store credit only — no cash, UPI or bank refund) is emailed as a code once the returned books reach us${received ? '; they have reached us, so it is being issued' : ''}.`;
+        return `Store credit${amt}${bonus ? ` + ₹${bonus} bonus` : ''} (a COD order, so store credit only — no cash, UPI or bank refund) is emailed as a code as soon as the courier picks the books up${received || ret.tracking_status && ['picked_up', 'in_transit', 'out_for_delivery', 'delivered'].includes(ret.tracking_status) ? '; they have been picked up, so it is being issued now' : ''}.`;
       }
       return received
         ? `Refund${amt} to the original payment method is released once the return reaches us; it has reached us, so it is being processed.`

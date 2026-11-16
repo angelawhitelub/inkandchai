@@ -106,7 +106,7 @@ function customerEmailHtml(order, info = {}) {
   let block;
   if (info.refundMethod === 'wallet') {
     block = `
-      <p>As this was a Cash on Delivery order, it is refunded as <strong>Ink &amp; Chai store credit</strong>: <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong>${info.bonus ? ` (₹${rupees} refund + ₹${info.bonus} bonus)` : ''}, valid 6 months. We email you the code as soon as the books reach us.</p>`;
+      <p>As this was a Cash on Delivery order, it is refunded as <strong>Ink &amp; Chai store credit</strong>: <strong>₹${(info.walletRupees||0).toLocaleString('en-IN')}</strong>${info.bonus ? ` (₹${rupees} refund + ₹${info.bonus} bonus)` : ''}, valid 6 months. We email you the code as soon as the courier picks the books up.</p>`;
   } else {
     block = `
       <p>Your refund of <strong>₹${rupees}</strong> goes back to your original payment method <strong>automatically once the books are delivered back to us</strong>.</p>`;
@@ -329,7 +329,7 @@ exports.handler = async (event) => {
         auto_pickup: autoPickup,
         message: 'Return requested. We are booking the courier pickup now — you will see it approved here, with the pickup tracking number, as soon as the courier accepts it. '
           + (refundMethod === 'wallet'
-            ? `Cash on Delivery orders are refunded in store credit: ₹${walletRupees}${bonus ? ` (₹${refundRupees} + ₹${bonus} bonus)` : ''} is issued when the books reach us.`
+            ? `Cash on Delivery orders are refunded in store credit: ₹${walletRupees}${bonus ? ` (₹${refundRupees} + ₹${bonus} bonus)` : ''} is issued as soon as the courier picks the books up.`
             : `₹${refundRupees} is refunded to your original payment method when the books reach us.`),
       }),
     };

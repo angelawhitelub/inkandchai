@@ -804,6 +804,8 @@ function injectFbtStyles() {
   style.id = 'iacFbtStyles';
   style.textContent = `
     .iac-fbt{max-width:1260px;margin:1.7rem auto 0;padding:0 1rem}
+    .iac-fbt.iac-fbt--inline{max-width:none;margin:1.2rem 0 1.4rem;padding:0}
+    .iac-fbt--inline .iac-fbt-head{flex-wrap:wrap}
     .iac-fbt-inner{border:1px solid var(--border,rgba(138,106,31,.28));background:var(--panel,#fff);padding:1.2rem}
     .iac-fbt-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:.85rem}
     .iac-fbt-title{font-family:"Cormorant Garamond",serif;font-size:1.45rem;line-height:1.1;color:var(--cream,#2a2018);font-weight:500}
@@ -961,7 +963,13 @@ function renderInjectedFbt(data) {
   // Fall back to just-after-<main> when no reels strip exists on the page.
   const reelsAnchor = document.querySelector('[data-iac-reels], #bookstagramContent');
   const main = document.querySelector('main.wrap') || document.querySelector('main') || document.getElementById('productContent');
-  if (reelsAnchor && reelsAnchor.parentNode) {
+  // A sponsored bundle goes high up, just under the buy box and delivery
+  // details (before "About this book"), where it is seen without scrolling.
+  const aboutAnchor = data.basis === 'sponsored' ? document.querySelector('.desc') : null;
+  if (aboutAnchor && aboutAnchor.parentNode) {
+    section.classList.add('iac-fbt--inline');
+    aboutAnchor.insertAdjacentElement('beforebegin', section);
+  } else if (reelsAnchor && reelsAnchor.parentNode) {
     reelsAnchor.insertAdjacentElement('afterend', section);
   } else if (main && main.parentNode) {
     main.insertAdjacentElement('afterend', section);

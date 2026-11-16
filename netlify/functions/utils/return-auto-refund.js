@@ -8,7 +8,8 @@
  *
  * Store-credit returns are settled here as well: the code (the refund, plus the
  * ₹50 bonus only on a return requested before it ended, walletBonusRupees) is
- * minted and emailed on receipt, never before the books are back.
+ * minted and emailed as soon as the courier picks the books up (owner, 16 Nov
+ * 2026; was on receipt). Money back to a payment method still waits for receipt.
  *
  * Safety:
  *   • Only acts on return_requests rows in refund_status 'awaiting_return_delivery'
@@ -30,7 +31,8 @@ async function ownerAlert(text) {
   if (phone) { try { await sendText(phone, text); } catch (_) {} }
 }
 
-async function handleReturnAwbDelivered(supabase, awb) {
+async function handleReturnAwbDelivered(supabase, awb, { on = 'delivered' } = {}) {
+  const atPickup = on === 'picked_up';
   const tracking = String(awb || '').trim();
   if (!tracking) return { matched: false };
 
@@ -42,6 +44,8 @@ async function handleReturnAwbDelivered(supabase, awb) {
     .maybeSingle();
   if (error || !ret) return { matched: false };
   const wallet = ret.refund_method === 'wallet';
+  // Only store credit is issued at pickup; money back waits for the parcel.
+  if (atPickup && !wallet) return { matched: false };
   // COD original-method refunds are a manual UPI/bank payout, never automatic.
   if (!wallet && !(ret.refund_method === 'original' && ret.payment_type === 'prepaid')) return { matched: false };
 
@@ -80,8 +84,8 @@ async function handleReturnAwbDelivered(supabase, awb) {
           to: ret.customer_email,
           subject: `Your ₹${creditRs} store credit is ready (${oid})`,
           html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
-            <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;">Return received ✅</h2>
-            <p>Hi ${String(ret.customer_name||'there').split(' ')[0]}, your returned books have reached us. Here is your Ink &amp; Chai store credit:</p>
+            <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;">${atPickup ? 'Return picked up ✅' : 'Return received ✅'}</h2>
+            <p>Hi ${String(ret.customer_name||'there').split(' ')[0]}, ${atPickup ? 'the courier has picked up your returned books' : 'your returned books have reached us'}. Here is your Ink &amp; Chai store credit:</p>
             <div style="margin:16px 0;padding:16px;background:#f4ecd9;border:1px dashed #c9a84c;text-align:center;">
               <div style="font-family:monospace;font-size:22px;color:#8a3a1f;margin:4px 0;">${minted.code}</div>
               <div style="font-size:20px;color:#4a9d4a;font-weight:600;">₹${creditRs.toLocaleString('en-IN')}</div>
@@ -92,11 +96,11 @@ async function handleReturnAwbDelivered(supabase, awb) {
           </div>`,
         }).catch(() => {});
       }
-      await ownerAlert(`✅ Return received → store credit issued\nOrder: ${oid}\n${minted.code} worth ₹${creditRs} emailed to the customer.`);
+      await ownerAlert(`✅ Return ${atPickup ? 'picked up' : 'received'} → store credit issued\nOrder: ${oid}\n${minted.code} worth ₹${creditRs} emailed to the customer.`);
       return { matched: true, refunded: true, provider: 'wallet', code: minted.code };
     } catch (e) {
       await supabase.from('return_requests').update({ refund_status: 'awaiting_return_delivery' }).eq('id', ret.id);
-      await ownerAlert(`⚠️ Store credit FAILED for return ${oid}: ${e.message}\nReturn is received — issue ₹${amountRs + bonus} credit by hand.`);
+      await ownerAlert(`⚠️ Store credit FAILED for return ${oid}: ${e.message}\nReturn is ${atPickup ? 'picked up' : 'received'} — issue ₹${amountRs + bonus} credit by hand.`);
       return { matched: true, refunded: false, error: e.message };
     }
   }
