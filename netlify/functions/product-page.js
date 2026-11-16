@@ -208,6 +208,16 @@ gtag('config', '${GA4_MEASUREMENT_ID}');
 </script>
 <!-- End Google Analytics 4 -->` : '';
 
+// Same as GTM_TAG in generate_site.py (second Google Ads account, via GTM).
+const GTM_TAG = `<!-- Google Tag Manager (second Google Ads account AW-18578646372) -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-TCX6QW79"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+</script>
+<!-- End Google Tag Manager -->`;
+
 const GOOGLE_ADS_TAG = `<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
 <script>
@@ -366,6 +376,7 @@ function productHtml(product, aplusContent = null) {
 ${META_PIXEL_CODE}
 ${GOOGLE_ADS_TAG}
 ${GA4_TAG}
+${GTM_TAG}
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${esc(product.seo_title || `${product.title} | Buy Online in India | Ink & Chai`)}</title>
 <meta name="description" content="${metaDesc}"/>

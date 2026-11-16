@@ -745,6 +745,21 @@ gtag('config', '%s');
 </script>
 <!-- End Google Analytics 4 -->""" % (GA4_MEASUREMENT_ID, GA4_MEASUREMENT_ID)) if GA4_MEASUREMENT_ID else ""
 
+# Google Tag Manager container GTM-TCX6QW79, pasted by the owner on 17 Nov 2026.
+# Version 1 holds only a Google tag for a SECOND Google Ads account
+# (AW-18578646372) plus Google's automatic events: no GA4, no Meta pixel, none
+# of the ids below, so nothing is counted twice. Do not add tags inside the
+# container that this file already fires, or purchases double-count.
+# Added to every page by the final pass at the end of this file.
+GTM_TAG = """<!-- Google Tag Manager (second Google Ads account AW-18578646372) -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-TCX6QW79"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+</script>
+<!-- End Google Tag Manager -->"""
+
 GOOGLE_ADS_TAG = """<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
 <script>
@@ -12762,6 +12777,19 @@ for _page in sorted(_public.rglob("*.html")):
     _page.write_text(_html.replace("</head>", META_PIXEL_CODE + "\n</head>", 1), encoding="utf-8")
     _pixeled += 1
 print(f"Generated: Meta pixels on {_pixeled} more pages")
+
+# Google Tag Manager on the same pages as the Meta pixels (same exclusions:
+# admin, offline, personal-link pages whose URLs carry ids or tokens).
+_gtm = 0
+for _page in sorted(_public.rglob("*.html")):
+    if _NO_PIXEL_DIRS.intersection(_page.relative_to(_public).parts):
+        continue
+    _html = _page.read_text(encoding="utf-8")
+    if "gtm.js?id=GTM-TCX6QW79" in _html or "</head>" not in _html:
+        continue
+    _page.write_text(_html.replace("</head>", GTM_TAG + "\n</head>", 1), encoding="utf-8")
+    _gtm += 1
+print(f"Generated: Google Tag Manager on {_gtm} pages")
 
 # ── Site theme ────────────────────────────────────────────────────────────────
 # Last pass on purpose: site_theme.css has to be the final stylesheet in <head>
