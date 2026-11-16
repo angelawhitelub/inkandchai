@@ -1007,6 +1007,8 @@ HTML = r"""<!DOCTYPE html>
 <meta name="author" content="Ink & Chai" />
 <!-- Google site verification (Merchant Center / Search Console account 5782474419) -->
 <meta name="google-site-verification" content="SSzlQkcCmKNDoQOSHrL2agMM2FGlDuvgHG9hNVIRbLg" />
+<!-- Google site verification (new Merchant Center account 5905980012, 16 Nov 2026) -->
+<meta name="google-site-verification" content="f-fQPH8zR17H1c8dFK4UWGIIO-j62ocYxFXIWcpZ0ww" />
 <meta name="theme-color" content="#0d0b08" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)" />
 <meta name="geo.region" content="IN" />
