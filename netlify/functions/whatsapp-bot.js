@@ -781,7 +781,7 @@ async function refreshCancelWindow() {
   try { _untilShipped = await require('./utils/cancel-window').untilShippedOpen(); } catch { _untilShipped = false; }
 }
 function earlyCancelLine(order) {
-  if (!_untilShipped) return '';
+  if (!_untilShipped || !botMayCancelOrRefund()) return '';
   let q;
   try { q = quoteUnpickedCancel(order, Date.now(), { untilShipped: true }); } catch { return ''; }
   if (!q || !q.eligible || !q.early) return '';
@@ -797,8 +797,8 @@ function pickupWaitLine(order) {
   const notice = require('./utils/pickup-delay').pickupDelayNotice();
   return '\nPickup: NOT picked up yet (booked with the courier, waiting for pickup).'
     + (notice ? ` Tell the customer: "${notice}"` : '')
-    + ' Cancellable now: YES, before pickup'
-    + (q.refundPaise > 0 ? ', with a FULL refund of everything they paid.' : ' (Cash on Delivery: nothing to refund).');
+    + (!botMayCancelOrRefund() ? '' : ' Cancellable now: YES, before pickup'
+      + (q.refundPaise > 0 ? ', with a FULL refund of everything they paid.' : ' (Cash on Delivery: nothing to refund).'));
 }
 
 function noReturnLine(order) {
@@ -1054,6 +1054,26 @@ async function handleBotOrderConfirm(from, decision, senderPhoneId) {
   }
 }
 
+// ── No cancelling or refunding on WhatsApp (owner rule, 16 Nov 2026) ─────────
+// The bot never cancels an order or moves money back: cancel_order (cancel +
+// automatic refund), refund_wrong_cod and record_wrong_cod_upi are hidden from
+// the model, refused if called anyway, and the request goes to the customer
+// care team ([ESCALATE]). WHATSAPP_BOT_CANCEL_REFUND=1 restores the old tools.
+const BOT_MONEY_TOOLS = new Set(['cancel_order', 'refund_wrong_cod', 'record_wrong_cod_upi']);
+function botMayCancelOrRefund() { return process.env.WHATSAPP_BOT_CANCEL_REFUND === '1'; }
+const NO_CANCEL_REFUND_RESULT = Object.freeze({
+  ok: false,
+  error: 'not-available-on-whatsapp',
+  message: 'Cancellations and refunds are not done on WhatsApp. Tell the customer our customer care team will look at their request and reply here, and end the reply with [ESCALATE]. Do not say the order is cancelled or refunded, and do not promise a refund or an amount.',
+});
+const NO_CANCEL_REFUND_PROMPT = '\n\n🚫 CANCELLATIONS AND REFUNDS ARE NOT DONE ON WHATSAPP. This overrides everything above, including the store instructions and any ORDER CONTEXT line that says "Cancellable now", "can be cancelled", "call refund_wrong_cod", "use cancel_order" or asks for a UPI ID.\n'
+  + '- You cannot cancel an order, issue a refund, start a refund or send money in this chat, and you have no tool for it.\n'
+  + '- When the customer asks to cancel an order, or asks for a refund, money back, or the extra cash they paid on a wrong COD: do NOT ask them to reply YES, do NOT say it is or will be cancelled or refunded, do NOT quote a refund amount or date, and do NOT ask for a UPI ID or any bank details. Kindly tell them our customer care team will look at it and reply to them here, and end your reply with [ESCALATE].\n'
+  + '- You may still tell them where their order is, and share a refund that ORDER CONTEXT says was ALREADY issued, as a fact.';
+function botTools() {
+  return botMayCancelOrRefund() ? OPENAI_TOOLS : OPENAI_TOOLS.filter((t) => !BOT_MONEY_TOOLS.has(t.function?.name));
+}
+
 // ── OpenAI tool: take a book order over WhatsApp → admin panel ────────────────
 const OPENAI_TOOLS = [{
   type: 'function',
@@ -1178,7 +1198,7 @@ async function callOpenAIChat(messages, { tools = false, model = null, noFallbac
   // passed the safety cases in bot-model-eval.js (gpt-4o-mini was dropped after
   // it cancelled and refunded an order off a bare order id).
   const useModel = model || await currentBotModel();
-  const payload = chatPayload(useModel, { messages, tools: tools ? OPENAI_TOOLS : null, maxTokens: 320, temperature: 0.4 });
+  const payload = chatPayload(useModel, { messages, tools: tools === 'all' ? OPENAI_TOOLS : (tools ? botTools() : null), maxTokens: 320, temperature: 0.4 });
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1244,7 +1264,8 @@ function saleInstructions(now = Date.now()) {
 
 // The system prompt exactly as the bot sends it. Shared with bot-model-eval.js
 // so a model is tested against the real prompt, not a copy that drifts.
-function buildSystemContent(extraInstructions, known, extraContext) {
+// noCancelRefund: false only for bot-model-eval, which still scores the cancel flow.
+function buildSystemContent(extraInstructions, known, extraContext, { noCancelRefund = !botMayCancelOrRefund() } = {}) {
   let systemContent = SYSTEM_PROMPT + saleInstructions();
   if (extraInstructions) {
     systemContent =
@@ -1265,6 +1286,7 @@ function buildSystemContent(extraInstructions, known, extraContext) {
   if (extraContext) {
     systemContent += '\n\nORDER CONTEXT FOR THIS CONVERSATION:\n' + extraContext;
   }
+  if (noCancelRefund) systemContent += NO_CANCEL_REFUND_PROMPT;
   return systemContent;
 }
 
@@ -1296,7 +1318,10 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
     messages.push(first);
     for (const call of first.tool_calls) {
       let result = { ok: false, error: 'unknown tool' };
-      if (call.function?.name === 'submit_order_request') {
+      if (BOT_MONEY_TOOLS.has(call.function?.name) && !botMayCancelOrRefund()) {
+        console.warn(`[BOT-NO-CANCEL-REFUND] ${phone} model called ${call.function.name}; refused`);
+        result = NO_CANCEL_REFUND_RESULT;
+      } else if (call.function?.name === 'submit_order_request') {
         let args = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
         result = await submitOrderRequest(phone, args);
@@ -1631,6 +1656,7 @@ async function customerAskedToCancel(supabase, phone) {
 }
 
 async function cancelOrderViaBot(phone, args = {}) {
+  if (!botMayCancelOrRefund()) return NO_CANCEL_REFUND_RESULT;
   const CUSTOMER_CANCEL_WINDOW_MS = 30 * 60 * 1000;
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -1860,6 +1886,7 @@ async function cancelOrderViaBot(phone, args = {}) {
 // it cannot choose who is eligible, which order, or how much — all three come
 // from the row. The amount is never read from the model's arguments.
 async function refundWrongCodViaBot(phone, args = {}) {
+  if (!botMayCancelOrRefund()) return NO_CANCEL_REFUND_RESULT;
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const last10 = String(phone).replace(/\D/g, '').slice(-10);
@@ -1943,6 +1970,7 @@ async function refundWrongCodViaBot(phone, args = {}) {
 // emails a human, because a pre-delivery payout is money leaving before
 // anything has been collected and that decision belongs to a person.
 async function recordWrongCodUpi(phone, args = {}) {
+  if (!botMayCancelOrRefund()) return NO_CANCEL_REFUND_RESULT;
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const last10 = String(phone).replace(/\D/g, '').slice(-10);
@@ -2373,5 +2401,5 @@ async function handleInboundMessage(msg, value) {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { loadHistory, historyWithCurrent, ORDER_QUERY_RE, buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+exports._internal = { botTools, botMayCancelOrRefund, NO_CANCEL_REFUND_RESULT, recordWrongCodUpi, refundWrongCodViaBot, loadHistory, historyWithCurrent, ORDER_QUERY_RE, buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
   describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };

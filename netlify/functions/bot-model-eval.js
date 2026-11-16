@@ -30,11 +30,11 @@ const MODEL_RE = /^(gpt-[0-9][a-z0-9.\-]*|o[0-9][a-z0-9.\-]*)$/i;
 
 async function runCase(testCase, model, extraInstructions) {
   const context = testCase.order ? bot.formatOrderContext(testCase.order) : '';
-  const messages = [{ role: 'system', content: bot.buildSystemContent(extraInstructions, null, context) }, ...testCase.turns];
+  const messages = [{ role: 'system', content: bot.buildSystemContent(extraInstructions, null, context, { noCancelRefund: false }) }, ...testCase.turns];
   try {
     // noFallback: a failing candidate must fail the test, not quietly be
     // answered by gpt-4o and pass.
-    const message = await bot.callOpenAIChat(messages, { tools: true, model, noFallback: true });
+    const message = await bot.callOpenAIChat(messages, { tools: 'all', model, noFallback: true })   // scores the cancel flow too;
     const verdict = judgeCase(testCase, message);
     return { id: testCase.id, why: testCase.why, ...verdict, reply: String(message.content || '').slice(0, 400) };
   } catch (e) {

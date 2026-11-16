@@ -68,7 +68,7 @@ test('the bot sends gpt-5.1 its own parameters and answers on gpt-4o if gpt-5.1 
 test('the eval prompt is the bot prompt: FAQ first, order context last', () => {
   const bot = require('../whatsapp-bot')._internal;
   const ctx = bot.formatOrderContext(byId('cancel-after-yes').order);
-  const s = bot.buildSystemContent('FAQ LINE', null, ctx);
+  const s = bot.buildSystemContent('FAQ LINE', null, ctx, { noCancelRefund: false });   // as bot-model-eval builds it
   assert.ok(s.startsWith('⚠️ STORE-SPECIFIC INSTRUCTIONS'));
   assert.ok(s.includes('FAQ LINE'));
   assert.ok(s.endsWith(ctx));
