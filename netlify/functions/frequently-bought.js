@@ -492,7 +492,8 @@ async function relatedFor(base, products, signals, { limit, exclude }) {
     .map((product) => ({ product, score: scoreCandidate(base, product, signals) }))
     .filter((row) => Number.isFinite(row.score))
     .sort((a, b) => b.score - a.score), 3, (row) => row.product).map((row) => row.product.slug);
-  const skip = new Set([...exclude, ...fbtTop]);
+  const sponsoredGroup = sponsoredGroupFor(base);
+  const skip = new Set([...exclude, ...fbtTop, ...(sponsoredGroup ? sponsoredGroup.slugs : [])]);
 
   const rows = related.rankRelated(base, extra.concat(products), {
     index,
@@ -517,7 +518,59 @@ async function relatedFor(base, products, signals, { limit, exclude }) {
   return body;
 }
 
-exports._test = { relatedFor, targetedCandidates };
+// ── Sponsored bundles (owner, 16 Nov 2026) ──────────────────────────────────
+// Books promoted on each other's product pages: on any book in a group, the
+// frequently-bought-together panel shows the OTHER books of that group instead
+// of the computed picks. Priced by the till itself (utils/pricing: admin price,
+// weekly swing), so the panel never shows a price checkout will not charge, and
+// a sold-out or taken-down book is left out (the panel then tops up with the
+// usual picks). Add a group here to sponsor another set.
+const SPONSORED_GROUPS = [{
+  slugs: [
+    'ai-engineering-building-applications-with-foundation-models-by-chip-huyen',
+    'designing-data-intensive-applications-by-martin-kleppmann',
+    'system-design-interview-vol-1-vol-2-combo-set-by-alex-xu-an-insiders-guide-to-sy',
+  ],
+  title: 'Complete your engineering shelf',
+  sub: 'Sponsored picks · bought together by engineers preparing for system design and AI roles',
+}];
+
+function sponsoredGroupFor(base, groups = SPONSORED_GROUPS) {
+  const keys = new Set([base.slug, ...(base.aliases || [])].map((v) => String(v || '').toLowerCase()));
+  return groups.find((g) => g.slugs.some((slug) => keys.has(slug))) || null;
+}
+
+async function sponsoredFor(base, products, deps = {}) {
+  const group = sponsoredGroupFor(base, deps.groups);
+  if (!group) return null;
+  const keys = new Set([base.slug, ...(base.aliases || [])].map((v) => String(v || '').toLowerCase()));
+  const want = group.slugs.filter((slug) => !keys.has(slug));
+  const bySlug = new Map(products.filter((p) => want.includes(p.slug)).map((p) => [p.slug, p]));
+  const missing = want.filter((slug) => !bySlug.has(slug));
+  if (missing.length) {
+    for (const p of await (deps.customBySlugs || customBySlugs)(missing).catch(() => [])) bySlug.set(p.slug, p);
+  }
+  let priced = new Map();
+  try {
+    const supabase = deps.supabase !== undefined ? deps.supabase : supabaseClient();
+    const resolve = deps.resolveCartPrices || require('./utils/pricing').resolveCartPrices;
+    const out = await resolve(want.filter((slug) => bySlug.has(slug)).map((slug) => ({ slug, qty: 1 })), supabase);
+    priced = new Map((out.cart || []).map((item) => [String(item.slug).toLowerCase(), item]));
+  } catch (err) {
+    console.warn('sponsored pricing failed:', err.message);
+    return null;   // never show a price the till has not confirmed
+  }
+  const picks = [];
+  for (const slug of want) {
+    const product = bySlug.get(slug);
+    const till = priced.get(slug);
+    if (!product || !till || till._sold_out || till._removed || !(Number(till.price) > 0)) continue;
+    picks.push({ ...product, price: Number(till.price), priceText: moneyText(till.price), sponsored: true });
+  }
+  return picks.length ? { group, picks } : null;
+}
+
+exports._test = { relatedFor, targetedCandidates, sponsoredFor, sponsoredGroupFor, SPONSORED_GROUPS };
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: HEADERS, body: '' };
@@ -572,6 +625,28 @@ exports.handler = async (event) => {
       .map((product) => ({ product, score: scoreCandidate(base, product, signals) }))
       .filter((row) => Number.isFinite(row.score))
       .sort((a, b) => b.score - a.score);
+
+    const sponsored = await sponsoredFor(base, products).catch((err) => {
+      console.warn('sponsored picks failed:', err.message);
+      return null;
+    });
+    if (sponsored) {
+      const taken = new Set(sponsored.picks.map((p) => p.slug));
+      const fill = takeDistinct(ranked.filter((row) => !taken.has(row.product.slug)),
+        Math.max(0, Math.min(limit, 3) - sponsored.picks.length), (row) => row.product).map((row) => row.product);
+      return {
+        statusCode: 200,
+        headers: HEADERS,
+        body: JSON.stringify({
+          current: base,
+          recommendations: [...sponsored.picks, ...fill],
+          basis: 'sponsored',
+          panel_title: sponsored.group.title,
+          panel_sub: sponsored.group.sub,
+          signals_generated_at: signals.generatedAt,
+        }),
+      };
+    }
 
     const recommendations = takeDistinct(ranked, limit, (row) => row.product).map((row) => row.product);
 

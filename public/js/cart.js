@@ -936,8 +936,8 @@ function renderInjectedFbt(data) {
     <div class="iac-fbt-inner">
       <div class="iac-fbt-head">
         <div>
-          <div class="iac-fbt-title">Frequently bought together</div>
-          <div class="iac-fbt-sub">Smart picks based on this book, category, author and price range</div>
+          <div class="iac-fbt-title">${esc(data.panel_title || 'Frequently bought together')}</div>
+          <div class="iac-fbt-sub">${esc(data.panel_sub || 'Smart picks based on this book, category, author and price range')}</div>
         </div>
         <div class="iac-fbt-sub" id="iacFbtCount">0 selected</div>
       </div>
