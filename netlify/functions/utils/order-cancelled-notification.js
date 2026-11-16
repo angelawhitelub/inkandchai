@@ -473,6 +473,19 @@ async function notifyOrderCancelled(order, opts = {}) {
     }
   }
 
+  // Store credit used on this order goes back to the customer (owner, 16 Nov
+  // 2026). Fails quietly: a cancellation must never stop on this.
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    try {
+      const { releaseStoreCreditForOrder } = require('./scratch-cards');
+      const db = opts.supabase || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      result.creditReturned = await releaseStoreCreditForOrder(db, order);
+      if (result.creditReturned.length) console.log(`[store-credit] ${id}: returned ${result.creditReturned.join(', ')}`);
+    } catch (e) {
+      console.error('[store-credit] release failed:', e.message);
+    }
+  }
+
   if (!opts.skipEmail && order.customer_email) {
     const email = await sendEmail({
       to: order.customer_email,

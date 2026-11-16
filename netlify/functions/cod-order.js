@@ -21,6 +21,7 @@ const { pincodeRejection } = require('./utils/pincode-valid');
 const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { orderShipping } = require('./utils/free-delivery');
 const { siteSaleDiscount } = require('./utils/site-sale');
+const { storeCreditCheck, claimScratchCardForOrder } = require('./utils/scratch-cards');
 const { neonMirrorOrder } = require('./utils/neon-mirror');
 
 const CORS = {
@@ -59,7 +60,7 @@ function cartTable(cart, shippingFee, codFee = 0, discount = 0, coupon = '') {
           <td style="padding:8px 12px;text-align:right;color:#f0e8d8;">₹${subtotal.toLocaleString('en-IN')}</td>
         </tr>
         ${safeDiscount > 0 ? `<tr>
-          <td colspan="2" style="padding:8px 12px;color:#a09080;">Sale discount (${coupon})</td>
+          <td colspan="2" style="padding:8px 12px;color:#a09080;">Discount${coupon ? ` (${coupon})` : ''}</td>
           <td style="padding:8px 12px;text-align:right;color:#6dbf6d;">- ₹${safeDiscount.toLocaleString('en-IN')}</td>
         </tr>` : ''}
         ${safeCodFee > 0 ? `<tr>
@@ -176,10 +177,47 @@ exports.handler = async (event, context) => {
   const codFee   = subtotal >= COD_FEE_WAIVER_THRESHOLD ? 0 : COD_HANDLING_FEE;
   // The site sale is the one discount on COD; an opt-in sale needs its code.
   const couponInfo = siteSaleDiscount(subtotal, Date.now(), body.coupon);
-  const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount);
+
+  // Store credit (a SCRATCH- refund code) is the customer's own money and
+  // works on COD too. Claimed now, before the order is saved or mirrored
+  // anywhere: if it cannot be claimed the order is refused with the reason,
+  // never placed at full price behind the customer's back.
+  let creditDiscount = 0;
+  let creditCode = '';
+  const askedCode = String(body.coupon || '').toUpperCase().trim();
+  if (askedCode.startsWith('SCRATCH-')) {
+    const check = await storeCreditCheck(_sbForPrice, askedCode, subtotal);
+    if (!check.ok && check.code === 'already_used' && check.card) {
+      // A double-tap: the first submit already placed the order with it.
+      const { data: prior } = await _sbForPrice.from('orders').select('razorpay_order_id, amount_paise, customer_phone, status, created_at')
+        .eq('razorpay_order_id', String(check.card.redeemed_order_id || '')).maybeSingle();
+      const recent = prior && String(prior.customer_phone || '').replace(/\D/g, '').slice(-10) === String(customer.phone || '').replace(/\D/g, '').slice(-10)
+        && ['cod_pending', 'cod_awaiting_confirmation'].includes(prior.status)
+        && Date.now() - Date.parse(prior.created_at) < 10 * 60 * 1000;
+      if (recent) {
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, order_id: prior.razorpay_order_id, deduped: true, amount: Math.round(prior.amount_paise / 100) }) };
+      }
+    }
+    if (!check.ok) {
+      return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: check.error, code: check.code || 'store_credit' }) };
+    }
+    const claim = await claimScratchCardForOrder(_sbForPrice, askedCode, orderId);
+    if (!claim.claimed) {
+      return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: `${askedCode} could not be applied (${claim.reason || 'already used'}). Remove it to place the order without it.`, code: 'store_credit' }) };
+    }
+    creditDiscount = Math.round(Number(claim.value_paise || check.card.value_paise) / 100);
+    creditCode = askedCode;
+  }
+
+  const total    = Math.max(1, subtotal + shipping + codFee - couponInfo.discount - creditDiscount);
   if (couponInfo.code && cart[0]) {
     cart[0]._coupon = { code: couponInfo.code, discount: couponInfo.discount, source: couponInfo.source };
   }
+  if (creditCode && cart[0]) {
+    cart[0]._store_credit = { code: creditCode, discount: creditDiscount };
+  }
+  const discountShown = couponInfo.discount + creditDiscount;
+  const discountLabel = [couponInfo.code, creditCode && `store credit ${creditCode}`].filter(Boolean).join(' + ');
 
   // ── 1. Save to Supabase (non-fatal — emails still send even if DB is down) ──
   const amountPaiseVal = Math.round(total * 100);
@@ -328,7 +366,7 @@ exports.handler = async (event, context) => {
           <tr><td style="color:#a09080;padding-right:16px;">Email</td><td>${customer.email||'—'}</td></tr>
           <tr><td style="color:#a09080;padding-right:16px;">Address</td><td>${customer.address||'—'}</td></tr>
         </table>
-        ${cartTable(cart, shipping, codFee, couponInfo.discount, couponInfo.code)}
+        ${cartTable(cart, shipping, codFee, discountShown, discountLabel)}
         <p style="color:#6dbf6d;font-size:13px;">💰 Collect ₹${total.toLocaleString('en-IN')} cash at delivery.</p>
       `),
     });
@@ -345,7 +383,7 @@ exports.handler = async (event, context) => {
           Hi ${customer.name?.split(' ')[0]||'there'}, your books are on their way!<br/>
           You'll pay <strong style="color:#c9a84c;">₹${total.toLocaleString('en-IN')}</strong> in cash when they arrive.
         </p>
-        ${cartTable(cart, shipping, codFee, couponInfo.discount, couponInfo.code)}
+        ${cartTable(cart, shipping, codFee, discountShown, discountLabel)}
         ${handlingNoticeHtml(cart)}
         <p style="color:#a09080;font-size:13px;line-height:1.8;">
           <strong style="color:#f0e8d8;">Delivery address:</strong><br/>${customer.address||'—'}

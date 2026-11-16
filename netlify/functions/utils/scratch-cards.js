@@ -205,6 +205,55 @@ async function claimScratchCardForOrder(supabase, code, identifier) {
  * minimum (₹399) is always above its value (₹30–₹200). Credit comes FROM a
  * refunded order by design, so only reward cards are tied to their order.
  */
+/**
+ * Store credit on a Cash on Delivery order (owner, 16 Nov 2026: a customer's
+ * ₹578 refund credit showed as applied at checkout, but the COD order ignored
+ * it and asked ₹784 on delivery). Only store credit: a reward card stays a
+ * Pay Now reward. Returns { ok, card } or { ok:false, error } to show the
+ * customer; never claims anything.
+ */
+async function storeCreditCheck(supabase, code, subtotalRupees) {
+  const normalized = String(code || '').toUpperCase().trim();
+  if (!normalized.startsWith('SCRATCH-')) return { ok: false, skip: true };
+  const { data: card, error } = await supabase.from('scratch_cards')
+    .select('id, code, value_paise, min_subtotal_paise, status, redeemed_order_id, expires_at, source_order_id')
+    .eq('code', normalized).maybeSingle();
+  if (error) return { ok: false, error: 'We could not check your store credit just now. Please try again in a minute.' };
+  if (!card) return { ok: false, error: `${normalized} is not a valid code. Remove it to place the order without it.` };
+  if (isRewardCard(card)) return { ok: false, error: 'Scratch card rewards work on Pay Now orders only. Remove the code to place this order as Cash on Delivery, or choose Pay Now to use it.', code: 'reward_card_cod' };
+  if (card.expires_at && new Date(card.expires_at) < new Date()) return { ok: false, error: `${normalized} has expired.` };
+  if (card.status !== 'scratched') return { ok: false, error: `${normalized} has already been used.`, code: 'already_used', card };
+  if (Number(subtotalRupees) * 100 < Number(card.min_subtotal_paise || 0)) {
+    const short = Math.ceil(Number(card.min_subtotal_paise) / 100 - Number(subtotalRupees));
+    return { ok: false, error: `Add ₹${short.toLocaleString('en-IN')} more to use this store credit.`, code: 'min_subtotal' };
+  }
+  return { ok: true, card };
+}
+
+/**
+ * An order was cancelled: store credit used on it goes back to the customer,
+ * usable again. Reward cards are not returned (a reward is for a purchase that
+ * stands). Matched on every id the claim may carry. Returns the codes freed.
+ */
+async function releaseStoreCreditForOrder(supabase, order) {
+  const ids = [order && order.razorpay_order_id, order && order.id, order && order.razorpay_order_ref]
+    .filter(Boolean).map(String);
+  if (!supabase || !ids.length) return [];
+  const { data, error } = await supabase.from('scratch_cards')
+    .select('id, code, value_paise, min_subtotal_paise, redeemed_order_id')
+    .eq('status', 'redeemed').in('redeemed_order_id', ids);
+  if (error || !data) return [];
+  const freed = [];
+  for (const card of data) {
+    if (isRewardCard(card)) continue;
+    const { data: done } = await supabase.from('scratch_cards')
+      .update({ status: 'scratched', redeemed_at: null, redeemed_order_id: null })
+      .eq('id', card.id).eq('status', 'redeemed').in('redeemed_order_id', ids).select('id');
+    if (done && done.length) freed.push(card.code);
+  }
+  return freed;
+}
+
 function isRewardCard(card) {
   return !!card && Number(card.min_subtotal_paise) !== Number(card.value_paise);
 }
@@ -261,6 +310,7 @@ async function rewardCardBlock(supabase, card) {
 }
 
 module.exports = {
+  storeCreditCheck, releaseStoreCreditForOrder,
   generateCardForOrder, redeemScratchCardForOrder, claimScratchCardForOrder,
   isRewardCard, earningOrderGone, rewardCardBlock, SHIPPED_STATUSES, MIN_SUBTOTAL_PAISE, VALIDITY_DAYS,
 };

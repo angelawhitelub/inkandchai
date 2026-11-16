@@ -77,3 +77,51 @@ test('claimScratchCardForOrder waits for the earning order to ship', async () =>
   const db = fakeDb({ orders: { 'IC-1': 'paid' }, cards: { [card.code]: card } });
   assert.deepEqual(await S.claimScratchCardForOrder(db, card.code, 'IC-2'), { claimed: false, reason: 'not_unlocked' });
 });
+
+// ── Store credit on COD + back on cancel (owner, 16 Nov 2026) ───────────────
+function cardsDb(cards) {
+  return {
+    from() {
+      const q = { f: {}, inF: {}, upd: null };
+      const match = (c) => Object.entries(q.f).every(([k, v]) => c[k] === v)
+        && Object.entries(q.inF).every(([k, vs]) => vs.includes(c[k]));
+      const api = {
+        select() { return api; },
+        update(v) { q.upd = v; return api; },
+        eq(k, v) { q.f[k] = v; return api; },
+        in(k, vs) { q.inF[k] = vs; return api; },
+        async maybeSingle() { return { data: cards.find(match) || null, error: null }; },
+        then(resolve) {
+          const hit = cards.filter(match);
+          if (q.upd) hit.forEach((c) => Object.assign(c, q.upd));
+          resolve({ data: hit.map((c) => ({ ...c })), error: null });
+        },
+      };
+      return api;
+    },
+  };
+}
+const credit = (over = {}) => ({ id: 's1', code: 'SCRATCH-CREDIT', value_paise: 57800, min_subtotal_paise: 57800, status: 'scratched', expires_at: new Date(Date.now() + 864e5).toISOString(), ...over });
+
+test('store credit passes the COD check; a reward card, a used code or a small cart do not', async () => {
+  assert.equal((await S.storeCreditCheck(cardsDb([credit()]), 'scratch-credit', 764)).ok, true);
+  assert.equal((await S.storeCreditCheck(cardsDb([credit()]), 'SCRATCH-CREDIT', 543)).code, 'min_subtotal');
+  assert.equal((await S.storeCreditCheck(cardsDb([credit({ status: 'redeemed' })]), 'SCRATCH-CREDIT', 764)).code, 'already_used');
+  const r = await S.storeCreditCheck(cardsDb([credit({ value_paise: 7500, min_subtotal_paise: 39900 })]), 'SCRATCH-CREDIT', 764);
+  assert.equal(r.code, 'reward_card_cod');
+  assert.equal((await S.storeCreditCheck(cardsDb([]), 'SUMMER10', 764)).skip, true);
+});
+
+test('cancelling an order gives its store credit back, never a reward card', async () => {
+  const cards = [
+    credit({ status: 'redeemed', redeemed_order_id: 'IC-20261116-AAAAA' }),
+    credit({ id: 's2', code: 'SCRATCH-REWARD', value_paise: 7500, min_subtotal_paise: 39900, status: 'redeemed', redeemed_order_id: 'IC-20261116-AAAAA' }),
+    credit({ id: 's3', code: 'SCRATCH-OTHER', status: 'redeemed', redeemed_order_id: 'IC-20261116-BBBBB' }),
+  ];
+  const freed = await S.releaseStoreCreditForOrder(cardsDb(cards), { razorpay_order_id: 'IC-20261116-AAAAA' });
+  assert.deepEqual(freed, ['SCRATCH-CREDIT']);
+  assert.equal(cards[0].status, 'scratched');
+  assert.equal(cards[0].redeemed_order_id, null);
+  assert.equal(cards[1].status, 'redeemed');
+  assert.equal(cards[2].status, 'redeemed');
+});

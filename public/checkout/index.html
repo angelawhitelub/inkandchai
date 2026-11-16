@@ -883,8 +883,14 @@ function chosenCouponDiscount(cart, method, subtotal, code) {
       return { code, discount: 0, message: `${code} has expired.` };
     }
     const minSub = (card.min_subtotal_paise || 0) / 100;
+    // Store credit (minimum = its own value) works on every payment mode; a
+    // reward card only on Pay Now -- cod-order refuses it, so say so here.
+    const isStoreCredit = Number(card.min_subtotal_paise) === Number(card.value_paise);
+    if (method === 'cod' && !isStoreCredit) {
+      return { code, discount: 0, message: 'Scratch card rewards work on Pay Now orders only. Choose Pay Now to use it.' };
+    }
     if (subtotal < minSub) {
-      return { code, discount: 0, message: `Add ₹${(minSub - subtotal).toLocaleString('en-IN')} more to use this scratch card.` };
+      return { code, discount: 0, message: `Add ₹${(minSub - subtotal).toLocaleString('en-IN')} more to use this ${isStoreCredit ? 'store credit' : 'scratch card'}.` };
     }
     const discount = Math.round((card.value_paise || 0) / 100);
     return { code, discount, message: `🎁 Scratch card ₹${discount} cashback applied.` };
