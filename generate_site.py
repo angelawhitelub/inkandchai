@@ -760,6 +760,13 @@ GTM_TAG = """<!-- Google Tag Manager (second Google Ads account AW-18578646372) 
 </script>
 <!-- End Google Tag Manager -->"""
 
+# Second container GTM-TWDQ8GTR, pasted by the owner on 18 Nov 2026: a Google tag
+# for a THIRD Google Ads account (AW-18581439481) plus automatic events, again
+# no GA4, Meta or the ids below. The dataLayer stub above serves both, so only
+# the loader is added (a second gtag('js') would log a second page start).
+GTM_TAG_2 = """<!-- Google Tag Manager (third Google Ads account AW-18581439481) -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-TWDQ8GTR"></script>"""
+
 GOOGLE_ADS_TAG = """<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
 <script>
@@ -12790,6 +12797,16 @@ for _page in sorted(_public.rglob("*.html")):
     _page.write_text(_html.replace("</head>", GTM_TAG + "\n</head>", 1), encoding="utf-8")
     _gtm += 1
 print(f"Generated: Google Tag Manager on {_gtm} pages")
+_gtm2 = 0
+for _page in sorted(_public.rglob("*.html")):
+    if _NO_PIXEL_DIRS.intersection(_page.relative_to(_public).parts):
+        continue
+    _html = _page.read_text(encoding="utf-8")
+    if "gtm.js?id=GTM-TWDQ8GTR" in _html or "</head>" not in _html:
+        continue
+    _page.write_text(_html.replace("</head>", GTM_TAG_2 + "\n</head>", 1), encoding="utf-8")
+    _gtm2 += 1
+print(f"Generated: second Tag Manager container on {_gtm2} pages")
 
 # ── Site theme ────────────────────────────────────────────────────────────────
 # Last pass on purpose: site_theme.css has to be the final stylesheet in <head>

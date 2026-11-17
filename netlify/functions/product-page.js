@@ -216,7 +216,9 @@ const GTM_TAG = `<!-- Google Tag Manager (second Google Ads account AW-185786463
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
 </script>
-<!-- End Google Tag Manager -->`;
+<!-- End Google Tag Manager -->
+<!-- Google Tag Manager (third Google Ads account AW-18581439481) -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-TWDQ8GTR"></script>`;
 
 const GOOGLE_ADS_TAG = `<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18119332653"></script>
