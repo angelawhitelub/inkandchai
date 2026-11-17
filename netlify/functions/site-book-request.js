@@ -7,6 +7,8 @@
  *   book; asking again bumps request_count (utils/site-book-request).
  *
  * GET  /.netlify/functions/site-book-request?status=new   (admin)
+ * GET  /.netlify/functions/site-book-request?status=open&format=pdf  (admin) → { ok, filename, pdf }
+ *        every request, books most requested first (utils/book-requests-pdf.js)
  *   → { requests: [...], demand: [{ title, customers, open }], table_missing? }
  * POST /.netlify/functions/site-book-request  { id, status?, admin_note? }   (admin)
  *
@@ -19,6 +21,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { parseRequest, demandByTitle, STATUSES } = require('./utils/site-book-request');
+const { buildBookRequestsPdf } = require('./utils/book-requests-pdf');
 const { ALLOWED_ORIGINS, overEdgeLimit } = require('./ink-ai');
 
 const TABLE = 'site_book_requests';
@@ -91,18 +94,40 @@ async function save(event, origin) {
   }
 }
 
-async function adminList(event) {
-  const q = event.queryStringParameters || {};
-  let query = db().from(TABLE).select('*').order('updated_at', { ascending: false }).limit(1000);
+const PAGE = 1000;
+const PDF_MAX = 10000;
+
+function filtered(q, from, to) {
+  let query = db().from(TABLE).select('*').order('updated_at', { ascending: false }).range(from, to);
   if (STATUSES.includes(q.status)) query = query.eq('status', q.status);
   else if (q.status === 'open') query = query.in('status', ['new', 'sourcing']);
-  const { data, error } = await query;
-  if (error) {
-    if (MISSING_TABLE.test(error.message)) return json(200, { requests: [], demand: [], table_missing: true });
-    throw new Error(error.message);
+  return query;
+}
+
+async function adminList(event, { now = () => new Date() } = {}) {
+  const q = event.queryStringParameters || {};
+  const pdf = q.format === 'pdf';
+  const rows = [];
+  // The screen shows the latest 1,000; the PDF reads every page (up to 10,000).
+  for (let from = 0; from < (pdf ? PDF_MAX : PAGE); from += PAGE) {
+    const { data, error } = await filtered(q, from, from + PAGE - 1);
+    if (error) {
+      if (MISSING_TABLE.test(error.message)) {
+        return pdf ? json(404, { error: 'The site_book_requests table does not exist yet.' }) : json(200, { requests: [], demand: [], table_missing: true });
+      }
+      throw new Error(error.message);
+    }
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
   }
-  const rows = data || [];
-  return json(200, { requests: rows, demand: demandByTitle(rows) });
+  if (!pdf) return json(200, { requests: rows, demand: demandByTitle(rows) });
+
+  const status = STATUSES.includes(q.status) || q.status === 'open' ? q.status : '';
+  const at = now();
+  const { bytes, summary } = await buildBookRequestsPdf({ rows, status, generatedAt: at });
+  const stamp = at.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const filename = `inkandchai-book-requests-${status || 'all'}-${stamp}.pdf`;
+  return json(200, { ok: true, filename, pdf: Buffer.from(bytes).toString('base64'), summary });
 }
 
 async function adminUpdate(body) {
@@ -148,4 +173,4 @@ exports.handler = async (event = {}) => {
   return save(event, origin);
 };
 
-exports._test = { save, throttled };
+exports._test = { save, throttled, adminList };

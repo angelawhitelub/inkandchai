@@ -3530,7 +3530,12 @@ select,input,textarea{font-size:1rem;}
           <option value="closed">Closed</option>
           <option value="">All</option>
         </select>
+        <select id="siteReqSort" onchange="fetchSiteBookRequests()" title="Order of the list below" style="font-size:0.72rem;padding:0.35rem 0.5rem;">
+          <option value="demand">Most requested first</option>
+          <option value="newest">Newest first</option>
+        </select>
         <button class="btn-outline" onclick="fetchSiteBookRequests()">↻ Refresh</button>
+        <button class="btn-gold" id="siteReqPdfBtn" onclick="downloadSiteReqPdf(this)" title="Every request in the chosen filter: books most requested first with their counts, then who asked for each">📄 Download PDF</button>
       </div>
     </div>
     <div id="siteReqDemand" style="margin-bottom:0.8rem;"></div>
@@ -5226,11 +5231,20 @@ async function fetchSiteBookRequests() {
     }
     const rows = data.requests || [];
     if (filter === 'open' || filter === 'new') { window._siteReqNew = rows.filter(r => r.status === 'new').length; updateBookReqBadge(); }
-    const multi = (data.demand || []).filter(d => d.customers > 1).slice(0, 12);
-    demandBox.innerHTML = multi.length
-      ? '<div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.35rem;">Most wanted (customers asking):</div><div style="display:flex;flex-wrap:wrap;gap:0.35rem;">'
-        + multi.map(d => `<span style="font-size:0.72rem;border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:999px;padding:2px 10px;">${esc(d.title)} <strong style="color:var(--gold,#c9a84c);">×${d.customers}</strong></span>`).join('') + '</div>'
+    const demand = data.demand || [];
+    const reqsOf = d => d.requests || d.customers || 1;
+    const bookOf = new Map(demand.map((d, i) => [d.title_key, { ...d, rank: i }]));
+    const totalReqs = demand.reduce((s, d) => s + reqsOf(d), 0);
+    const top = demand.filter(d => reqsOf(d) > 1).slice(0, 15);
+    demandBox.innerHTML = rows.length
+      ? `<div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.35rem;"><strong style="color:var(--cream,#efe6d2);">${totalReqs}</strong> requests · <strong style="color:var(--cream,#efe6d2);">${rows.length}</strong> customers · <strong style="color:var(--cream,#efe6d2);">${demand.length}</strong> different books${top.length ? ' — most requested:' : ''}</div>`
+        + (top.length ? '<div style="display:flex;flex-wrap:wrap;gap:0.35rem;">'
+          + top.map(d => `<span title="${reqsOf(d)} requests from ${d.customers} customer${d.customers === 1 ? '' : 's'}" style="font-size:0.72rem;border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:999px;padding:2px 10px;">${esc(d.title)} <strong style="color:var(--gold,#c9a84c);">×${reqsOf(d)}</strong></span>`).join('') + '</div>' : '')
       : '';
+    if ((document.getElementById('siteReqSort')?.value || 'demand') === 'demand') {
+      const rankOf = r => bookOf.get(r.title_key)?.rank ?? 1e9;
+      rows.sort((a, b) => rankOf(a) - rankOf(b) || (b.request_count || 1) - (a.request_count || 1) || String(b.created_at).localeCompare(String(a.created_at)));
+    }
     if (!rows.length) {
       list.innerHTML = '<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:0.5rem 0;">No requests here yet.</div>';
       return;
@@ -5246,7 +5260,7 @@ async function fetchSiteBookRequests() {
       return `<div style="border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:12px;padding:0.9rem 1.05rem;background:var(--bg2,#1a1613);">
         <div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;align-items:baseline;">
           <strong style="color:var(--gold,#c9a84c);font-size:0.95rem;">📚 ${esc(r.title)}${r.author ? ` <span style="font-weight:400;color:var(--cream-dim,#8a7a62);font-size:0.8rem;">by ${esc(r.author)}</span>` : ''}</strong>
-          <span style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.1em;color:${col};border:1px solid ${col};border-radius:999px;padding:1px 8px;">${esc(st)}</span>
+          <span style="display:flex;gap:0.35rem;align-items:center;">${(() => { const b = bookOf.get(r.title_key); return b && reqsOf(b) > 1 ? `<span title="All requests for this book in this view" style="font-size:0.66rem;font-weight:700;color:#1a1613;background:var(--gold,#c9a84c);border-radius:999px;padding:1px 9px;">🔥 ${reqsOf(b)} requests · ${b.customers} customer${b.customers === 1 ? '' : 's'}</span>` : ''; })()}<span style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.1em;color:${col};border:1px solid ${col};border-radius:999px;padding:1px 8px;">${esc(st)}</span></span>
         </div>
         <div style="font-size:0.8rem;margin-top:0.45rem;line-height:1.6;">
           <div>👤 ${esc(r.customer_name || '—')}${r.phone ? ` · 📞 <a href="https://wa.me/91${esc(r.phone)}" target="_blank" style="color:var(--gold,#c9a84c);">+91 ${esc(r.phone)}</a>` : ''}${r.email ? ` · ✉️ <a href="mailto:${esc(r.email)}" style="color:var(--gold,#c9a84c);">${esc(r.email)}</a>` : ''}</div>
@@ -5263,6 +5277,28 @@ async function fetchSiteBookRequests() {
     }).join('');
   } catch (e) {
     list.innerHTML = '<div style="color:#c93636;font-size:0.8rem;">Could not load website requests: ' + String(e.message).replace(/</g,'&lt;') + '</div>';
+  }
+}
+// PDF of every request in the current filter: books most requested first with
+// their counts, then who asked for each (built server side, utils/book-requests-pdf.js).
+async function downloadSiteReqPdf(btn) {
+  const filter = document.getElementById('siteReqFilter')?.value ?? 'open';
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Building PDF…'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/site-book-request?format=pdf' + (filter ? '&status=' + encodeURIComponent(filter) : ''));
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.pdf) throw new Error(d.error || ('HTTP ' + res.status));
+    const bytes = Uint8Array.from(atob(d.pdf), c => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = d.filename || 'book-requests.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    alert('Could not build the PDF: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
 }
 async function setSiteReqStatus(id, status) {

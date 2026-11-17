@@ -192,4 +192,4 @@ async function buildOrderReportPdf({ title = 'Orders report', orders: raw, gener
   return { bytes: await doc.save(), summary: { orders: agg.orders.length, units: agg.units, titles: agg.books.length, top: agg.books.slice(0, 5).map((b) => ({ title: b.title, qty: b.qty })) } };
 }
 
-module.exports = { buildOrderReportPdf, aggregate, normalise, displayTitle, MAX_ORDERS };
+module.exports = { buildOrderReportPdf, aggregate, normalise, displayTitle, safe, wrap, latinOnly, MAX_ORDERS };

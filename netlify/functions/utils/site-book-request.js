@@ -56,19 +56,41 @@ function parseRequest(body = {}) {
 }
 
 /**
- * Admin view: how many different customers asked for each book, so the most
- * wanted titles can be sourced first. rows: site_book_requests rows.
+ * Admin view: demand per book, so the most wanted titles are sourced first.
+ * rows: site_book_requests rows (one per customer per book).
+ *   requests  — every time anyone asked (a customer asking again counts again)
+ *   customers — different customers who asked
+ *   open      — of those, still new or sourcing
+ * Most requests first, then most customers, then the latest asked.
  */
+const asked = (r) => Math.max(1, parseInt(r && r.request_count, 10) || 1);
 function demandByTitle(rows) {
   const by = new Map();
   for (const r of rows || []) {
-    const d = by.get(r.title_key) || { title_key: r.title_key, title: r.title, customers: 0, open: 0, last_at: r.created_at };
+    const key = r.title_key || titleKey(r.title);
+    const d = by.get(key) || { title_key: key, title: r.title, author: r.author || '', requests: 0, customers: 0, open: 0, first_at: r.created_at, last_at: r.updated_at || r.created_at };
+    d.requests += asked(r);
     d.customers += 1;
     if (r.status === 'new' || r.status === 'sourcing') d.open += 1;
-    if (r.updated_at && r.updated_at > d.last_at) d.last_at = r.updated_at;
-    by.set(r.title_key, d);
+    if (!d.author && r.author) d.author = r.author;
+    if (r.created_at && r.created_at < d.first_at) d.first_at = r.created_at;
+    const last = r.updated_at || r.created_at;
+    if (last && last > d.last_at) d.last_at = last;
+    by.set(key, d);
   }
-  return [...by.values()].sort((a, b) => b.customers - a.customers || (b.last_at > a.last_at ? 1 : -1));
+  return [...by.values()].sort((a, b) => b.requests - a.requests || b.customers - a.customers
+    || String(b.last_at || '').localeCompare(String(a.last_at || '')));
 }
 
-module.exports = { parseRequest, titleKey, demandByTitle, STATUSES, SOURCES };
+/** Requests ordered for print: most-requested book first, newest ask first within a book. */
+function groupByBook(rows) {
+  const demand = demandByTitle(rows);
+  const byKey = new Map(demand.map((d) => [d.title_key, { ...d, rows: [] }]));
+  for (const r of rows || []) byKey.get(r.title_key || titleKey(r.title)).rows.push(r);
+  for (const b of byKey.values()) {
+    b.rows.sort((x, y) => asked(y) - asked(x) || String(y.created_at || '').localeCompare(String(x.created_at || '')));
+  }
+  return demand.map((d) => byKey.get(d.title_key));
+}
+
+module.exports = { parseRequest, titleKey, demandByTitle, groupByBook, asked, STATUSES, SOURCES };
