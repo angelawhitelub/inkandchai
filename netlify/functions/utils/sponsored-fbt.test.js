@@ -5,22 +5,37 @@ const assert = require('node:assert/strict');
 
 const { sponsoredFor, sponsoredGroupFor, SPONSORED_GROUPS } = require('../frequently-bought')._test;
 
-const [AI, DDIA, SDI] = SPONSORED_GROUPS[0].slugs;
+// The live list is empty since 18 Nov 2026 (owner removed the engineering
+// group); the mechanism is tested with a fixture group.
+const GROUPS = [{ slugs: ['ai-book', 'ddia-book', 'sdi-book'], title: 'Shelf', sub: 'Sponsored' }];
+const [AI, DDIA, SDI] = GROUPS[0].slugs;
 const book = (slug, price = 999) => ({ slug, aliases: [slug], url: `/product/${slug}/`, title: slug, price, originalPrice: 2000 });
 const till = (overrides = {}) => async (lines) => ({
   cart: lines.map((l) => ({ slug: l.slug, qty: 1, price: 1000, ...(overrides[l.slug] || {}) })),
 });
 
-test('the three engineering books are one group', () => {
-  assert.deepEqual(SPONSORED_GROUPS[0].slugs.length, 3);
-  for (const slug of [AI, DDIA, SDI]) assert.ok(sponsoredGroupFor(book(slug)), slug);
-  assert.equal(sponsoredGroupFor(book('some-other-book')), null);
+test('no sponsored group is live', () => {
+  assert.deepEqual(SPONSORED_GROUPS, []);
+  assert.equal(sponsoredGroupFor(book('system-design-interview-vol-1-vol-2-combo-set-by-alex-xu-an-insiders-guide-to-sy')), null);
+});
+
+test('the three fixture books are one group', () => {
+  for (const slug of [AI, DDIA, SDI]) assert.ok(sponsoredGroupFor(book(slug), GROUPS), slug);
+  assert.equal(sponsoredGroupFor(book('some-other-book'), GROUPS), null);
+});
+
+test('a hidden or taken-down book is never a sponsored pick', async () => {
+  const out = await sponsoredFor(book(AI), [], {
+    groups: GROUPS, removed: new Set([SDI]), supabase: null,
+    customBySlugs: async (s) => s.map((x) => book(x)), resolveCartPrices: till(),
+  });
+  assert.deepEqual(out.picks.map((p) => p.slug), [DDIA]);
 });
 
 test('each page gets the other two, at the till price', async () => {
   for (const base of [AI, DDIA, SDI]) {
     const out = await sponsoredFor(book(base), [], {
-      supabase: null,
+      groups: GROUPS, supabase: null,
       customBySlugs: async (slugs) => slugs.map((s) => book(s, 1503)),
       resolveCartPrices: till({ [AI]: { price: 1483 } }),
     });
@@ -35,7 +50,7 @@ test('each page gets the other two, at the till price', async () => {
 });
 
 test('sold-out or taken-down books are left out; none left means no sponsored panel', async () => {
-  const deps = (o) => ({ supabase: null, customBySlugs: async (s) => s.map((x) => book(x)), resolveCartPrices: till(o) });
+  const deps = (o) => ({ groups: GROUPS, supabase: null, customBySlugs: async (s) => s.map((x) => book(x)), resolveCartPrices: till(o) });
   let out = await sponsoredFor(book(AI), [], deps({ [DDIA]: { _sold_out: true } }));
   assert.deepEqual(out.picks.map((p) => p.slug), [SDI]);
   out = await sponsoredFor(book(AI), [], deps({ [DDIA]: { _sold_out: true }, [SDI]: { _removed: true } }));
@@ -44,7 +59,7 @@ test('sold-out or taken-down books are left out; none left means no sponsored pa
 
 test('no till price, no sponsored panel', async () => {
   const out = await sponsoredFor(book(AI), [], {
-    supabase: null,
+    groups: GROUPS, supabase: null,
     customBySlugs: async (s) => s.map((x) => book(x)),
     resolveCartPrices: async () => { throw new Error('db down'); },
   });

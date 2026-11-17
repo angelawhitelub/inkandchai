@@ -133,7 +133,7 @@ function badgeHtml(r) {
 
 /** The /bestsellers/ grid: ranked cards, plus the shelf chips that go above it. */
 /** `noRank`: slugs whose rank number must not show (owner hid their sold count); they stay listed. */
-function pageParts(bsr, shelf, { noRank = new Set() } = {}) {
+function pageParts(bsr, shelf, { noRank = new Set(), hidden = new Set() } = {}) {
   const info = (bsr && bsr.info) || {};
   const order = (bsr && bsr.order) || [];
   const shelves = (bsr && bsr.shelves) || {};
@@ -142,6 +142,9 @@ function pageParts(bsr, shelf, { noRank = new Set() } = {}) {
   for (const slug of order) {
     const r = bsr.ranks[slug];
     if (!r || !info[slug]) continue;
+    // Hidden from search or browsing: not listed (owner, 18 Nov 2026). The
+    // others keep their real rank, so a gap in the numbers is expected.
+    if (hidden.has(String(slug).toLowerCase())) continue;
     if (wanted ? r[1] !== wanted : r[0] > TOP_N) continue;
     rows.push({ slug, rank: wanted ? r[2] : r[0], ...info[slug] });
     if (rows.length >= (wanted ? SHELF_TOP_N : TOP_N)) break;

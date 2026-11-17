@@ -76,6 +76,18 @@ test('/bestsellers/ lists the Top 100 overall, or a shelf\'s own order', () => {
   assert.match(all.chips, /All books[\s\S]*Romance[\s\S]*Fiction/);
 });
 
+test('/bestsellers/ leaves out books hidden from search or browsing', () => {
+  const doc = {
+    ranks: { x: [1, 'romance', 1], y: [2, 'fiction', 1], z: [3, 'romance', 2] },
+    order: ['x', 'y', 'z'], shelves: { romance: 'Romance', fiction: 'Fiction' },
+    info: { x: { title: 'X' }, y: { title: 'Y' }, z: { title: 'Z' } },
+  };
+  const out = bsr.pageParts(doc, '', { hidden: new Set(['y']) });
+  assert.equal(out.count, 2);
+  assert.doesNotMatch(out.cards, /\/product\/y\//);
+  assert.match(out.cards, /#1<\/b>[\s\S]*#3<\/b>/, 'the others keep their real rank');
+});
+
 test('catalogue covers point at the baked R2 copies', () => {
   assert.equal(
     bsr.catalogueCover('https://cdn.shopify.com/s/files/1/0777/8100/8701/files/91rcGxdclIL._SL1500.jpg?v=1737795337'),

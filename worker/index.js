@@ -422,15 +422,19 @@ async function deletedSlugs(env) {
   }
 }
 
-// Books hidden from browsing (utils/search-hidden). Never a 410: their product
-// pages stay open, so this list must stay apart from deletedSlugs.
+// Books hidden from browsing OR from search (utils/search-hidden; owner,
+// 18 Nov 2026: hidden books are not shown anywhere). cart.js hides their cards
+// on every listing. Never a 410: their product pages stay open, so this list
+// must stay apart from deletedSlugs.
 async function browseHiddenSlugs(env) {
   try {
     const ns = env.ORDER_FALLBACK;
     if (!ns) return [];
-    const doc = await ns.get('catalog:browse-hidden', { type: 'json', cacheTtl: 60 });
-    return (doc && Array.isArray(doc.items) ? doc.items : [])
-      .map((i) => String((i && i.slug) || '').toLowerCase()).filter(Boolean);
+    const docs = await Promise.all(['catalog:browse-hidden', 'catalog:search-hidden']
+      .map((key) => ns.get(key, { type: 'json', cacheTtl: 60 })));
+    const slugs = docs.flatMap((doc) => (doc && Array.isArray(doc.items) ? doc.items : [])
+      .map((i) => String((i && i.slug) || '').toLowerCase()).filter(Boolean));
+    return [...new Set(slugs)];
   } catch (err) {
     console.warn('[browse-hidden] KV read failed:', err && err.message);
     return [];
@@ -1012,7 +1016,11 @@ async function bestsellersPage(request, env, url) {
     const doc = await lifetimeSales.readLifetimeSales();
     if (!doc || !doc.bsr) return asset;
     // Books whose sold count the owner hid stay listed, without their #N.
-    parts = bestsellerRank.pageParts(doc.bsr, url.searchParams.get('shelf') || '', { noRank: await searchHidden.sold.hiddenSlugSet() });
+    // Books hidden from search or browsing are not listed at all.
+    parts = bestsellerRank.pageParts(doc.bsr, url.searchParams.get('shelf') || '', {
+      noRank: await searchHidden.sold.hiddenSlugSet(),
+      hidden: await searchHidden.notListedSlugSet(),
+    });
   } catch (err) {
     console.warn('[bestsellers] ranks unavailable:', err && err.message);
     return asset;

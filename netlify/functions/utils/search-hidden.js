@@ -108,6 +108,23 @@ const browse = makeList(BROWSE_KEY, 'browsing');
 const sold = makeList(SOLD_KEY, 'sold counts');
 const { readHidden, setHidden, hiddenSlugSet } = search;
 
+/**
+ * Owner, 18 Nov 2026: "hidden search and browsing products should not be shown
+ * anywhere". Every listing (category grids, homepage, recommendations, recent
+ * purchases, suggestions) leaves out a book on EITHER list. Search itself still
+ * uses only the search list (a browse-hidden book can be searched for), and the
+ * book's own page, cart and checkout are untouched.
+ */
+let _notListed = null, _notListedOf = null;
+async function notListedSlugSet() {
+  const [s, b] = await Promise.all([hiddenSlugSet(), browse.hiddenSlugSet()]);
+  if (!_notListedOf || _notListedOf[0] !== s || _notListedOf[1] !== b) {
+    _notListed = new Set([...s, ...b]);
+    _notListedOf = [s, b];
+  }
+  return _notListed;
+}
+
 /** Deleted + hidden: the slugs search must never return. */
 async function unsearchableSlugSet(deletedSet) {
   const hidden = await hiddenSlugSet();
@@ -115,4 +132,4 @@ async function unsearchableSlugSet(deletedSet) {
   return new Set([...deletedSet, ...hidden]);
 }
 
-module.exports = { readHidden, setHidden, hiddenSlugSet, unsearchableSlugSet, normSlug, browse, sold, STORE, KEY, BROWSE_KEY, SOLD_KEY };
+module.exports = { readHidden, setHidden, hiddenSlugSet, unsearchableSlugSet, notListedSlugSet, normSlug, browse, sold, STORE, KEY, BROWSE_KEY, SOLD_KEY };

@@ -525,15 +525,10 @@ async function relatedFor(base, products, signals, { limit, exclude }) {
 // weekly swing), so the panel never shows a price checkout will not charge, and
 // a sold-out or taken-down book is left out (the panel then tops up with the
 // usual picks). Add a group here to sponsor another set.
-const SPONSORED_GROUPS = [{
-  slugs: [
-    'ai-engineering-building-applications-with-foundation-models-by-chip-huyen',
-    'designing-data-intensive-applications-by-martin-kleppmann',
-    'system-design-interview-vol-1-vol-2-combo-set-by-alex-xu-an-insiders-guide-to-sy',
-  ],
-  title: 'Complete your engineering shelf',
-  sub: 'Sponsored picks · bought together by engineers preparing for system design and AI roles',
-}];
+// Owner removed the AI Engineering + DDIA + System Design Interview group on
+// 18 Nov 2026 (two of its books are hidden from search). Add a group here to
+// promote a set again: { slugs: [...], title, sub }.
+const SPONSORED_GROUPS = [];
 
 function sponsoredGroupFor(base, groups = SPONSORED_GROUPS) {
   const keys = new Set([base.slug, ...(base.aliases || [])].map((v) => String(v || '').toLowerCase()));
@@ -544,7 +539,7 @@ async function sponsoredFor(base, products, deps = {}) {
   const group = sponsoredGroupFor(base, deps.groups);
   if (!group) return null;
   const keys = new Set([base.slug, ...(base.aliases || [])].map((v) => String(v || '').toLowerCase()));
-  const want = group.slugs.filter((slug) => !keys.has(slug));
+  const want = group.slugs.filter((slug) => !keys.has(slug) && !(deps.removed && deps.removed.has(slug)));
   const bySlug = new Map(products.filter((p) => want.includes(p.slug)).map((p) => [p.slug, p]));
   const missing = want.filter((slug) => !bySlug.has(slug));
   if (missing.length) {
@@ -570,8 +565,20 @@ async function sponsoredFor(base, products, deps = {}) {
   return picks.length ? { group, picks } : null;
 }
 
+// Taken-down pages, plus books the owner hid from search or browsing (owner,
+// 18 Nov 2026: hidden books "should not be shown anywhere"). The same Set comes
+// back while neither list changes, so liveProducts keeps its cached array.
+let _removedOf = null, _removed = null;
 async function removedSlugs() {
-  try { return await require('./utils/deleted-products').deletedSlugSet(); } catch { return new Set(); }
+  let deleted = new Set(), hidden = new Set();
+  try { deleted = await require('./utils/deleted-products').deletedSlugSet(); } catch {}
+  try { hidden = await require('./utils/search-hidden').notListedSlugSet(); } catch {}
+  if (!hidden.size) return deleted;
+  if (!_removedOf || _removedOf[0] !== deleted || _removedOf[1] !== hidden) {
+    _removed = new Set([...deleted, ...hidden]);
+    _removedOf = [deleted, hidden];
+  }
+  return _removed;
 }
 // Same array while neither list changes, so the related-shelf index (built per
 // products array) is not rebuilt on every request.
@@ -649,7 +656,7 @@ exports.handler = async (event) => {
       .filter((row) => Number.isFinite(row.score))
       .sort((a, b) => b.score - a.score);
 
-    const sponsored = await sponsoredFor(base, products).catch((err) => {
+    const sponsored = await sponsoredFor(base, products, { removed }).catch((err) => {
       console.warn('sponsored picks failed:', err.message);
       return null;
     });

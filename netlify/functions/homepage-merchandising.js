@@ -60,10 +60,10 @@ async function excludedBooks(supabase) {
   // Required here, not at the top: both pull in @netlify/blobs (KV shim on
   // Cloudflare), which the unit tests of this file's pure helpers cannot load.
   const { readDeleted } = require('./utils/deleted-products');
-  const { browse } = require('./utils/search-hidden');
+  const { notListedSlugSet } = require('./utils/search-hidden');
   const [deleted, hidden] = await Promise.all([
     readDeleted(supabase).catch(() => ({ slugs: [], rows: [] })),
-    browse.hiddenSlugSet().catch(() => new Set()),
+    notListedSlugSet().catch(() => new Set()),
   ]);
   const slugs = new Set([...(deleted.slugs || []), ...hidden].map((s) => String(s || '').toLowerCase()).filter(Boolean));
   const titles = new Set((deleted.rows || []).map((r) => titleKey(r.title)).filter(Boolean));
