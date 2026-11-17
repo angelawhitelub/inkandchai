@@ -1296,7 +1296,11 @@ export default {
     }
 
     if (url.pathname === '/browse-hidden.json') {
-      return new Response(JSON.stringify({ slugs: await browseHiddenSlugs(env) }), {
+      // Deleted books too: pages baked before a takedown still carry their
+      // cards (Vol 2 System Design Interview, deleted 22 Oct, was still on a
+      // category page and two related shelves on 18 Nov). cart.js hides them.
+      const slugs = [...new Set([...await browseHiddenSlugs(env), ...await deletedSlugs(env)])];
+      return new Response(JSON.stringify({ slugs }), {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
