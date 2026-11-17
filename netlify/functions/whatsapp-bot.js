@@ -47,6 +47,7 @@ const { normalizeUpiId } = require('./utils/upi-id');
 const { isDefinitelyCod } = require('./utils/order-payment-kind');
 const { matchMissingItems } = require('./utils/missing-book-report');
 const { sendEmail } = require('./utils/email');
+const belongingGuard = require('./utils/belonging-guard');
 const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
   OPT_OUT_CONFIRMATION, OPT_IN_CONFIRMATION,
@@ -1301,7 +1302,20 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
   // so the model actually follows them over the generic defaults below (appending
   // them at the very end let the long default prompt drown them out).
   const known = await getBotCustomer(phone);
-  const systemContent = buildSystemContent(extraInstructions, known, extraContext);
+  // "Belonging: A Journey of Love" askers and buyers never get the team's number
+  // (utils/belonging-guard.js, owner rule 2026-11-17).
+  const belonging = await belongingGuard.applies({
+    userMessage, history: getHistory(phone), extraContext, phone,
+    db: createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY),
+  });
+  const systemContent = buildSystemContent(extraInstructions, known, extraContext)
+    + (belonging ? belongingGuard.PROMPT : '');
+  const finish = (text) => {
+    const reply = belonging ? belongingGuard.scrub(text) : text;
+    if (belonging && reply !== text) console.log(`[BELONGING] ${phone} — team number removed from reply`);
+    appendHistory(phone, 'assistant', reply);
+    return reply;
+  };
 
   const messages = [
     { role: 'system', content: systemContent },
@@ -1349,14 +1363,10 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
     const second = await callOpenAIChat(messages, { tools: false, model });
-    const reply = (second.content || '').trim() || 'Sorry, I could not finish that just now — please send your message once more 🙏';
-    appendHistory(phone, 'assistant', reply);
-    return reply;
+    return finish((second.content || '').trim() || 'Sorry, I could not finish that just now — please send your message once more 🙏');
   }
 
-  const reply = (first.content || '').trim() || "Sorry, I couldn't process that. Please try again!";
-  appendHistory(phone, 'assistant', reply);
-  return reply;
+  return finish((first.content || '').trim() || "Sorry, I couldn't process that. Please try again!");
 }
 
 // ── Fill in the details of an order the 24 Aug outage stripped ───────────────
