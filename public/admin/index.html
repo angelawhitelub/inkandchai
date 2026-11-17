@@ -1194,6 +1194,16 @@ select,input,textarea{font-size:1rem;}
     <input type="date" id="dateFrom" onchange="applyFilters()" title="From date"/>
     <span class="date-sep">→</span>
     <input type="date" id="dateTo" onchange="applyFilters()" title="To date"/>
+    <select id="shipByFilter" onchange="onShipByFilter()" title="Unshipped orders by the day we told the customer it ships (order time, handling days, pre-order date, holidays)" style="background:var(--bg3);border:1px solid var(--border);color:var(--cream-dim);padding:0.45rem 0.6rem;font-family:'Manrope',sans-serif;font-size:0.78rem;">
+      <option value="">🚚 Ship by: any</option>
+      <option value="overdue">Overdue (ship-by passed)</option>
+      <option value="today">Ship by today</option>
+      <option value="due">Due: overdue + today</option>
+      <option value="tomorrow">Ship by tomorrow</option>
+      <option value="later">Later than tomorrow</option>
+      <option value="date">On a date…</option>
+    </select>
+    <input type="date" id="shipByOn" onchange="applyFilters()" title="Ship-by date" style="display:none;"/>
   </div>
 
   <!-- ── Cancelled sub-filters (shown only when the Cancelled tab is active) ── -->
@@ -7349,6 +7359,8 @@ function applyFilters() {
     // Date range
     if (dateFrom && new Date(o.created_at) < new Date(dateFrom)) return false;
     if (dateTo   && new Date(o.created_at) > new Date(dateTo + 'T23:59:59')) return false;
+    // Ship-by date (unshipped orders only)
+    if (!shipByMatches(o)) return false;
     return true;
   });
 
@@ -7497,7 +7509,7 @@ function _drawTable() {
         })() : ''}
         ${linkedRecordsHtml(o)}
       </td>
-      <td data-label="Date" style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}</td>
+      <td data-label="Date" style="font-size:0.65rem;color:var(--cream-dim);white-space:nowrap;">${date}${shipByLabelHtml(o)}</td>
       <td data-label="Customer">
         <div class="cust-name">${customerNameHtml(o)}</div>
         <div class="cust-sub">${esc(o.customer_phone || '')}</div>
@@ -10990,6 +11002,7 @@ async function shipHolidayCall(options) {
   const res = await adminFetch('/.netlify/functions/admin-ship-holidays', options);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  _shipHolidayItems = data.items || [];
   renderShipHolidays(data.items || []);
   return data;
 }
@@ -11025,6 +11038,74 @@ async function removeShipHoliday(from, to) {
   } catch (e) {
     shipHolidaySay(e.message, '#e06060');
   }
+}
+
+// ── Ship-by date of an unshipped order ───────────────────────────────────────
+// The day we told the customer the parcel leaves, the same rule as the product
+// page and utils/preorder-hold: placed before 03:00 IST ships that day, later
+// ships the next day; plus the longest extra handling time of its books
+// (_handling_days, stamped at checkout); a pre-order waits for its latest
+// release day (_release); a day inside a shipping holiday moves past it.
+let _shipHolidayItems = null;
+function istDayOf(ms) { return new Date(ms + 5.5 * 3600000).toISOString().slice(0, 10); }
+function addIsoDays(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+function orderShipBy(o) {
+  const t = Date.parse(o && o.created_at);
+  if (!Number.isFinite(t)) return '';
+  const items = Array.isArray(o.cart_items) ? o.cart_items : [];
+  const hd = Math.max(0, ...items.map(i => Math.min(30, Math.round(Number(i && i._handling_days) || 0))));
+  const istHour = new Date(t + 5.5 * 3600000).getUTCHours();
+  let day = addIsoDays(istDayOf(t), (istHour < 3 ? 0 : 1) + hd);
+  const release = orderPreorder(o).release;
+  if (release && release > day) day = release;
+  for (const h of (_shipHolidayItems || [])) {
+    if (h && h.from <= day && day <= h.to) day = addIsoDays(h.to, 1);
+  }
+  return day;
+}
+function shipByBucket(day, today) {
+  if (!day) return '';
+  const tomorrow = addIsoDays(today, 1);
+  return day < today ? 'overdue' : day === today ? 'today' : day === tomorrow ? 'tomorrow' : 'later';
+}
+function shipByMatches(o) {
+  const mode = document.getElementById('shipByFilter')?.value || '';
+  if (!mode) return true;
+  if (!orderIsUnshipped(o)) return false;
+  const day = orderShipBy(o);
+  if (!day) return false;
+  if (mode === 'date') {
+    const on = document.getElementById('shipByOn')?.value || '';
+    return !on || day === on;
+  }
+  const b = shipByBucket(day, istDayOf(Date.now()));
+  return mode === 'due' ? (b === 'overdue' || b === 'today') : b === mode;
+}
+function shipByLabelHtml(o) {
+  if (!orderIsUnshipped(o)) return '';
+  const day = orderShipBy(o);
+  if (!day) return '';
+  const b = shipByBucket(day, istDayOf(Date.now()));
+  const [y, m, d] = day.split('-').map(Number);
+  const when = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const col = b === 'overdue' ? 'var(--red,#e06060)' : b === 'today' ? 'var(--orange,#e8a030)' : 'var(--cream-dim)';
+  return `<div style="margin-top:3px;color:${col};font-weight:${b === 'overdue' || b === 'today' ? 700 : 500};" title="Ship-by date told to the customer">🚚 Ships by ${esc(when)}${b === 'overdue' ? ' · overdue' : b === 'today' ? ' · today' : ''}</div>`;
+}
+async function onShipByFilter() {
+  const mode = document.getElementById('shipByFilter')?.value || '';
+  const on = document.getElementById('shipByOn');
+  if (on) on.style.display = mode === 'date' ? '' : 'none';
+  if (mode && _shipHolidayItems === null) {
+    try {
+      const res = await adminFetch('/.netlify/functions/admin-ship-holidays', { method: 'GET' });
+      const data = await res.json().catch(() => ({}));
+      _shipHolidayItems = res.ok ? (data.items || []) : [];
+    } catch (e) { _shipHolidayItems = []; }
+  }
+  applyFilters();
 }
 
 // ── Pre-orders (utils/release-date) ──────────────────────────────────────────
