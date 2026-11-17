@@ -43,3 +43,19 @@ test('only orders waiting to ship, past their 30-minute cancel window, may be bo
   assert.equal(bookingHold({ status: 'paid', created_at: old, cancellation_requested_at: old }, now).kind, 'cancel_requested');
   assert.equal(bookingHold({ status: 'paid', created_at: '2026-10-14T09:45:00Z' }, now).kind, 'fresh');
 });
+
+test('admin-made orders (clone, split, replacement) skip the 30-minute hold', () => {
+  const now = Date.parse('2026-11-17T12:38:00Z');
+  const fresh = '2026-11-17T12:34:00Z';
+  // The owner's case: a clone refused as "placed 4 min ago".
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-20261107-3P0ON-N2', status: 'confirmed', created_at: fresh, source: 'clone' }, now), null);
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-20261107-3P0ON-N2', status: 'confirmed', created_at: fresh }, now), null);
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-20261101-AB3CD-S2', status: 'confirmed', created_at: fresh, source: 'split' }, now), null);
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-R-XYZ', status: 'replacement_pending', created_at: fresh }, now), null);
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-20261117-QQQQQ', status: 'paid', created_at: fresh, cart_items: [{ _clone: { of: 'x' } }] }, now), null);
+  // Customer orders still wait, including a random code that looks like a suffix.
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-20261117-N1234', status: 'paid', created_at: fresh }, now).kind, 'fresh');
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-20261117-AB3CD', status: 'cod_pending', created_at: fresh, source: 'web' }, now).kind, 'fresh');
+  // Status and cancel requests still apply to admin-made orders.
+  assert.equal(bookingHold({ razorpay_order_id: 'IC-20261107-3P0ON-N2', status: 'cancelled', created_at: fresh, source: 'clone' }, now).kind, 'status');
+});

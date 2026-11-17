@@ -54,10 +54,27 @@ function bookingHold(order, now = Date.now()) {
   if (!BOOKABLE_STATUSES.includes(status)) return { kind: 'status', reason: `status is "${status}", not an order waiting to ship` };
   if (order.cancellation_requested_at) return { kind: 'cancel_requested', reason: 'the customer asked to cancel' };
   const age = now - Date.parse(order.created_at || 0);
-  if (age >= 0 && age < FRESH_MS) {
+  if (age >= 0 && age < FRESH_MS && !adminMade(order)) {
     return { kind: 'fresh', reason: `placed ${Math.max(1, Math.round(age / 60000))} min ago; the customer can still cancel for 30 min` };
   }
   return null;
+}
+
+/**
+ * Orders the admin made (clone -N2, split -S2, replacement). The 30-minute
+ * hold exists because a customer may cancel their own fresh order; nobody
+ * cancels one of these from the website, so the owner books them at once
+ * (owner, 17 Nov 2026: a clone was refused "placed 4 min ago").
+ */
+function adminMade(order) {
+  const source = String(order.source || '').toLowerCase();
+  if (['clone', 'split', 'replacement'].includes(source)) return true;
+  if (String(order.status || '') === 'replacement_pending') return true;
+  if (/^IC-R-|-[A-Z0-9]{5}-[NS]\d{1,2}$/i.test(String(order.razorpay_order_id || ''))) return true;
+  let cart = order.cart_items;
+  if (typeof cart === 'string') { try { cart = JSON.parse(cart); } catch { cart = []; } }
+  const first = Array.isArray(cart) ? cart[0] : null;
+  return !!(first && (first._clone || first._split || first._replacement));
 }
 
 /** What failed, why, and what to do: the admin screen groups by kind. */
@@ -619,6 +636,7 @@ exports.handler = async (event) => {
 
 module.exports.CANCELLABLE   = CANCELLABLE;
 module.exports.bookingHold   = bookingHold;
+module.exports.adminMade     = adminMade;
 module.exports.describeFailure = describeFailure;
 module.exports.buildOrder    = buildOrder;
 module.exports.chooseCourier = chooseCourier;
