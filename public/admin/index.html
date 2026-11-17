@@ -3495,6 +3495,13 @@ select,input,textarea{font-size:1rem;}
   </div><!-- /tab-botinbox -->
 
   <div class="admin-section" id="tab-bookreq">
+    <!-- Two lists in one tab; the website one used to sit below the whole
+         WhatsApp list, where the owner could not find it (18 Nov 2026). -->
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.1rem;">
+      <button type="button" class="filter-btn active" id="bookReqViewWa" onclick="showBookReqView('wa')">💬 From WhatsApp <span id="bookReqWaCount"></span></button>
+      <button type="button" class="filter-btn" id="bookReqViewSite" onclick="showBookReqView('site')">🔎 From website search <span id="bookReqSiteCount"></span></button>
+    </div>
+    <div id="bookReqWaPane">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
       <div>
         <h2 style="margin:0;font-size:1.1rem;">📥 WhatsApp Book Requests</h2>
@@ -3505,8 +3512,10 @@ select,input,textarea{font-size:1rem;}
     <div id="bookReqList" style="display:flex;flex-direction:column;gap:0.7rem;">
       <div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div>
     </div>
+    </div><!-- /bookReqWaPane -->
 
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:2rem 0 0.8rem;padding-top:1.2rem;border-top:1px solid var(--border,rgba(201,168,76,0.25));">
+    <div id="bookReqSitePane" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:0 0 0.8rem;padding-top:0;border-top:0 solid var(--border,rgba(201,168,76,0.25));">
       <div>
         <h2 style="margin:0;font-size:1.1rem;">🔎 Requested from Website Search</h2>
         <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;">Books customers could not find on the site and asked us to get (search → “Request this book”). Nothing is sent to them automatically.</div>
@@ -3528,6 +3537,7 @@ select,input,textarea{font-size:1rem;}
     <div id="siteReqList" style="display:flex;flex-direction:column;gap:0.7rem;">
       <div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div>
     </div>
+    </div><!-- /bookReqSitePane -->
   </div><!-- /tab-bookreq -->
 
   <!-- ═══ BESTSELLERS TAB ═══ -->
@@ -5181,6 +5191,20 @@ function updateBookReqBadge() {
   const n = (window._botReqNew || 0) + (window._siteReqNew || 0);
   const badge = document.getElementById('bookReqBadge');
   if (badge) { badge.textContent = n; badge.style.display = n ? '' : 'none'; }
+  // New ones per list, on the two switch buttons at the top of the tab.
+  const pill = (v) => v ? `<span style="background:var(--orange,#e8a030);color:#fff;border-radius:8px;padding:0 6px;font-size:0.85em;">${v}</span>` : '';
+  const wa = document.getElementById('bookReqWaCount');
+  const site = document.getElementById('bookReqSiteCount');
+  if (wa) wa.innerHTML = pill(window._botReqNew || 0);
+  if (site) site.innerHTML = pill(window._siteReqNew || 0);
+}
+function showBookReqView(which) {
+  const site = which === 'site';
+  document.getElementById('bookReqWaPane').style.display = site ? 'none' : '';
+  document.getElementById('bookReqSitePane').style.display = site ? '' : 'none';
+  document.getElementById('bookReqViewWa').classList.toggle('active', !site);
+  document.getElementById('bookReqViewSite').classList.toggle('active', site);
+  if (site) fetchSiteBookRequests();
 }
 
 // ── Website "Request a book" (site-book-request.js) ─────────────────────────
