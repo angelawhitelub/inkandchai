@@ -1025,8 +1025,8 @@ HTML = r"""<!DOCTYPE html>
 <meta name="keywords" content="buy books online india, hindi books online, online bookstore india, self help books hindi, romance books, fiction books, manga books, ana huang books, david goggins hindi, robin sharma, robert kiyosaki, mythology books, books at 99, cash on delivery books, free shipping books india, ink and chai" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
 <meta name="author" content="Ink & Chai" />
-<!-- Google site verification (new Merchant Center account 5905980012, 16 Nov 2026) -->
-<meta name="google-site-verification" content="f-fQPH8zR17H1c8dFK4UWGIIO-j62ocYxFXIWcpZ0ww" />
+<!-- Google site verification (Merchant Center / Search Console account 5782474419; owner kept this one on 18 Nov 2026) -->
+<meta name="google-site-verification" content="SSzlQkcCmKNDoQOSHrL2agMM2FGlDuvgHG9hNVIRbLg" />
 <meta name="theme-color" content="#0d0b08" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)" />
 <meta name="geo.region" content="IN" />
