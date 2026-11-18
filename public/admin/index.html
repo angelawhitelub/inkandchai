@@ -6877,6 +6877,55 @@ function orderPaymentBreakdown(o) {
   return { full, paid: 0, balance: full, method: 'Cash on Delivery' };
 }
 
+// How the customer's money adds up, under the Amount: items, every coupon /
+// scratch card / store credit (cart_items[]._coupon), delivery or COD charge,
+// then what was paid online and what is left to collect. Shown only when the
+// charge differs from the items total, so ordinary orders stay one line.
+// Delivery is not stored on the order: it is the remainder once coupons are
+// taken off, labelled as such.
+function orderMoneyBreakdownHtml(o, payInfo) {
+  const items = Array.isArray(o?.cart_items) ? o.cart_items : [];
+  const itemsTotal = paiseRound(itemsSubtotal(items));
+  if (!itemsTotal || !payInfo || !payInfo.full) return '';
+  const seen = new Set(); const coupons = [];
+  for (const it of items) {
+    const c = it && it._coupon;
+    const off = paiseRound(Number(c && c.discount) || 0);
+    if (!c || !off || seen.has(c.code || off)) continue;
+    seen.add(c.code || off);
+    coupons.push({ code: String(c.code || ''), source: String(c.source || ''), off });
+  }
+  const couponOff = paiseRound(coupons.reduce((s, c) => s + c.off, 0));
+  const rest = paiseRound(payInfo.full - (itemsTotal - couponOff));
+  if (!coupons.length && Math.abs(rest) < 1) return '';
+  const fromReturn = (code) => {
+    const r = allReturns().find(x => x && x.wallet_code && String(x.wallet_code).toUpperCase() === code.toUpperCase());
+    return r ? ` from return of ${r.order_display_id || ''}` : '';
+  };
+  const label = (c) => {
+    if (/^SCRATCH-/i.test(c.code) || c.source === 'scratch') {
+      const ret = fromReturn(c.code);
+      return ret ? `Store credit${ret}` : 'Store credit / scratch card';
+    }
+    if (c.source === 'site_sale') return 'Sale coupon';
+    if (c.source === 'product') return 'Book coupon';
+    return 'Coupon';
+  };
+  const row = (k, v, strong) => `<div style="display:flex;justify-content:space-between;gap:0.6rem;${strong ? 'color:var(--cream);font-weight:600;border-top:1px dashed var(--border);margin-top:2px;padding-top:2px;' : ''}"><span>${k}</span><span style="white-space:nowrap;">${v}</span></div>`;
+  const lines = [row('Items', '₹' + money(itemsTotal))];
+  for (const c of coupons) lines.push(row(`${esc(label(c))}${c.code ? ` <code style="font-size:0.95em;color:var(--gold-dim);">${esc(c.code)}</code>` : ''}`, '−₹' + money(c.off)));
+  if (rest >= 1) lines.push(row(isPartialOrder(o) || orderPayKind(o) === 'cod' ? 'Delivery / COD charge' : 'Delivery charge', '+₹' + money(rest)));
+  else if (rest <= -1) lines.push(row('Other discount', '−₹' + money(-rest)));
+  lines.push(row('Order total', '₹' + money(payInfo.full), true));
+  if (!isPartialOrder(o)) {
+    const pid = String(o.razorpay_payment_id || '');
+    const via = pid.startsWith('pay_') ? ' (Razorpay)' : pid ? ' (PhonePe)' : '';
+    if (payInfo.paid > 0) lines.push(row(`Paid online${via}`, '₹' + money(payInfo.paid)));
+    if (payInfo.balance > 0) lines.push(row(payInfo.method === 'Prepaid (awaiting)' ? 'Awaiting payment' : 'Collect on delivery', '₹' + money(payInfo.balance)));
+  }
+  return `<div class="amount-sub money-breakdown" style="min-width:190px;">${lines.join('')}</div>`;
+}
+
 // Single source of truth for an order's payment kind, used by every place that
 // renders COD vs Online. Historically this was `!razorpay_payment_id`, which
 // mislabelled prepaid WhatsApp orders (no gateway id) as COD. Now it also
@@ -7591,6 +7640,7 @@ function _drawTable() {
       </td>
       <td data-label="Amount">
         <div class="amount">${amount}</div>
+        ${orderMoneyBreakdownHtml(o, payInfo)}
         ${partial ? `<div class="amount-sub"><strong>Paid:</strong> ₹${payInfo.paid.toLocaleString('en-IN')}<br/><strong>Collect:</strong> ₹${payInfo.balance.toLocaleString('en-IN')}</div>` : ''}
       </td>
       <td data-label="Payment">
