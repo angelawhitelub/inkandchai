@@ -1127,6 +1127,7 @@ select,input,textarea{font-size:1rem;}
       <p>Orders without shipment tracking and not marked shipped, out for delivery, delivered, cancelled, or refunded.</p>
     </div>
     <div class="focus-actions">
+      <button class="btn-gold" onclick="openScreenshotOrder()" title="Upload or paste screenshots of a WhatsApp chat: the name, number, address and books are read for you, priced from the catalogue, and you check everything before the order is created.">📸 Order from screenshot</button>
       <button class="btn-outline" onclick="setFilter(this,'__unshipped')">View Unshipped</button>
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
       <button class="btn-green" onclick="orderReportPdf(this,'unshipped')" title="PDF of every unshipped order: all books with their total quantity, most copies first (a pick list), then the orders, most copies first.">📄 Unshipped Report (PDF)</button>
@@ -3507,7 +3508,7 @@ select,input,textarea{font-size:1rem;}
         <h2 style="margin:0;font-size:1.1rem;">📥 WhatsApp Book Requests</h2>
         <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;">Orders customers placed by chatting with the WhatsApp bot. Contact them to confirm &amp; convert into a real order.</div>
       </div>
-      <button class="btn-outline" onclick="fetchBookRequests()">↻ Refresh</button>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;"><button class="btn-gold" onclick="openScreenshotOrder()" title="Upload or paste screenshots of a WhatsApp chat: the name, number, address and books are read for you, priced from the catalogue, and you check everything before the order is created.">📸 Order from screenshot</button><button class="btn-outline" onclick="fetchBookRequests()">↻ Refresh</button></div>
     </div>
     <div id="bookReqList" style="display:flex;flex-direction:column;gap:0.7rem;">
       <div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;">Loading…</div>
@@ -5122,6 +5123,209 @@ async function setBookReqStatus(id, status) {
     fetchBookRequests();
   } catch (e) { alert('Update failed: ' + e.message); }
 }
+// ── 📸 Order from screenshot ────────────────────────────────────────────────
+// Screenshots of a WhatsApp chat → read (admin-screenshot-order, OpenAI vision)
+// → the admin checks every field → created through the WhatsApp-request path
+// (bot_order_requests row + Push to Orders). Prices come from the catalogue,
+// never from the picture.
+let _ssoImages = [];
+function _ssoShrink(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => reject(new Error('Not an image: ' + file.name));
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function _ssoAdd(files) {
+  for (const f of files) {
+    if (!/^image\//.test(f.type)) continue;
+    if (_ssoImages.length >= 4) { alert('At most 4 screenshots.'); break; }
+    try { _ssoImages.push(await _ssoShrink(f)); } catch (e) { alert(e.message); }
+  }
+  _ssoThumbs();
+}
+function _ssoThumbs() {
+  const box = document.getElementById('ssoThumbs');
+  if (!box) return;
+  box.innerHTML = _ssoImages.map((u, i) => `<div style="position:relative;"><img src="${u}" style="height:90px;border:1px solid rgba(201,168,76,0.3);"/><button type="button" onclick="_ssoImages.splice(${i},1);_ssoThumbs()" style="position:absolute;top:2px;right:2px;background:#000a;color:#fff;border:none;cursor:pointer;">✕</button></div>`).join('');
+  const btn = document.getElementById('ssoReadBtn');
+  if (btn) btn.disabled = !_ssoImages.length;
+}
+function _ssoPaste(e) {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); _ssoAdd(files); }
+}
+function openScreenshotOrder() {
+  document.getElementById('iacSsoModal')?.remove();
+  _ssoImages = [];
+  const modal = document.createElement('div');
+  modal.id = 'iacSsoModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,11,8,0.9);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:10100;padding:1rem;';
+  const L = 'display:block;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;color:#c9a84c;margin:0.7rem 0 0.3rem;';
+  const I = 'width:100%;background:#0d0b08;border:1px solid rgba(201,168,76,0.3);color:#f0e8d8;padding:0.55rem;font-family:inherit;font-size:0.85rem;box-sizing:border-box;';
+  modal.innerHTML = `
+    <div style="background:#1c1916;border:1px solid rgba(201,168,76,0.35);width:min(720px,96vw);max-height:94vh;overflow:auto;padding:1.5rem;position:relative;">
+      <button type="button" data-close style="position:absolute;top:0.9rem;right:1rem;background:none;border:none;color:#a09080;font-size:1.2rem;cursor:pointer;">✕</button>
+      <h3 style="font-family:'DM Serif Display',serif;color:#c9a84c;font-weight:500;margin:0 0 0.3rem;font-size:1.3rem;">📸 Order from WhatsApp screenshot</h3>
+      <p style="color:#a09080;font-size:0.72rem;margin:0 0 0.8rem;">Paste (Ctrl/⌘+V), drop or choose up to 4 screenshots of the chat. Nothing is created until you press <strong>Create order</strong>.</p>
+      <div id="ssoDrop" style="border:1px dashed rgba(201,168,76,0.5);padding:1rem;text-align:center;color:#a09080;font-size:0.8rem;cursor:pointer;">
+        Drop screenshots here, paste them, or <u>choose files</u>
+        <input id="ssoFile" type="file" accept="image/*" multiple style="display:none;"/>
+      </div>
+      <div id="ssoThumbs" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.6rem 0;"></div>
+      <button type="button" id="ssoReadBtn" class="btn-gold" disabled>🔍 Read screenshot</button>
+      <span id="ssoReadMsg" style="font-size:0.75rem;color:#a09080;margin-left:0.6rem;"></span>
+      <div id="ssoForm" style="display:none;margin-top:0.8rem;border-top:1px solid rgba(201,168,76,0.2);padding-top:0.4rem;">
+        <div id="ssoExisting"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 0.8rem;">
+          <div><label style="${L}">Customer name</label><input id="ssoName" style="${I}"/></div>
+          <div><label style="${L}">WhatsApp / phone</label><input id="ssoPhone" inputmode="numeric" style="${I}"/></div>
+          <div><label style="${L}">Other number (optional)</label><input id="ssoAlt" style="${I}" placeholder="added to the address for the courier"/></div>
+          <div><label style="${L}">Pincode</label><input id="ssoPin" inputmode="numeric" maxlength="6" style="${I}"/></div>
+        </div>
+        <label style="${L}">Delivery address</label><textarea id="ssoAddr" rows="2" style="${I}resize:vertical;"></textarea>
+        <label style="${L}">Books — one per line, “× 2” for copies</label><textarea id="ssoBooks" rows="3" style="${I}resize:vertical;"></textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 0.8rem;">
+          <div><label style="${L}">Payment</label>
+            <select id="ssoMode" style="${I}"><option value="cod">Cash on Delivery</option><option value="prepaid">Prepaid — payment already received</option></select></div>
+          <div><label style="${L}">Order total ₹ (what the customer pays)</label><input id="ssoAmount" inputmode="decimal" style="${I}"/></div>
+        </div>
+        <div id="ssoPricing" style="font-size:0.75rem;color:#cfc4ae;margin-top:0.6rem;"></div>
+        <button type="button" id="ssoRepriceBtn" class="btn-outline" style="margin-top:0.4rem;padding:0.35rem 0.8rem;font-size:0.6rem;">↻ Re-price from catalogue</button>
+        <label style="${L}">Note for the team (optional)</label><input id="ssoNotes" style="${I}"/>
+        <label style="display:flex;gap:0.5rem;align-items:center;font-size:0.78rem;color:#cfc4ae;margin-top:0.8rem;"><input id="ssoNotify" type="checkbox" checked/> Send the customer the usual “order confirmed” WhatsApp</label>
+        <div style="display:flex;gap:0.6rem;margin-top:1rem;">
+          <button type="button" id="ssoCreateBtn" class="btn-green">✅ Create order</button>
+          <button type="button" data-close class="btn-outline">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const close = () => { document.removeEventListener('paste', _ssoPaste); modal.remove(); };
+  modal.querySelectorAll('[data-close]').forEach(b => b.onclick = close);
+  document.addEventListener('paste', _ssoPaste);
+  const drop = modal.querySelector('#ssoDrop'), file = modal.querySelector('#ssoFile');
+  drop.onclick = () => file.click();
+  file.onchange = () => { _ssoAdd([...file.files]); file.value = ''; };
+  drop.ondragover = (e) => { e.preventDefault(); drop.style.background = 'rgba(201,168,76,0.08)'; };
+  drop.ondragleave = () => { drop.style.background = ''; };
+  drop.ondrop = (e) => { e.preventDefault(); drop.style.background = ''; _ssoAdd([...e.dataTransfer.files]); };
+  modal.querySelector('#ssoReadBtn').onclick = (e) => _ssoRead(e.currentTarget);
+  modal.querySelector('#ssoRepriceBtn').onclick = (e) => _ssoReprice(e.currentTarget);
+  modal.querySelector('#ssoMode').onchange = () => _ssoReprice();
+  modal.querySelector('#ssoCreateBtn').onclick = (e) => _ssoCreate(e.currentTarget);
+}
+function _ssoFields() {
+  const v = (id) => document.getElementById(id)?.value?.trim() || '';
+  const books = v('ssoBooks').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const m = l.match(/^(.*?)\s*[x×✕]\s*(\d{1,2})$/i);
+    return m ? { title: m[1].trim(), qty: Number(m[2]) } : { title: l, qty: 1 };
+  });
+  const mode = v('ssoMode');
+  return {
+    customer_name: v('ssoName'), phone: v('ssoPhone'),
+    alt_phones: v('ssoAlt').split(/[,/ ]+/).filter(Boolean),
+    address: v('ssoAddr'), pincode: v('ssoPin'), books,
+    payment_mode: mode, paid_already: mode === 'prepaid',
+    amount_rupees: Number(v('ssoAmount').replace(/[^\d.]/g, '')), notes: v('ssoNotes'),
+  };
+}
+function _ssoShowPricing(p, quoted) {
+  const box = document.getElementById('ssoPricing');
+  if (!box) return;
+  if (!p || p.error) { box.innerHTML = `<span style="color:#e87070;">Could not price: ${esc(p?.error || 'no books')}</span>`; return; }
+  const rows = (p.items || []).map(i => `<div>• ${esc(i.asked)}${i.qty > 1 ? ' ×' + i.qty : ''} → ${i.matched ? `<strong style="color:#6dbf6d;">${esc(i.matched)}</strong> ₹${money(i.line_rs)}` : '<strong style="color:#e8a030;">not in the catalogue</strong>'}</div>`).join('');
+  const total = p.total_rs != null
+    ? `Catalogue: items ₹${money(p.subtotal_rs)}${p.sale_rs ? ` − ${esc(p.sale_label || 'sale')} ₹${money(p.sale_rs)}` : ''} + delivery ₹${money(p.shipping_rs)} = <strong style="color:#c9a84c;">₹${money(p.total_rs)}</strong>`
+    : '<span style="color:#e8a030;">A title is not listed, so there is no catalogue price: type the total you agreed with the customer.</span>';
+  const q = quoted ? `<div style="color:#a09080;">Quoted in the chat: ₹${money(quoted)}${p.total_rs != null && Math.round(quoted) !== Math.round(p.total_rs) ? ' <strong style="color:#e8a030;">(differs from the catalogue — check)</strong>' : ''}</div>` : '';
+  const gone = (p.removed || []).length ? `<div style="color:#e87070;">Not for sale any more: ${esc(p.removed.join(', '))}</div>` : '';
+  box.innerHTML = rows + `<div style="margin-top:0.3rem;">${total}</div>` + q + gone;
+}
+async function _ssoRead(btn) {
+  const msg = document.getElementById('ssoReadMsg');
+  btn.disabled = true; msg.textContent = 'Reading… (10–20 s)';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-screenshot-order', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'read', images: _ssoImages }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+    const f = d.fields || {};
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val == null ? '' : val; };
+    set('ssoName', f.customer_name); set('ssoPhone', f.phone); set('ssoAlt', (f.alt_phones || []).join(', '));
+    set('ssoPin', f.pincode); set('ssoAddr', f.address); set('ssoNotes', f.notes);
+    set('ssoBooks', (f.books || []).map(b => b.qty > 1 ? `${b.title} × ${b.qty}` : b.title).join('\n'));
+    set('ssoMode', f.payment_mode === 'prepaid' && f.paid_already ? 'prepaid' : 'cod');
+    const p = d.pricing || {};
+    set('ssoAmount', p.total_rs != null ? p.total_rs : (f.quoted_total_rs || ''));
+    window._ssoQuoted = f.quoted_total_rs;
+    _ssoShowPricing(p, f.quoted_total_rs);
+    const ex = d.existing || {};
+    const lines = [
+      ...(ex.requests || []).map(r => `WhatsApp request <strong>${esc(r.order_id)}</strong> (${esc(r.status)}${r.pushed_as ? ' → ' + esc(r.pushed_as) : ''}) · ${esc(r.books || '')}`),
+      ...(ex.orders || []).map(o => `Order <strong>${esc(o.order_id)}</strong> (${esc(String(o.status).replace(/_/g, ' '))}) · ${esc(o.books || '')}`),
+    ];
+    document.getElementById('ssoExisting').innerHTML = lines.length
+      ? `<div style="background:rgba(232,160,48,0.1);border:1px solid rgba(232,160,48,0.5);padding:0.6rem;font-size:0.75rem;color:#f0d8a8;margin-bottom:0.4rem;">⚠ This number already has, in the last 30 days:<br>${lines.join('<br>')}<br>Make sure this is not the same order again.</div>`
+      : '';
+    const missing = [!f.customer_name && 'name', !f.phone && 'phone', !f.pincode && 'pincode', !(f.books || []).length && 'books', !f.payment_mode && 'COD/prepaid'].filter(Boolean);
+    msg.textContent = missing.length ? `Read. Not found in the chat: ${missing.join(', ')} — fill them in.` : 'Read. Check every field before creating.';
+    document.getElementById('ssoForm').style.display = '';
+  } catch (e) {
+    msg.textContent = '';
+    alert('Could not read the screenshot: ' + e.message);
+  } finally { btn.disabled = false; }
+}
+async function _ssoReprice(btn) {
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-screenshot-order', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'price', fields: _ssoFields() }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+    _ssoShowPricing(d.pricing, window._ssoQuoted);
+    if (d.pricing && d.pricing.total_rs != null) document.getElementById('ssoAmount').value = d.pricing.total_rs;
+  } catch (e) { if (btn) alert('Could not re-price: ' + e.message); }
+}
+async function _ssoCreate(btn, confirmExisting = false) {
+  const fields = _ssoFields();
+  const books = fields.books.map(b => b.qty > 1 ? `${b.title} ×${b.qty}` : b.title).join(', ');
+  if (!confirmExisting && !confirm(`Create this order?\n\n${fields.customer_name} · ${fields.phone}\n${books}\n${fields.payment_mode === 'cod' ? 'Cash on Delivery' : 'Prepaid (already received)'} · ₹${fields.amount_rupees}`)) return;
+  btn.disabled = true;
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-screenshot-order', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'create', fields, confirm_existing: confirmExisting, notify: document.getElementById('ssoNotify').checked }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.status === 409 && d.error === 'already_exists') {
+      btn.disabled = false;
+      if (confirm(`${d.message}\n\nCreate a SECOND order anyway?`)) return _ssoCreate(btn, true);
+      return;
+    }
+    if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+    alert(`✅ Order ${d.order_id} created (${d.payment_kind === 'cod' ? 'COD' : 'prepaid'}, ₹${d.amount}). It is in Orders → Unshipped.`);
+    document.getElementById('iacSsoModal')?.remove();
+    document.removeEventListener('paste', _ssoPaste);
+    try { fetchOrders(true); } catch (_) {}
+    try { fetchBookRequests(); } catch (_) {}
+  } catch (e) {
+    alert('Could not create the order: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
 // Correct a WhatsApp request before it goes to Orders. Saving messages nobody.
 function openBookReqEdit(id) {
   const r = window._bookReqById?.[String(id)];

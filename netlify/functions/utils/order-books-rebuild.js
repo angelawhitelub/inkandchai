@@ -99,6 +99,16 @@ async function rebuildOrderBooks(raw, order, lookupBook) {
   // The order's payment terms ride on the first line, whichever book that is.
   const payment = existing[0]?._payment;
   if (payment && cartItems[0] && !cartItems[0]._payment) cartItems[0]._payment = payment;
+  // So does a replacement's link to its original order (reason, photos, the
+  // original's id). Renaming the first book once dropped it: IC-R-20261005-9BGKR
+  // and nine others lost their original and showed as paid orders.
+  const replacement = existing.find((i) => i && i._replacement)?._replacement;
+  if (replacement && cartItems[0]) {
+    cartItems.forEach((i) => { delete i._replacement; });
+    cartItems[0]._replacement = replacement;
+  }
+  const freeReplacement = Boolean(replacement) || order.source === 'replacement'
+    || /^IC-R-/i.test(String(order.razorpay_order_id || ''));
 
   const subtotalRs = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
   const newTotalRs = subtotalRs + (subtotalRs >= FREE_SHIPPING_OVER_RS ? 0 : SHIPPING_RS);
@@ -107,7 +117,9 @@ async function rebuildOrderBooks(raw, order, lookupBook) {
   let repriced = null;
   let warning = '';
 
-  if (!isSettled(order) && newTotalRs > 0 && newTotalRs !== totalRs) {
+  if (freeReplacement) {
+    // A replacement ships free: its total is never priced from the catalogue.
+  } else if (!isSettled(order) && newTotalRs > 0 && newTotalRs !== totalRs) {
     amountPaise = Math.round(newTotalRs * 100);
     repriced = { from: totalRs, to: newTotalRs };
   } else if (isSettled(order) && newTotalRs !== totalRs) {

@@ -159,3 +159,16 @@ test('paid orders, booked AWBs and nonsense totals are refused', () => {
 test('an order already sent to a courier panel is changed with a warning', () => {
   assert.match(setOrderTotal({ status: 'cod_pending', nimbus_pushed_at: '2026-11-03' }, 500, []).warning, /NimbusPost/);
 });
+
+test('renaming a replacement\'s book keeps its link to the original and its ₹0 total', async () => {
+  const { rebuildOrderBooks } = require('./order-books-rebuild');
+  const order = {
+    razorpay_order_id: 'IC-R-20261005-9BGKR', source: 'replacement', status: 'replacement_pending', amount_paise: 0,
+    cart_items: [{ title: 'Becoming Supernatural + You Are The Placebo in Hindi Combo of 2', qty: 1, price: 549,
+      _replacement: { original_order_id: 'IC-20261001-RXCSK', reason: 'missing_item' } }],
+  };
+  const r = await rebuildOrderBooks('Becoming Supernatural', order, async () => ({ title: 'Becoming Supernatural', price: 254.15 }));
+  assert.equal(r.cartItems[0]._replacement.original_order_id, 'IC-20261001-RXCSK');
+  assert.equal(r.amountPaise, null, 'a free replacement is never repriced');
+  assert.equal(r.repriced, null);
+});

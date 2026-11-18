@@ -296,6 +296,15 @@ async function priceSafely(priceBooksList, books) {
 }
 
 /**
+ * The same price a chat order gets (catalogue, free delivery, prepaid shipping
+ * rule, site sale), for callers outside the bot: admin "Order from screenshot".
+ */
+async function priceChatOrder(deps, books, paymentMode, now = new Date()) {
+  const base = await priceSafely(deps.priceBooksList, books);
+  return withSiteSale(withPaymentShipping(await withFreeDelivery(deps.db, base), paymentMode), now.getTime());
+}
+
+/**
  * The submit_order_request tool. Never places an order.
  * deps: { db, priceBooksList, now? }
  */
@@ -651,4 +660,5 @@ module.exports = {
   DRAFT, DISCARDED, LIVE, HIDDEN_STATUSES, DRAFT_TTL_MS, AUTO_PUSH_MAX_COPIES, autoPushHold,
   validateOrderFields, sameBooks, sameTitle, requestedTitles, draftReplyDecision,
   draftOrderRequest, confirmDraftOrder, botOrdersContext, activeOrdersContext, lookupBotRequest, describeRequest,
+  priceChatOrder, unlistedTitles, mintOrderId, LIVE_STATUSES: LIVE,
 };
