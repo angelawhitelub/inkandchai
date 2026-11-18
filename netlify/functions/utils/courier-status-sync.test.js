@@ -142,3 +142,24 @@ test('a courier that does not say delivered changes nothing, not even the stored
   assert.equal(db.writes.length, 0);
   assert.deepEqual(r.not_delivered.map((n) => n.order), ['X', 'Y']);
 });
+
+test('a named parcel the courier says is back with us (RTO Delivered) becomes rto on that date', async () => {
+  const rows = [
+    { id: 'r', razorpay_order_id: 'R', status: 'shipped', shipped_at: '2026-09-18T00:00:00Z' },
+    { id: 'w', razorpay_order_id: 'W', status: 'shipped', shipped_at: '2026-09-18T00:00:00Z' },
+  ];
+  const back = { status: 'RTO Delivered', state: 'moved', at: '2026-10-07T11:52:41.000Z' };
+  const onWay = { status: 'RTO In Transit', state: 'moved' };
+  const preview = fakeDb(rows);
+  const p = await runSelected(preview, { orderIds: ['r', 'w'], dryRun: true, check: answers({ r: back, w: onWay }), now: LATER });
+  assert.equal(p.to_rto, 1);
+  assert.equal(p.to_delivered, 0);
+  assert.deepEqual(p.not_delivered.map((n) => n.order), ['W'], 'a parcel still on its way back is left alone');
+  assert.equal(preview.writes.length, 0);
+
+  const db = fakeDb(rows);
+  await runSelected(db, { orderIds: ['r', 'w'], check: answers({ r: back, w: onWay }), now: LATER });
+  assert.equal(db.writes.length, 1);
+  assert.equal(db.writes[0].status, 'rto');
+  assert.equal(db.writes[0].rto_back_at, '2026-10-07T11:52:41.000Z');
+});

@@ -1,7 +1,8 @@
 /**
  * Scheduled function: courier-status-sync-scheduled   (hourly, jobs.toml)
  * POST (admin) { "limit": 80, "dry_run": true }   -- manual run / preview
- * POST (admin) { "order_ids": [uuid, …], "dry_run": true }   -- named orders, delivered only
+ * POST (admin) { "order_ids": [uuid, …], "dry_run": true }   -- named orders: delivered, or
+ *      RTO when the courier says the parcel is already back with us (RTO Delivered)
  *
  * Moves no-scan bookings (Amazon, iThink Delhivery, NimbusPost DTDC/Ekart...)
  * to out_for_delivery / delivered from the courier's own tracking, via
@@ -23,7 +24,8 @@ const json = (statusCode, body) => ({ statusCode, headers: HEADERS, body: JSON.s
 
 const DEFAULT_LIMIT = 80;
 const MAX_LIMIT = 200;
-const WINDOW_DAYS = 60;   // older than this is a person's job, not a poller's
+const WINDOW_DAYS = 60;
+const RTO_BACK = /^rto[ _-]?delivered$/i;   // back with us, not merely turned round   // older than this is a person's job, not a poller's
 
 async function run(supabase, { limit = DEFAULT_LIMIT, dryRun = false, check = checkPickups, now = new Date() } = {}) {
   const since = new Date(now.getTime() - WINDOW_DAYS * 86400000).toISOString();
@@ -68,7 +70,12 @@ async function run(supabase, { limit = DEFAULT_LIMIT, dryRun = false, check = ch
 
 // Orders a person named, for parcels past the poller's window (about 500 May-Aug
 // parcels sat at out_for_delivery for months after being delivered). It asks the
-// courier again and only ever moves an order to delivered.
+// courier again and moves an order to delivered, or to rto when the courier says
+// the parcel is already back with us ("RTO Delivered": iThink Delhivery sends no
+// scans, so four Sept COD parcels read "shipped" two months after coming home).
+// A parcel still on its way back is left alone. RTO is not just a label either:
+// rto-auto-refund-scheduled refunds PREPAID rto orders after its own live check,
+// which is the designed path for them; COD rto orders have no money step.
 //
 // Delivered is not just a label for some orders: the XpressBees status job pays
 // a pending wrong-COD refund on any delivered order within 15 minutes, and the
@@ -100,11 +107,16 @@ async function runSelected(supabase, { orderIds, dryRun = false, check = checkPi
   for (const o of orders || []) {
     const ref = o.razorpay_order_id || o.id;
     const answer = live.get(o.id);
-    const { fields, to } = planUpdate(o, answer, stamp);
-    if (to !== 'delivered') { notDelivered.push({ order: ref, courier_says: answer?.status || '' }); continue; }
+    let { fields, to } = planUpdate(o, answer, stamp);
+    if (to !== 'delivered' && answer && RTO_BACK.test(String(answer.status || '').trim())) {
+      const at = answer.at && Date.parse(answer.at) <= Date.parse(stamp) ? answer.at : null;
+      fields = { last_courier_status: String(answer.status).slice(0, 200), last_courier_status_at: stamp, status: 'rto', rto_back_at: at || stamp };
+      to = 'rto';
+    }
+    if (to !== 'delivered' && to !== 'rto') { notDelivered.push({ order: ref, courier_says: answer?.status || '' }); continue; }
     const why = heldBack(o);
     if (why) { held.push({ order: ref, why }); continue; }
-    changes.push({ order: ref, delivered_at: fields.delivered_at || null });
+    changes.push(to === 'rto' ? { order: ref, to, rto_back_at: fields.rto_back_at } : { order: ref, to, delivered_at: fields.delivered_at || null });
     if (dryRun) continue;
     const { error: upErr } = await supabase.from('orders').update(fields).eq('id', o.id).in('status', SYNCABLE);
     if (upErr) failed.push({ order: ref, error: upErr.message });
@@ -113,8 +125,9 @@ async function runSelected(supabase, { orderIds, dryRun = false, check = checkPi
     dry_run: dryRun,
     requested: orderIds.length,
     found: (orders || []).length,
-    to_delivered: changes.length,
-    undated: changes.filter((c) => !c.delivered_at).length,
+    to_delivered: changes.filter((c) => c.to === 'delivered').length,
+    to_rto: changes.filter((c) => c.to === 'rto').length,
+    undated: changes.filter((c) => c.to === 'delivered' && !c.delivered_at).length,
     held,
     not_delivered: notDelivered,
     failed,
