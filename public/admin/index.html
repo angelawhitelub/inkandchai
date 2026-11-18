@@ -231,6 +231,11 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
 .amount-sub{font-size:0.65rem;color:var(--cream-dim);line-height:1.5;margin-top:0.15rem;}
 .amount-sub strong{color:var(--gold-dim);font-weight:500;}
+/* Payment breakdown stays inside the Amount cell (it used to spill under Mark Prepaid). */
+.money-breakdown{max-width:100%;box-sizing:border-box;}
+.money-breakdown .mb-row{display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;}
+.money-breakdown .mb-k{min-width:0;overflow-wrap:anywhere;}
+.money-breakdown .mb-v{white-space:nowrap;text-align:right;flex:none;}
 .method-badge{font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--cream-dim);}
 .empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.9rem;}
 .load-more-btn{display:block;width:100%;margin-top:1.2rem;font-family:'Manrope',sans-serif;font-size:0.72rem;letter-spacing:0.18em;text-transform:uppercase;padding:0.9rem;border:1px solid var(--gold-dim);color:var(--gold);background:transparent;cursor:pointer;transition:all 0.2s;}
@@ -7115,10 +7120,10 @@ function orderMoneyBreakdownHtml(o, payInfo) {
     if (c.source === 'product') return 'Book coupon';
     return 'Coupon';
   };
-  const row = (k, v, strong) => `<div style="display:flex;justify-content:space-between;gap:0.6rem;${strong ? 'color:var(--cream);font-weight:600;border-top:1px dashed var(--border);margin-top:2px;padding-top:2px;' : ''}"><span>${k}</span><span style="white-space:nowrap;">${v}</span></div>`;
+  const row = (k, v, strong) => `<div class="mb-row" style="${strong ? 'color:var(--cream);font-weight:600;border-top:1px dashed var(--border);margin-top:2px;padding-top:2px;' : ''}"><span class="mb-k">${k}</span><span class="mb-v">${v}</span></div>`;
   const lines = [row('Items', '₹' + money(itemsTotal))];
   for (const c of coupons) lines.push(row(`${esc(label(c))}${c.code ? ` <code style="font-size:0.95em;color:var(--gold-dim);">${esc(c.code)}</code>` : ''}`, '−₹' + money(c.off)));
-  if (rest >= 1) lines.push(row(isPartialOrder(o) || orderPayKind(o) === 'cod' ? 'Delivery / COD charge' : 'Delivery charge', '+₹' + money(rest)));
+  if (rest >= 1) lines.push(row(isPartialOrder(o) || orderPayKind(o) === 'cod' ? 'Delivery + COD' : 'Delivery', '+₹' + money(rest)));
   else if (rest <= -1) lines.push(row('Other discount', '−₹' + money(-rest)));
   lines.push(row('Order total', '₹' + money(payInfo.full), true));
   if (!isPartialOrder(o)) {
@@ -7127,7 +7132,7 @@ function orderMoneyBreakdownHtml(o, payInfo) {
     if (payInfo.paid > 0) lines.push(row(`Paid online${via}`, '₹' + money(payInfo.paid)));
     if (payInfo.balance > 0) lines.push(row(payInfo.method === 'Prepaid (awaiting)' ? 'Awaiting payment' : 'Collect on delivery', '₹' + money(payInfo.balance)));
   }
-  return `<div class="amount-sub money-breakdown" style="min-width:190px;">${lines.join('')}</div>`;
+  return `<div class="amount-sub money-breakdown">${lines.join('')}</div>`;
 }
 
 // Single source of truth for an order's payment kind, used by every place that

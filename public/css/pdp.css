@@ -175,6 +175,19 @@ html body main.wrap > section:not(.cover) > :is(.desc,.details){
 html body main.wrap > section:not(.cover) > :is(.desc,.details) > .label{
   font-size:11.5px !important; letter-spacing:.14em !important; color:var(--t-muted) !important; margin-bottom:12px !important; display:block;
 }
+/* Description text: normal weight, readable size. Admin-added book pages
+   (product-page.js) inherit body font-weight:300 and the theme sets 15.5px. */
+html body main.wrap > section:not(.cover) > .desc,
+html body main.wrap > section:not(.cover) > .desc :is(p,li,ul,ol,span,div:not(.label)){
+  font-weight:400 !important; font-size:16.5px !important; line-height:1.75 !important; color:var(--t-ink-2) !important;
+}
+html body main.wrap > section:not(.cover) > .desc :is(h3,h4){ font-size:17px !important; font-weight:700 !important; color:var(--t-ink) !important; margin:18px 0 8px !important; }
+html body main.wrap > section:not(.cover) > .desc :is(h3,h4):first-of-type{ margin-top:0 !important; }
+html body main.wrap > section:not(.cover) > .desc :is(strong,b){ font-weight:700 !important; color:var(--t-ink) !important; }
+@media (max-width:760px){
+  html body main.wrap > section:not(.cover) > .desc,
+  html body main.wrap > section:not(.cover) > .desc :is(p,li,ul,ol,span,div:not(.label)){ font-size:16px !important; }
+}
 html body main.wrap > section:not(.cover) > .details dl{
   display:grid !important; grid-template-columns:minmax(120px,170px) 1fr !important; gap:0 !important; margin:0 !important;
 }

@@ -667,7 +667,7 @@ const OLD_FAQ_SHIPPING = 'Free shipping applies on orders above ₹499.';
 // line. product-page.js and ship-holidays.js no longer write it at all.
 const OLD_HANDLING_SUB = "'Allow ' + handling + ' extra ' + (handling === 1 ? 'day' : 'days') + ' before dispatch'";
 // Product page structure and polish (public/css/pdp.css), after the site theme.
-const PDP_CSS_TAG = '<link rel="stylesheet" href="/css/pdp.css?v=20261114">';
+const PDP_CSS_TAG = '<link rel="stylesheet" href="/css/pdp.css?v=20261119">';
 const NEW_FAQ_SHIPPING = 'Free shipping applies on prepaid orders above ₹399 and on cash-on-delivery orders of ₹499 or more.';
 function withShippingCopy(response) {
   let noted = false;
