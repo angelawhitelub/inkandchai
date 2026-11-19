@@ -133,6 +133,9 @@ html[data-theme="light"] .btn-partial:hover{background:#f1e3c9;}
 #codConfirm .cc-points li{margin:0 0 6px}
 #codConfirm .cc-partial,#codConfirm .cc-cod{display:block;width:100%;min-height:50px;border-radius:999px;font-family:inherit;font-size:.95rem;font-weight:700;cursor:pointer;padding:.7rem 1rem;line-height:1.3}
 #codConfirm .cc-partial{background:var(--gold);color:var(--bg3);border:0;margin-bottom:10px}
+#codConfirm .cc-full{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;min-height:54px;border-radius:999px;font-family:inherit;font-size:.95rem;font-weight:700;cursor:pointer;padding:.65rem 1rem;line-height:1.3;background:#237a3b;color:#fff;border:0;margin-bottom:10px}
+#codConfirm .cc-full .cc-sub{font-size:.75rem;font-weight:500;opacity:.92}
+#codConfirm .cc-partial.cc-second{background:transparent;color:var(--gold);border:1.5px solid var(--gold)}
 #codConfirm .cc-cod{background:transparent;color:var(--cream);border:1.5px solid var(--border);font-weight:600}
 #codConfirm .cc-close{position:absolute;top:10px;right:12px;width:34px;height:34px;border:0;background:transparent;color:var(--cream-dim);font-size:1.5rem;line-height:1;cursor:pointer;border-radius:50%}
 .partial-note{font-size:0.58rem;color:var(--cream-dim);letter-spacing:0.04em;line-height:1.6;margin:-0.25rem 0 0.75rem;}
@@ -1921,15 +1924,49 @@ document.addEventListener('change', e => {
 // the ones that come back undelivered (RTO); an advance also waives the COD fee.
 // Shown only when partial COD is open for this cart; the choice is the
 // customer's and "Continue with Cash on Delivery" places the order unchanged.
+// The best prepaid deal for this cart: the coupon already applied or any offer
+// listed in "Available Coupons" (public codes, product coupons, admin
+// Promotions), whichever takes most off. Read only; nothing is applied here.
+function bestPrepaidOffer(cart) {
+  const subtotal = cartSubtotal(cart);
+  const shipping = calcShipping(subtotal, cart, 'online');
+  const select = document.getElementById('couponSelect');
+  const codes = new Set([normalizeCouponCode(appliedCouponCode)]);
+  if (select) Array.from(select.options).forEach(o => o.value && codes.add(normalizeCouponCode(o.value)));
+  if (festiveIsLive()) codes.add(FESTIVE_SALE.code);
+  let best = { code: '', discount: 0 };
+  const current = couponDiscount(cart, 'online');      // FREEDOM-style automatic sales live here
+  if (current.discount > 0) best = { code: current.code, discount: current.discount };
+  for (const code of codes) {
+    if (!code) continue;
+    let d;
+    try {
+      d = code === FESTIVE_SALE.code ? festiveSaleDiscount(subtotal) : chosenCouponDiscount(cart, 'online', subtotal, code);
+    } catch (e) { continue; }
+    if (d && d.discount > best.discount) best = { code, discount: d.discount };
+  }
+  return { code: best.code, discount: best.discount, total: Math.max(1, subtotal + shipping - best.discount), shipping };
+}
+
 function codConfirmChoice() {
   return new Promise((resolve) => {
     const cart = getCart();
     const partial = partialPaymentTotals(cart);
     const btnPartial = document.getElementById('btnPartial');
-    if (!partial.eligible || (btnPartial && btnPartial.disabled)) { resolve('cod'); return; }
+    const partialOpen = partial.eligible && !(btnPartial && btnPartial.disabled);
     const cod = orderTotals(cart, 'cod');
+    const full = bestPrepaidOffer(cart);
+    const fullSaves = Math.max(0, Math.round(cod.total - full.total));
+    const btnPay = document.getElementById('btnPayNow');
+    const fullOpen = !(btnPay && btnPay.disabled);
+    if (!partialOpen && !(fullOpen && fullSaves > 0)) { resolve({ choice: 'cod' }); return; }
     const inr = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
     const saves = Math.max(0, Math.round(cod.total - partial.total));
+    const fullWhy = [
+      full.discount > 0 ? `${full.code} −${inr(full.discount)}` : '',
+      cod.codFee > 0 ? 'no COD fee' : '',
+      full.shipping < cod.shipping ? 'free delivery' : '',
+    ].filter(Boolean).join(' · ');
     const old = document.getElementById('codConfirm');
     if (old) old.remove();
     const wrap = document.createElement('div');
@@ -1940,13 +1977,19 @@ function codConfirmChoice() {
     wrap.innerHTML = `
       <div class="cc-card">
         <div class="cc-title" id="codConfirmTitle">Confirm Cash on Delivery</div>
-        <p class="cc-lead">Pay just <strong>${inr(partial.deposit)}</strong> now and <strong>${inr(partial.balance)}</strong> on delivery for <strong>faster order fulfilment</strong>.</p>
+        <p class="cc-lead">${partialOpen
+          ? `Pay just <strong>${inr(partial.deposit)}</strong> now and <strong>${inr(partial.balance)}</strong> on delivery for <strong>faster order fulfilment</strong>.`
+          : `Pay online now for <strong>faster order fulfilment</strong>${fullSaves > 0 ? ` and save <strong>${inr(fullSaves)}</strong>` : ''}.`}</p>
         <ul class="cc-points">
           <li>⚡ Orders with an advance are confirmed instantly and get priority dispatch.</li>
           <li>📦 Full cash-on-delivery orders are often returned undelivered (RTO), which delays them.</li>
-          ${saves > 0 ? `<li>💸 You save ${inr(saves)}: the COD fee is waived.</li>` : ''}
+          ${partialOpen && saves > 0 ? `<li>💸 Paying 10% now saves ${inr(saves)}: the COD fee is waived.</li>` : ''}
         </ul>
-        <button type="button" class="cc-partial" data-choice="partial">Pay ${inr(partial.deposit)} now · ${inr(partial.balance)} on delivery</button>
+        ${fullOpen && fullSaves > 0 ? `<button type="button" class="cc-full" data-choice="full">
+          <span>Pay full ${inr(full.total)} now · save ${inr(fullSaves)}</span>
+          ${fullWhy ? `<span class="cc-sub">${fullWhy}</span>` : ''}
+        </button>` : ''}
+        ${partialOpen ? `<button type="button" class="cc-partial${fullOpen && fullSaves > 0 ? ' cc-second' : ''}" data-choice="partial">Pay ${inr(partial.deposit)} now · ${inr(partial.balance)} on delivery</button>` : ''}
         <button type="button" class="cc-cod" data-choice="cod">Continue with Cash on Delivery · ${inr(cod.total)}</button>
         <button type="button" class="cc-close" data-choice="cancel" aria-label="Close">×</button>
       </div>`;
@@ -1954,7 +1997,7 @@ function codConfirmChoice() {
       document.removeEventListener('keydown', onKey);
       wrap.remove();
       try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'cod_confirm_choice', choice }); } catch (e) {}
-      resolve(choice);
+      resolve({ choice, code: full.code });
     };
     const onKey = (e) => { if (e.key === 'Escape') done('cancel'); };
     wrap.addEventListener('click', (e) => {
@@ -1964,7 +2007,7 @@ function codConfirmChoice() {
     });
     document.addEventListener('keydown', onKey);
     document.body.appendChild(wrap);
-    const first = wrap.querySelector('.cc-partial');
+    const first = wrap.querySelector('.cc-full, .cc-partial');
     if (first) first.focus();
   });
 }
@@ -1979,9 +2022,20 @@ async function submitOrder(method) {
   const addr = collectAddr();
   if (!addr) return;
   if (method === 'cod') {
-    const choice = await codConfirmChoice();
-    if (choice === 'cancel') return;
-    if (choice === 'partial') method = 'partial';
+    const picked = await codConfirmChoice();
+    if (picked.choice === 'cancel') return;
+    if (picked.choice === 'partial') method = 'partial';
+    if (picked.choice === 'full') {
+      // Put the coupon the popup priced on the order, the same way picking it
+      // from "Available Coupons" does, then pay in full.
+      const want = normalizeCouponCode(picked.code);
+      if (want && want !== normalizeCouponCode(appliedCouponCode)) {
+        const input = document.getElementById('couponCode');
+        if (input) input.value = want;
+        await applyCoupon();
+      }
+      method = 'online';
+    }
   }
   // Persist the address NOW (not only after a successful order) so a failed or
   // cancelled payment still restores the form when the customer returns.
