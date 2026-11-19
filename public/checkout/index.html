@@ -125,6 +125,16 @@ html[data-theme="light"] .btn-partial{background:#f7efe0;border-color:rgba(138,1
 .btn-partial:hover{background:rgba(201,168,76,0.18);border-color:var(--gold);}
 html[data-theme="light"] .btn-partial:hover{background:#f1e3c9;}
 .btn-partial:disabled{opacity:0.72;cursor:not-allowed;}
+#codConfirm{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
+#codConfirm .cc-card{position:relative;width:100%;max-width:420px;max-height:calc(100vh - 32px);overflow:auto;background:var(--bg3);color:var(--cream);border:1px solid var(--border);border-radius:18px;padding:22px 20px 18px;box-shadow:0 24px 70px rgba(0,0,0,.35);font-family:'Inter',sans-serif}
+#codConfirm .cc-title{font-size:1.15rem;font-weight:700;margin:0 28px 10px 0;line-height:1.3}
+#codConfirm .cc-lead{font-size:.95rem;line-height:1.55;margin:0 0 12px}
+#codConfirm .cc-points{list-style:none;margin:0 0 16px;padding:0;font-size:.86rem;line-height:1.5;color:var(--cream-dim)}
+#codConfirm .cc-points li{margin:0 0 6px}
+#codConfirm .cc-partial,#codConfirm .cc-cod{display:block;width:100%;min-height:50px;border-radius:999px;font-family:inherit;font-size:.95rem;font-weight:700;cursor:pointer;padding:.7rem 1rem;line-height:1.3}
+#codConfirm .cc-partial{background:var(--gold);color:var(--bg3);border:0;margin-bottom:10px}
+#codConfirm .cc-cod{background:transparent;color:var(--cream);border:1.5px solid var(--border);font-weight:600}
+#codConfirm .cc-close{position:absolute;top:10px;right:12px;width:34px;height:34px;border:0;background:transparent;color:var(--cream-dim);font-size:1.5rem;line-height:1;cursor:pointer;border-radius:50%}
 .partial-note{font-size:0.58rem;color:var(--cream-dim);letter-spacing:0.04em;line-height:1.6;margin:-0.25rem 0 0.75rem;}
 /* Payment area (30 Oct 2026): real round radios, one type scale for the three
    pay buttons, readable notes in both themes. The #paymentBlock prefix outranks
@@ -1905,6 +1915,60 @@ document.addEventListener('change', e => {
 });
 
 // ── Main submit ────────────────────────────────────────────────────────────
+// ── COD confirmation ─────────────────────────────────────────────────────────
+// Owner, 19 Nov 2026: before a full Cash on Delivery order, ask once whether the
+// customer would rather pay 10% now (partial COD). Cash-on-delivery parcels are
+// the ones that come back undelivered (RTO); an advance also waives the COD fee.
+// Shown only when partial COD is open for this cart; the choice is the
+// customer's and "Continue with Cash on Delivery" places the order unchanged.
+function codConfirmChoice() {
+  return new Promise((resolve) => {
+    const cart = getCart();
+    const partial = partialPaymentTotals(cart);
+    const btnPartial = document.getElementById('btnPartial');
+    if (!partial.eligible || (btnPartial && btnPartial.disabled)) { resolve('cod'); return; }
+    const cod = orderTotals(cart, 'cod');
+    const inr = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
+    const saves = Math.max(0, Math.round(cod.total - partial.total));
+    const old = document.getElementById('codConfirm');
+    if (old) old.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'codConfirm';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.setAttribute('aria-labelledby', 'codConfirmTitle');
+    wrap.innerHTML = `
+      <div class="cc-card">
+        <div class="cc-title" id="codConfirmTitle">Confirm Cash on Delivery</div>
+        <p class="cc-lead">Pay just <strong>${inr(partial.deposit)}</strong> now and <strong>${inr(partial.balance)}</strong> on delivery for <strong>faster order fulfilment</strong>.</p>
+        <ul class="cc-points">
+          <li>⚡ Orders with an advance are confirmed instantly and get priority dispatch.</li>
+          <li>📦 Full cash-on-delivery orders are often returned undelivered (RTO), which delays them.</li>
+          ${saves > 0 ? `<li>💸 You save ${inr(saves)}: the COD fee is waived.</li>` : ''}
+        </ul>
+        <button type="button" class="cc-partial" data-choice="partial">Pay ${inr(partial.deposit)} now · ${inr(partial.balance)} on delivery</button>
+        <button type="button" class="cc-cod" data-choice="cod">Continue with Cash on Delivery · ${inr(cod.total)}</button>
+        <button type="button" class="cc-close" data-choice="cancel" aria-label="Close">×</button>
+      </div>`;
+    const done = (choice) => {
+      document.removeEventListener('keydown', onKey);
+      wrap.remove();
+      try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'cod_confirm_choice', choice }); } catch (e) {}
+      resolve(choice);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') done('cancel'); };
+    wrap.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-choice]');
+      if (b) done(b.getAttribute('data-choice'));
+      else if (e.target === wrap) done('cancel');
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(wrap);
+    const first = wrap.querySelector('.cc-partial');
+    if (first) first.focus();
+  });
+}
+
 async function submitOrder(method) {
   await _freeDeliveryReady;
   await _livePricesReady;
@@ -1914,6 +1978,11 @@ async function submitOrder(method) {
   }
   const addr = collectAddr();
   if (!addr) return;
+  if (method === 'cod') {
+    const choice = await codConfirmChoice();
+    if (choice === 'cancel') return;
+    if (choice === 'partial') method = 'partial';
+  }
   // Persist the address NOW (not only after a successful order) so a failed or
   // cancelled payment still restores the form when the customer returns.
   saveAddressLocally(addr);
