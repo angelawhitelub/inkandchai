@@ -465,7 +465,7 @@ nav{width:min(1180px,calc(100% - 28px));margin:.75rem auto 0;display:flex;align-
     </div>` : `<img src="${esc(displayImgs[0] || image)}" alt="${title} book cover" loading="eager" fetchpriority="high" onerror="this.onerror=null;this.src='${esc(image)}'"/>`}</section>
   <section>
     <div class="crumb"><a href="/">Home</a> / <a href="/category/?name=${encodeURIComponent(product.category || 'Books')}">${category}</a></div>
-    <h1>${title}</h1>
+    <h1>${esc(product.full_title || product.title)}</h1>
     <div class="author">by ${author}</div>
     <div class="product-price-row" data-sale-anchor><span class="price" data-product-price="${saleNum}">${esc(price)}</span>${mrp ? `<span class="orig" data-product-original-price="${mrpNum}">${esc(mrp)}</span>` : ''}${savePct ? `<span class="save-badge" data-save-badge>${savePct}% off</span>` : '<span class="save-badge" data-save-badge hidden></span>'}</div>
     <span class="stock">In Stock</span>
@@ -794,6 +794,11 @@ exports.handler = async (event) => {
     const product = applySettings(applyOverride(data, override), settings);
     // "Title by Author", no marketing subtitle -- the same title both custom
     // feeds send Google (utils/listing-title), so the two never disagree.
+    // The heading shoppers read keeps the title exactly as the admin saved it
+    // (owner, 20 Nov 2026: "From the writer of Dar e Nijat" was edited in and
+    // vanished). Only the browser title, structured data, cart and feeds use
+    // the clean one, so Google still sees one consistent title.
+    product.full_title = String(product.title || '').replace(/\s+/g, ' ').trim();
     product.title = displayTitle(product.title, product.author);
 
     return {
