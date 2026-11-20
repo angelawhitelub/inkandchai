@@ -389,6 +389,33 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, refund_status: 'refunded' }) };
     }
 
+    // Owner pays a received prepaid return back through PhonePe (the same
+    // helper the return-received job now uses). For rows parked on
+    // manual_refund_pending: the backlog from before 20 Nov 2026, and any
+    // automatic attempt PhonePe refused.
+    if (action === 'refund_phonepe') {
+      if (ret.refund_status !== 'manual_refund_pending') {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Refund is "${ret.refund_status || 'not set'}", not waiting for a manual refund.` }) };
+      }
+      if (!(ret.refund_method === 'original' && ret.payment_type === 'prepaid')) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Only a prepaid return refunded to the original payment can be paid here.' }) };
+      }
+      if (!ret.return_delivered_at) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'The returned parcel has not been tracked back to us yet.' }) };
+      }
+      const claim = await supabase.from('return_requests').update({ refund_status: 'refunding' })
+        .eq('id', ret.id).eq('refund_status', 'manual_refund_pending').select('id');
+      if (claim.error || !claim.data || !claim.data.length) {
+        return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'This refund is already being handled.' }) };
+      }
+      const { data: order } = await supabase.from('orders').select('*').eq('id', ret.order_id).maybeSingle();
+      const { payReturnByPhonePe } = require('./utils/return-auto-refund');
+      const out = await payReturnByPhonePe(supabase, ret, order);
+      console.log(`[process-return] refund_phonepe ${ret.order_display_id || ret.id}: ${out.ok ? 'paid ' + out.refundRef : 'refused: ' + out.error}`);
+      if (!out.ok) return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: out.error }) };
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, refund_status: 'refunded', refund_ref: out.refundRef, state: out.state }) };
+    }
+
     // Manually attach a tracking ID + courier (when you ship the return yourself,
     // outside NimbusPost) and notify the customer to hand over the books.
     if (action === 'add_tracking') {

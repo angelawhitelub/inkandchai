@@ -16,12 +16,18 @@
  *     (prepaid original-method returns, and store-credit returns).
  *   • Atomically CLAIMS the row (awaiting_return_delivery → refunding) before
  *     calling the payment gateway, so a duplicate webhook can't double-refund.
- *   • Razorpay is auto-refunded (deterministic, reusable API). PhonePe / unknown
- *     providers are flagged manual_refund_pending and the owner is alerted —
- *     never a blind auto-call.
+ *   • Razorpay and PhonePe are both auto-refunded (owner, 20 Nov 2026: PhonePe
+ *     returns used to stop at manual_refund_pending, and 24 customers waited).
+ *     PhonePe uses the attempt-numbered refund id (utils/refund-id), reserved on
+ *     the order before the call, and an earlier attempt on the same return is
+ *     asked about first, so the same return is never paid twice.
+ *   • Anything else, or any refusal, goes to manual_refund_pending with an owner
+ *     alert; the admin Returns tab can then retry it with one button.
  */
 
 const { issueRazorpayRefund } = require('./razorpay-refund');
+const { issuePhonePeRefund } = require('./phonepe-refund-core');
+const { getRefundStatus } = require('./phonepe-core');
 const { mintWalletCredit, walletBonusRupees } = require('./return-refund');
 const { sendEmail } = require('./email');
 const { sendText }  = require('./whatsapp');
@@ -140,10 +146,132 @@ async function handleReturnAwbDelivered(supabase, awb, { on = 'delivered' } = {}
     }
   }
 
-  // PhonePe / unknown provider → don't auto-call; flag for manual refund.
-  await supabase.from('return_requests').update({ refund_status: 'manual_refund_pending' }).eq('id', ret.id);
-  await ownerAlert(`🔁 Return received — refund the customer manually\nOrder: ${oid}\nAmount: ₹${amountRs}\n(Prepaid via PhonePe/other — issue the refund from the admin.)`);
-  return { matched: true, refunded: false, manual: true };
+  // PhonePe → auto-refund via API (same helper the cancel path uses).
+  const out = await payReturnByPhonePe(supabase, ret, order);
+  if (out.ok) return { matched: true, refunded: true, provider: 'phonepe', refundId: out.refundRef };
+  return { matched: true, refunded: false, manual: true, error: out.error };
 }
 
-module.exports = { handleReturnAwbDelivered };
+const returnEmailHtml = (ret, amountRs, ref) => `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
+  <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;">Refund on its way ✅</h2>
+  <p>Hi ${String(ret.customer_name||'there').split(' ')[0]}, we've received your returned book and issued a refund of <strong>₹${amountRs.toLocaleString('en-IN')}</strong> to your original payment method.</p>
+  <p style="font-size:13px;color:#5a4a38;">It usually appears within 5–7 business days. Reference: ${ref || '—'}.</p>
+  <p style="font-size:12px;color:#8a7a62;margin-top:20px;">Ink &amp; Chai · inkandchai.in</p>
+</div>`;
+
+/**
+ * Pay a received prepaid return back through PhonePe.
+ *
+ * The caller must hold the row first (refund_status 'refunding'), so two
+ * callers can never both get here for the same return. Every path ends in a
+ * settled state: 'refunded' with refund_ref, or 'manual_refund_pending' with an
+ * owner alert. The order's own status is left alone (a returned order is not a
+ * cancelled one); phonepe-webhook recognises the refund by refund_ref.
+ *
+ * deps is for tests only.
+ */
+async function payReturnByPhonePe(supabase, ret, order, deps = {}) {
+  const issue = deps.issuePhonePeRefund || issuePhonePeRefund;
+  const status = deps.getRefundStatus || getRefundStatus;
+  const alert = deps.ownerAlert || ownerAlert;
+  const email = deps.sendEmail || sendEmail;
+  const now = () => new Date().toISOString();
+  const oid = ret.order_display_id || ret.order_id;
+  const displayId = String(order?.razorpay_order_id || '');
+  const amountPaise = Number(ret.refund_amount_paise) || 0;
+  const amountRs = Math.round(amountPaise / 100);
+
+  const manual = async (why, refundRef) => {
+    const patch = { refund_status: 'manual_refund_pending' };
+    if (refundRef) patch.refund_ref = refundRef;
+    await supabase.from('return_requests').update(patch).eq('id', ret.id);
+    await alert(`⚠️ Return refund NOT paid automatically\nOrder: ${oid}\nAmount: ₹${amountRs}\nWhy: ${why}\nRetry from admin → Returns, or refund by hand.`);
+    return { ok: false, error: why };
+  };
+  const paid = async (refundRef, state) => {
+    await supabase.from('return_requests').update({
+      refund_status: 'refunded', refunded_at: now(), refund_ref: refundRef,
+    }).eq('id', ret.id);
+    if (ret.customer_email) {
+      await email({
+        to: ret.customer_email,
+        subject: `Refund issued for your return (${oid})`,
+        html: returnEmailHtml(ret, amountRs, refundRef),
+      }).catch(() => {});
+    }
+    await alert(`✅ Return refund issued\nOrder: ${oid}\n₹${amountRs} refunded to the customer's PhonePe payment (${refundRef}, ${state || 'accepted'}).`);
+    return { ok: true, refundRef, state };
+  };
+
+  if (!order || !displayId) return manual('order not found');
+  if (String(order.razorpay_payment_id || '').startsWith('pay_')) return manual('paid by Razorpay, not PhonePe');
+  if (!String(order.razorpay_payment_id || '')) return manual('no PhonePe payment on the order');
+  if (!(amountPaise > 0)) return manual('refund amount is zero');
+  if (amountPaise > (Number(order.amount_paise) || 0)) return manual(`refund ₹${amountRs} is more than the order total`);
+  if (order.refund_state === 'COMPLETED' || ['refunded', 'partially_refunded'].includes(order.status)) {
+    return manual('the order already shows a refund; check PhonePe before paying again');
+  }
+
+  // An earlier attempt on this return: ask PhonePe what became of it before
+  // issuing anything new. Only a definite failure allows a fresh attempt.
+  if (ret.refund_ref) {
+    let st;
+    try { st = await status(ret.refund_ref); } catch (e) { return manual(`could not check earlier refund ${ret.refund_ref}: ${e.message}`, ret.refund_ref); }
+    if (st.state === 'COMPLETED' || st.state === 'PENDING') return paid(ret.refund_ref, st.state);
+    const gone = st.state === 'FAILED' || /NOT_FOUND/i.test(JSON.stringify(st.data || {}));
+    if (!gone) return manual(`earlier refund ${ret.refund_ref} is "${st.state || 'unknown'}"`, ret.refund_ref);
+  }
+
+  // Reserve this attempt's merchant refund id on the order, so no other refund
+  // path can mint the same one.
+  const attempt = Number(order.refund_attempts) || 0;
+  let reserve = supabase.from('orders').update({ refund_attempts: attempt + 1 }).eq('id', order.id);
+  reserve = order.refund_attempts == null ? reserve.is('refund_attempts', null) : reserve.eq('refund_attempts', attempt);
+  const held = await reserve.select('id');
+  if (held.error || !held.data || held.data.length === 0) return manual('another refund on this order was running; try again');
+
+  let res;
+  try { res = await issue({ displayId, amountPaise, attempt }); }
+  catch (e) { res = { ok: false, error: e.message }; }
+  const refundRef = res.merchantRefundId || `REFUND-${displayId}-A${attempt}`;
+  if (!res.ok) return manual(`PhonePe: ${res.error || 'refused'}`, refundRef);
+  return paid(refundRef, res.state);
+}
+
+/**
+ * A PhonePe refund callback for a RETURN refund (matched on return_requests.
+ * refund_ref). Returns null when the id is not a return refund, so the webhook
+ * carries on with its order logic. The order row is never touched here: the
+ * book came back, the order was not cancelled.
+ *   COMPLETED → the return is refunded (also mends a row left manual because
+ *               the first call's answer was lost).
+ *   FAILED    → back to manual_refund_pending, owner alerted.
+ *   anything else → nothing to do yet.
+ */
+async function settleReturnRefundEvent(supabase, refundMerchantId, state, deps = {}) {
+  const alert = deps.ownerAlert || ownerAlert;
+  const ref = String(refundMerchantId || '').trim();
+  if (!ref) return null;
+  const { data: ret, error } = await supabase.from('return_requests')
+    .select('id, order_display_id, order_id, refund_status, refund_amount_paise')
+    .eq('refund_ref', ref).maybeSingle();
+  if (error || !ret) return null;
+  const oid = ret.order_display_id || ret.order_id;
+  const st = String(state || '').toUpperCase();
+  if (['COMPLETED', 'SUCCESS', 'CONFIRMED'].includes(st)) {
+    if (ret.refund_status !== 'refunded') {
+      await supabase.from('return_requests').update({ refund_status: 'refunded', refunded_at: new Date().toISOString() }).eq('id', ret.id);
+    }
+    return { return_refund: oid, refund_status: 'refunded' };
+  }
+  if (['FAILED', 'DECLINED'].includes(st)) {
+    if (ret.refund_status === 'refunded') {
+      await supabase.from('return_requests').update({ refund_status: 'manual_refund_pending' }).eq('id', ret.id);
+      await alert(`⚠️ PhonePe FAILED the return refund ${ref}\nOrder: ${oid}\nAmount: ₹${Math.round((Number(ret.refund_amount_paise) || 0) / 100)}\nRetry from admin → Returns.`);
+    }
+    return { return_refund: oid, refund_status: 'manual_refund_pending' };
+  }
+  return { return_refund: oid, refund_status: ret.refund_status, pending: true };
+}
+
+module.exports = { handleReturnAwbDelivered, payReturnByPhonePe, settleReturnRefundEvent };

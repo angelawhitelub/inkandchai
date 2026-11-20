@@ -234,7 +234,8 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 /* Payment breakdown stays inside the Amount cell (it used to spill under Mark Prepaid). */
 .money-breakdown{max-width:100%;box-sizing:border-box;}
 .money-breakdown .mb-row{display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;}
-.money-breakdown .mb-k{min-width:0;overflow-wrap:anywhere;}
+.money-breakdown .mb-row{flex-wrap:wrap;column-gap:0.5rem;row-gap:0;}
+.money-breakdown .mb-k{min-width:0;overflow-wrap:break-word;word-break:normal;}
 .money-breakdown .mb-v{white-space:nowrap;text-align:right;flex:none;}
 .method-badge{font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--cream-dim);}
 .empty{text-align:center;padding:4rem;color:var(--cream-dim);font-size:0.9rem;}
@@ -6896,7 +6897,7 @@ function allReturns() {
 }
 
 function linkedRecordsFor(order) {
-  const key = `${allOrders.length}|${allReturns().length}`;
+  const key = `${allOrders.length}|${allReturns().map(r => r.refund_status || '').join(',')}`;
   if (_linkedIndex.key !== key) {
     const byOriginal = new Map();
     const add = (originalId, entry) => {
@@ -6913,12 +6914,26 @@ function linkedRecordsFor(order) {
       }
     }
     for (const r of allReturns()) {
-      add(r.order_display_id || r.order_id, { kind: 'return', id: r.order_display_id || r.order_id, status: r.status || 'pending' });
+      add(r.order_display_id || r.order_id, { kind: 'return', id: r.order_display_id || r.order_id, status: returnChipStatus(r) });
     }
     _linkedIndex = { key, byOriginal };
   }
   const id = String(order?.razorpay_order_id || order?.id || '').toLowerCase();
   return id ? (_linkedIndex.byOriginal.get(id) || []) : [];
+}
+
+// Where a return really stands, for the chip on its order row. The row's own
+// status stops at pickup_scheduled once a courier is booked, so on its own it
+// said "pickup scheduled" for parcels that were back and refunded (20 Nov 2026).
+function returnChipStatus(r) {
+  const st = String(r.status || 'pending');
+  if (st === 'cancelled' || st === 'rejected') return st;
+  if (r.refund_status === 'refunded') return 'refunded';
+  if (r.refund_status === 'wallet_issued') return 'credit issued';
+  let back = !!r.return_delivered_at;
+  if (!back && r.awb) { try { back = returnTrackGroup(r) === 'received'; } catch (_) {} }
+  if (back) return ['manual_refund_pending', 'manual_payout_pending', 'refunding'].includes(r.refund_status) ? 'received · refund due' : 'received';
+  return st;
 }
 
 function linkedRecordsHtml(order) {
@@ -21889,8 +21904,23 @@ function returnRefundInfo(r) {
   const stranded = manualPayout && r.refund_method !== 'wallet' && r.refund_status === 'awaiting_return_delivery';
   return `<div style="margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);font-size:0.63rem;color:var(--cream-dim);line-height:1.7;">
     Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stranded ? '#e05050' : stColor};">${stranded ? 'STRANDED — no auto-refund runs for a manual payout' : st}</span>
+    ${r.refund_status === 'manual_refund_pending' && r.refund_method === 'original' && r.payment_type === 'prepaid' && r.return_delivered_at ? `<button onclick="refundReturnPhonePe('${r.id}',${Number(r.refund_amount_paise) || 0},'${esc(r.order_display_id || '')}',this)" title="Send this refund back to the customer's PhonePe payment now" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:#e8a030;cursor:pointer;border-radius:4px;">💸 Refund ${rupees || ''} via PhonePe</button>` : ''}
     ${(needsManual || stranded) ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
   </div>`;
+}
+
+async function refundReturnPhonePe(id, paise, orderId, btn) {
+  const rs = '₹' + (paise / 100).toLocaleString('en-IN');
+  if (!confirm(`Refund ${rs} to the customer's PhonePe payment for ${orderId}?\n\nThe money goes back to the original payment and cannot be pulled back. The customer is emailed.`)) return;
+  const label = btn ? btn.textContent : '';
+  try {
+    const d = await _returnCall({ return_request_id: id, action: 'refund_phonepe' }, btn);
+    alert(`✅ ${rs} refunded for ${orderId}\nPhonePe reference: ${d.refund_ref}${d.state ? ' (' + d.state + ')' : ''}`);
+  } catch (e) {
+    alert('Refund not sent: ' + e.message);
+    if (btn) btn.textContent = label;
+  }
+  if (typeof fetchReturnRequests === 'function') fetchReturnRequests();
 }
 
 async function markReturnRefunded(id, btn) {

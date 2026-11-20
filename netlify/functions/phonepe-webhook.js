@@ -32,6 +32,7 @@ const { claimPaidNotify } = require('./utils/paid-notify-once');
 const { generateCardForOrder } = require('./utils/scratch-cards');
 const { notifyOrderCancelled } = require('./utils/order-cancelled-notification');
 const { sendRefundInitiated } = require('./utils/refund-notifications');
+const { settleReturnRefundEvent } = require('./utils/return-auto-refund');
 const { pushToNimbusOnce } = require('./utils/nimbus-push-once');
 const { PAYMENT_FAILED_REASON, notifyPaymentFailed } = require('./utils/payment-failed');
 
@@ -305,6 +306,13 @@ exports.handler = async (event) => {
     if (!existing) {
       console.warn(`PhonePe: order not found in DB: ${orderId || refundMerchantId}`);
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ignored: 'order-not-found', orderId, refundMerchantId }) };
+    }
+
+    // A refund for a returned book (utils/return-auto-refund) belongs to the
+    // return, not the order: settle it there and leave the order as it is.
+    if (isRefundEvent && refundMerchantId) {
+      const ret = await settleReturnRefundEvent(supabase, refundMerchantId, state);
+      if (ret) return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, ...ret }) };
     }
 
     // Refund completion is monotonic. A delayed FAILED callback from an older
