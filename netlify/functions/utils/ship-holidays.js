@@ -18,6 +18,8 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 // Required here so the pure helpers load in the Worker's page code and in tests.
 const store = () => require('@netlify/blobs').getStore(STORE);
+// Also loaded alone for high-demand books (utils/busy-ship). Bump v on change: sw.js caches /js/.
+const SCRIPT_TAG = '<script src="/js/ship-holidays.js?v=20261120"></script>';
 
 const todayISO = (now = Date.now()) => new Date(now + IST_OFFSET_MS).toISOString().slice(0, 10);
 
@@ -54,7 +56,7 @@ function upcoming(items, now = Date.now()) {
 function shipHolidayTags(items, now = Date.now()) {
   const list = upcoming(items, now).map((h) => ({ from: h.from, to: h.to }));
   if (!list.length) return '';
-  return `<script>window.__iacShipHolidays=${JSON.stringify(list)};</script><script src="/js/ship-holidays.js?v=20261114"></script>`;
+  return `<script>window.__iacShipHolidays=${JSON.stringify(list)};</script>${SCRIPT_TAG}`;
 }
 
 async function readHolidays(now = Date.now()) {
@@ -81,4 +83,4 @@ async function removeHoliday({ from, to }, now = Date.now()) {
   return { items: await write(items.filter((h) => !(h.from === from && h.to === to))) };
 }
 
-module.exports = { STORE, KEY, cleanHoliday, upcoming, shipHolidayTags, readHolidays, addHoliday, removeHoliday, todayISO };
+module.exports = { STORE, KEY, SCRIPT_TAG, cleanHoliday, upcoming, shipHolidayTags, readHolidays, addHoliday, removeHoliday, todayISO };

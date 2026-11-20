@@ -503,6 +503,11 @@
 [functions."xpressbees-queue-sweep-scheduled"]
   schedule = "*/15 * * * *"
 
+# Every 15 min: books with more than 50 copies ordered in the last 24 hours
+# (utils/busy-ship). Their product pages show Ships-by one day later.
+[functions."busy-ship-scheduled"]
+  schedule = "*/15 * * * *"
+
 # 09:00 IST: parcels the couriers still carry for orders cancelled here. Stops
 # the ones waiting for pickup (live check first), tells the owner about the
 # ones already picked up. CANCELLED_PARCELS_STOP=0 makes it list-only.

@@ -65,6 +65,7 @@ export const ENABLED_JOBS = new Set([
   'ai-related-scheduled',          // nightly AI vectors for "You may also like"; no messages
   'reading-list-agent-scheduled',  // one AI reading list every few days (draft unless auto-publish); no messages
   'lifetime-sales-scheduled',
+  'busy-ship-scheduled',            // every 15 min: >50 copies in 24 h → product page ships a day later
   // auto-mark-delivered is deliberately absent: delivered now comes from the
   // NimbusPost webhook. Run it by hand if orders stick in out_for_delivery.
 ]);

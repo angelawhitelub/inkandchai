@@ -77,6 +77,7 @@
 
   function subLine(p) {
     if (p.closedNow) return 'Shipping holiday: dispatch resumes on ' + fmt(p.resume, 'long');
+    if (p.busy) return 'High demand: dispatch takes one extra day';
     // The Ships-by date already counts handling days and the holiday (owner, 14 Nov 2026).
     return '';
   }
@@ -95,9 +96,13 @@
   }
 
   function paint(handling) {
-    var p = plan(Date.now(), handling);
+    // High demand (Worker, utils/busy-ship): counted like one more handling day.
+    var busy = Math.max(0, Math.min(3, parseInt(root.__iacBusyShipDays, 10) || 0));
+    var p = plan(Date.now(), (parseInt(handling, 10) || 0) + busy);
+    p.busy = busy > 0;
+    p.handling = Math.max(0, p.handling - busy);
     var el = doc.getElementById('staticShipBy') || doc.getElementById('shipBy');
-    if (!p.moved || !el || !el.querySelector('.ship-by-box')) return;
+    if (!(p.moved || p.busy) || !el || !el.querySelector('.ship-by-box')) return;
     var limited = p.handling > 0 && el.id === 'staticShipBy' ? '<div class="ship-by-limited">⚡ Limited stock</div>' : '';
     var rows = ZONES.map(function (z) {
       return '<div class="eta-row"><span class="eta-zone">' + z[0] + '</span>'

@@ -29,6 +29,7 @@ import soldOutUtil from '../netlify/functions/utils/sold-out.js';
 import scarcityUtil from '../netlify/functions/utils/scarcity.js';
 import releaseDate from '../netlify/functions/utils/release-date.js';
 import shipHolidays from '../netlify/functions/utils/ship-holidays.js';
+import busyShip from '../netlify/functions/utils/busy-ship.js';
 import customSitemap from '../netlify/functions/utils/custom-sitemap.js';
 import newArrivals from '../netlify/functions/utils/new-arrivals.js';
 import lifetimeSales from '../netlify/functions/utils/lifetime-sales.js';
@@ -544,7 +545,10 @@ function withRelease(response, entry) {
 // Added on every request while a holiday is ahead, so the admin's list reaches
 // the ~2,700 baked pages and admin-added books alike within a minute. With none
 // ahead the page is untouched. A failed read leaves the page as it was.
-async function withShipHolidays(response, env) {
+// High demand (utils/busy-ship): a book with more than 50 copies ordered in the
+// last 24 hours gets window.__iacBusyShipDays, and the same script moves its
+// Ships-by date one day later. Both lists are read here so the script loads once.
+async function withShipHolidays(response, env, slug = '') {
   if (response.status !== 200 || !env.ORDER_FALLBACK) return response;
   let tags = '';
   try {
@@ -552,6 +556,14 @@ async function withShipHolidays(response, env) {
     tags = shipHolidays.shipHolidayTags(doc && doc.items);
   } catch (err) {
     console.warn('[ship-holidays] KV read failed:', err && err.message);
+  }
+  if (slug) {
+    try {
+      const busy = busyShip.busyShipTag(await env.ORDER_FALLBACK.get(`${busyShip.STORE}:${busyShip.KEY}`, { type: 'json', cacheTtl: 60 }), slug);
+      if (busy) tags = busy + (tags || shipHolidays.SCRIPT_TAG);
+    } catch (err) {
+      console.warn('[busy-ship] KV read failed:', err && err.message);
+    }
   }
   if (!tags) return response;
   return new HTMLRewriter()
@@ -1351,7 +1363,7 @@ export default {
       let page = entry ? withRelease(rewriteCatalogPage(assetResponse, entry), entry) : assetResponse;
       if ((await soldOutSet(env, ctx, url.origin)).has(contentSlug)) page = markSoldOutPage(page);
       page = await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(page, contentSlug)), contentSlug, env, ctx, url.origin), contentSlug, env, ctx, url.origin);
-      return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env), contentSlug, env);
+      return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(page, contentSlug), contentSlug, env, ctx, url.origin)), env, contentSlug), contentSlug, env);
     }
 
     // Admin-created products have no generated page: the catalogue books are
@@ -1369,9 +1381,9 @@ export default {
           { cache: caches.default, key: staleProductKey(url.origin, slug), waitUntil: (p) => ctx.waitUntil(p) },
         );
         if (rendered.status === 200 && (await soldOutSet(env, ctx, url.origin)).has(slug.toLowerCase())) {
-          return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(markSoldOutPage(rendered), slug)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug, env);
+          return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(withShippingCopy(withWeeklyPrice(markSoldOutPage(rendered), slug)), slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env, slug), slug, env);
         }
-        if (rendered.status !== 404) return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(withWeeklyPrice(rendered, slug)) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env), slug, env);
+        if (rendered.status !== 404) return withReadingLists(await withShipHolidays(await withQtySelector(await withScarcity(await withSoldCount(await withFreeDelivery(await withCodRule(rendered.status === 200 ? withShippingCopy(withWeeklyPrice(rendered, slug)) : rendered, slug, env, ctx, url.origin), slug, env, ctx, url.origin), slug), slug, env, ctx, url.origin)), env, slug), slug, env);
       }
       // A 404 must never be stored at the edge. Cloudflare caches them per
       // colo, so one transient miss during a deploy or an origin blip pins a
