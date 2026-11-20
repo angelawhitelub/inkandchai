@@ -64,11 +64,24 @@ async function getRefundStatus(merchantRefundId, host = phonePeHost()) {
  * payment sweep already reads for forward payments.
  */
 function refundUtrFrom(data) {
-  const details = Array.isArray(data?.paymentDetails) ? data.paymentDetails : [];
-  const completed = details.find(d => String(d?.state || '').toUpperCase() === 'COMPLETED');
-  for (const d of [completed, ...details]) {
+  // PhonePe's docs (Refund Status + pg.refund.completed) put the UPI rail
+  // reference in splitInstruments[].rail.utr, top level; some live payloads
+  // carry it under paymentDetails[].rail instead. Read every place, completed
+  // legs first. NetBanking has no UTR but gives the bank's own reference
+  // (instrument.brn), which the customer's bank can trace just the same.
+  // Card refunds carry neither, so null there is expected.
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const details = arr(data?.paymentDetails);
+  const legs = [...arr(data?.splitInstruments), ...details, ...details.flatMap(d => arr(d?.splitInstruments))];
+  const done = (d) => !d?.state || String(d.state).toUpperCase() === 'COMPLETED';
+  const ordered = [...legs.filter(done), ...legs];
+  for (const d of ordered) {
     const utr = d?.rail?.utr || d?.utr || '';
     if (utr) return String(utr).trim();
+  }
+  for (const d of ordered) {
+    const brn = d?.instrument?.brn || '';
+    if (brn) return String(brn).trim();
   }
   return null;
 }

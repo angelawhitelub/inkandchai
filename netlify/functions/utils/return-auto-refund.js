@@ -27,7 +27,8 @@
 
 const { issueRazorpayRefund } = require('./razorpay-refund');
 const { issuePhonePeRefund } = require('./phonepe-refund-core');
-const { getRefundStatus } = require('./phonepe-core');
+const { getRefundStatus, refundUtrFrom } = require('./phonepe-core');
+const { sendRefundInitiated } = require('./refund-notifications');
 const { mintWalletCredit, walletBonusRupees } = require('./return-refund');
 const { sendEmail } = require('./email');
 const { sendText }  = require('./whatsapp');
@@ -152,13 +153,6 @@ async function handleReturnAwbDelivered(supabase, awb, { on = 'delivered' } = {}
   return { matched: true, refunded: false, manual: true, error: out.error };
 }
 
-const returnEmailHtml = (ret, amountRs, ref) => `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
-  <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;">Refund on its way ✅</h2>
-  <p>Hi ${String(ret.customer_name||'there').split(' ')[0]}, we've received your returned book and issued a refund of <strong>₹${amountRs.toLocaleString('en-IN')}</strong> to your original payment method.</p>
-  <p style="font-size:13px;color:#5a4a38;">It usually appears within 5–7 business days. Reference: ${ref || '—'}.</p>
-  <p style="font-size:12px;color:#8a7a62;margin-top:20px;">Ink &amp; Chai · inkandchai.in</p>
-</div>`;
-
 /**
  * Pay a received prepaid return back through PhonePe.
  *
@@ -174,7 +168,6 @@ async function payReturnByPhonePe(supabase, ret, order, deps = {}) {
   const issue = deps.issuePhonePeRefund || issuePhonePeRefund;
   const status = deps.getRefundStatus || getRefundStatus;
   const alert = deps.ownerAlert || ownerAlert;
-  const email = deps.sendEmail || sendEmail;
   const now = () => new Date().toISOString();
   const oid = ret.order_display_id || ret.order_id;
   const displayId = String(order?.razorpay_order_id || '');
@@ -188,18 +181,17 @@ async function payReturnByPhonePe(supabase, ret, order, deps = {}) {
     await alert(`⚠️ Return refund NOT paid automatically\nOrder: ${oid}\nAmount: ₹${amountRs}\nWhy: ${why}\nRetry from admin → Returns, or refund by hand.`);
     return { ok: false, error: why };
   };
-  const paid = async (refundRef, state) => {
+  const paid = async (refundRef, state, statusData) => {
     await supabase.from('return_requests').update({
       refund_status: 'refunded', refunded_at: now(), refund_ref: refundRef,
     }).eq('id', ret.id);
-    if (ret.customer_email) {
-      await email({
-        to: ret.customer_email,
-        subject: `Refund issued for your return (${oid})`,
-        html: returnEmailHtml(ret, amountRs, refundRef),
-      }).catch(() => {});
-    }
     await alert(`✅ Return refund issued\nOrder: ${oid}\n₹${amountRs} refunded to the customer's PhonePe payment (${refundRef}, ${state || 'accepted'}).`);
+    // The customer hears once PhonePe says COMPLETED, with the bank UTR, the
+    // same rule as every other refund. PENDING (the usual first answer) is told
+    // by phonepe-webhook, or by the hourly syncReturnRefunds if that is missed.
+    if (String(state || '').toUpperCase() === 'COMPLETED') {
+      await settleReturnRefundEvent(supabase, refundRef, 'COMPLETED', deps, statusData).catch(() => {});
+    }
     return { ok: true, refundRef, state };
   };
 
@@ -217,7 +209,7 @@ async function payReturnByPhonePe(supabase, ret, order, deps = {}) {
   if (ret.refund_ref) {
     let st;
     try { st = await status(ret.refund_ref); } catch (e) { return manual(`could not check earlier refund ${ret.refund_ref}: ${e.message}`, ret.refund_ref); }
-    if (st.state === 'COMPLETED' || st.state === 'PENDING') return paid(ret.refund_ref, st.state);
+    if (st.state === 'COMPLETED' || st.state === 'PENDING') return paid(ret.refund_ref, st.state, st.data);
     const gone = st.state === 'FAILED' || /NOT_FOUND/i.test(JSON.stringify(st.data || {}));
     if (!gone) return manual(`earlier refund ${ret.refund_ref} is "${st.state || 'unknown'}"`, ret.refund_ref);
   }
@@ -235,7 +227,7 @@ async function payReturnByPhonePe(supabase, ret, order, deps = {}) {
   catch (e) { res = { ok: false, error: e.message }; }
   const refundRef = res.merchantRefundId || `REFUND-${displayId}-A${attempt}`;
   if (!res.ok) return manual(`PhonePe: ${res.error || 'refused'}`, refundRef);
-  return paid(refundRef, res.state);
+  return paid(refundRef, res.state, res.data);
 }
 
 /**
@@ -248,12 +240,12 @@ async function payReturnByPhonePe(supabase, ret, order, deps = {}) {
  *   FAILED    → back to manual_refund_pending, owner alerted.
  *   anything else → nothing to do yet.
  */
-async function settleReturnRefundEvent(supabase, refundMerchantId, state, deps = {}) {
+async function settleReturnRefundEvent(supabase, refundMerchantId, state, deps = {}, payload = null) {
   const alert = deps.ownerAlert || ownerAlert;
   const ref = String(refundMerchantId || '').trim();
   if (!ref) return null;
   const { data: ret, error } = await supabase.from('return_requests')
-    .select('id, order_display_id, order_id, refund_status, refund_amount_paise')
+    .select('id, order_display_id, order_id, refund_status, refund_amount_paise, items')
     .eq('refund_ref', ref).maybeSingle();
   if (error || !ret) return null;
   const oid = ret.order_display_id || ret.order_id;
@@ -262,7 +254,8 @@ async function settleReturnRefundEvent(supabase, refundMerchantId, state, deps =
     if (ret.refund_status !== 'refunded') {
       await supabase.from('return_requests').update({ refund_status: 'refunded', refunded_at: new Date().toISOString() }).eq('id', ret.id);
     }
-    return { return_refund: oid, refund_status: 'refunded' };
+    const utr = await returnRefundCompleted(supabase, ret, ref, payload, deps).catch(() => null);
+    return { return_refund: oid, refund_status: 'refunded', refund_utr: utr || null };
   }
   if (['FAILED', 'DECLINED'].includes(st)) {
     if (ret.refund_status === 'refunded') {
@@ -274,4 +267,89 @@ async function settleReturnRefundEvent(supabase, refundMerchantId, state, deps =
   return { return_refund: oid, refund_status: ret.refund_status, pending: true };
 }
 
-module.exports = { handleReturnAwbDelivered, payReturnByPhonePe, settleReturnRefundEvent };
+/**
+ * A return refund PhonePe has COMPLETED. The bank UTR is kept on the ORDER
+ * (refund_utr / phonepe_refund_id), where the admin, the WhatsApp bot and the
+ * refund emails already look for it, and the customer is told once, quoting
+ * it (sendRefundInitiated, deduped on orders.refund_notified_at). The order's
+ * status is not touched. Returns the UTR, or null (card refunds have none).
+ */
+async function returnRefundCompleted(supabase, ret, ref, payload, deps = {}) {
+  const status = deps.getRefundStatus || getRefundStatus;
+  const notify = deps.sendRefundInitiated || sendRefundInitiated;
+  let utr = payload ? refundUtrFrom(payload) : null;
+  let gatewayId = payload?.refundId || null;
+  if (!utr) {
+    try {
+      const st = await status(ref);
+      if (st && st.state === 'COMPLETED') { utr = refundUtrFrom(st.data); gatewayId = gatewayId || st.data?.refundId || null; }
+    } catch (_) {}
+  }
+  const { data: order } = await supabase.from('orders').select('*').eq('id', ret.order_id).maybeSingle();
+  if (!order) return utr;
+  const patch = {};
+  if (utr && !order.refund_utr) patch.refund_utr = utr;
+  if (gatewayId && !order.phonepe_refund_id) patch.phonepe_refund_id = gatewayId;
+  if (Object.keys(patch).length) {
+    const { error } = await supabase.from('orders').update(patch).eq('id', order.id);
+    if (!error) Object.assign(order, patch);
+  }
+  if (!order.refund_notified_at) {
+    const items = (Array.isArray(ret.items) ? ret.items : []).map(i => ({ title: i.title, qty: i.qty }));
+    await notify(order, Number(ret.refund_amount_paise) || 0, {
+      supabase, state: 'COMPLETED', refundRef: order.refund_utr || utr || gatewayId || undefined, items,
+    }).catch(() => {});
+  }
+  return order.refund_utr || utr;
+}
+
+/**
+ * Hourly catch-up (return-tracking-scheduled), no money moved:
+ *   1. Returns refunded through PhonePe in the last 14 days whose customer was
+ *      never told, or whose UTR never arrived: ask PhonePe and settle them.
+ *   2. Returns still waiting for a manual refund whose ORDER was refunded in
+ *      full by another path (the order-row refund button): close them, so the
+ *      Returns tab stops offering a second refund.
+ */
+async function syncReturnRefunds(supabase, deps = {}) {
+  const status = deps.getRefundStatus || getRefundStatus;
+  const out = { checked: 0, completed: [], failed: [], closed: [], errors: [] };
+  const since = new Date(Date.now() - 14 * 86400000).toISOString();
+
+  const { data: paidRows, error: e1 } = await supabase.from('return_requests')
+    .select('id, order_id, order_display_id, refund_ref')
+    .eq('refund_status', 'refunded').like('refund_ref', 'REFUND-%').gte('refunded_at', since);
+  if (e1) out.errors.push(e1.message);
+  for (const r of paidRows || []) {
+    const { data: o } = await supabase.from('orders').select('refund_utr, refund_notified_at, razorpay_payment_id').eq('id', r.order_id).maybeSingle();
+    if (!o || String(o.razorpay_payment_id || '').startsWith('pay_')) continue;
+    if (o.refund_notified_at && o.refund_utr) continue;
+    out.checked++;
+    try {
+      const st = await status(r.refund_ref);
+      if (st.state === 'COMPLETED') {
+        const res = await settleReturnRefundEvent(supabase, r.refund_ref, 'COMPLETED', deps, st.data);
+        out.completed.push(`${r.order_display_id}${res?.refund_utr ? ' UTR ' + res.refund_utr : ''}`);
+      } else if (st.state === 'FAILED') {
+        await settleReturnRefundEvent(supabase, r.refund_ref, 'FAILED', deps, st.data);
+        out.failed.push(r.order_display_id);
+      }
+    } catch (e) { out.errors.push(`${r.order_display_id}: ${e.message}`); }
+  }
+
+  const { data: waiting, error: e2 } = await supabase.from('return_requests')
+    .select('id, order_id, order_display_id')
+    .eq('refund_status', 'manual_refund_pending').eq('payment_type', 'prepaid').eq('refund_method', 'original');
+  if (e2) out.errors.push(e2.message);
+  for (const r of waiting || []) {
+    const { data: o } = await supabase.from('orders').select('status, refund_state, refund_id, refund_updated_at').eq('id', r.order_id).maybeSingle();
+    if (!o || o.status !== 'refunded' || o.refund_state !== 'COMPLETED') continue;
+    const { error } = await supabase.from('return_requests').update({
+      refund_status: 'refunded', refund_ref: o.refund_id || null, refunded_at: o.refund_updated_at || new Date().toISOString(),
+    }).eq('id', r.id).eq('refund_status', 'manual_refund_pending');
+    if (error) out.errors.push(`${r.order_display_id}: ${error.message}`); else out.closed.push(r.order_display_id);
+  }
+  return out;
+}
+
+module.exports = { handleReturnAwbDelivered, payReturnByPhonePe, settleReturnRefundEvent, syncReturnRefunds, returnRefundCompleted };

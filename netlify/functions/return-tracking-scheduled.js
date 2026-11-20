@@ -204,6 +204,11 @@ async function refresh(db, deps = {}) {
     if (text.length > 3800) text = `${text.slice(0, 3700)}\n\n…and more: see Returns → filter "Received back" in the admin.`;
     await ownerAlert(text);
   }
+  // Return refunds: UTRs and completion notices PhonePe's webhook missed, and
+  // returns refunded from the order row (utils/return-auto-refund).
+  const syncRefunds = deps.syncReturnRefunds || ((d) => require('./utils/return-auto-refund').syncReturnRefunds(d));
+  try { summary.refund_sync = await syncRefunds(db); }
+  catch (e) { summary.errors.push(`refund sync: ${e.message}`); }
   return summary;
 }
 

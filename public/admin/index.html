@@ -21902,9 +21902,16 @@ function returnRefundInfo(r) {
   // never happen.
   // Store credit is not one of them: it is minted automatically on receipt.
   const stranded = manualPayout && r.refund_method !== 'wallet' && r.refund_status === 'awaiting_return_delivery';
+  // The order this return belongs to: its refund_utr is the bank reference, and
+  // an order already refunded in full (order-row button) must not be offered a
+  // second refund here. The hourly sync then closes the return itself.
+  const refundOrder = (typeof allOrders !== 'undefined' && Array.isArray(allOrders))
+    ? allOrders.find(o => o.razorpay_order_id === r.order_display_id) : null;
+  const orderAlreadyRefunded = !!refundOrder && ['refunded', 'partially_refunded'].includes(refundOrder.status);
   return `<div style="margin-top:0.45rem;padding-top:0.45rem;border-top:1px dashed var(--border);font-size:0.63rem;color:var(--cream-dim);line-height:1.7;">
     Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stranded ? '#e05050' : stColor};">${stranded ? 'STRANDED — no auto-refund runs for a manual payout' : st}</span>
-    ${r.refund_status === 'manual_refund_pending' && r.refund_method === 'original' && r.payment_type === 'prepaid' && r.return_delivered_at ? `<button onclick="refundReturnPhonePe('${r.id}',${Number(r.refund_amount_paise) || 0},'${esc(r.order_display_id || '')}',this)" title="Send this refund back to the customer's PhonePe payment now" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:#e8a030;cursor:pointer;border-radius:4px;">💸 Refund ${rupees || ''} via PhonePe</button>` : ''}
+    ${refundOrder && refundOrder.refund_utr ? ` · UTR <b style="color:var(--gold);user-select:all;" title="Bank reference for this refund: the customer can quote it to their bank">${esc(refundOrder.refund_utr)}</b>` : ''}
+    ${r.refund_status === 'manual_refund_pending' && r.refund_method === 'original' && r.payment_type === 'prepaid' && r.return_delivered_at && !orderAlreadyRefunded ? `<button onclick="refundReturnPhonePe('${r.id}',${Number(r.refund_amount_paise) || 0},'${esc(r.order_display_id || '')}',this)" title="Send this refund back to the customer's PhonePe payment now" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:#e8a030;cursor:pointer;border-radius:4px;">💸 Refund ${rupees || ''} via PhonePe</button>` : ''}
     ${(needsManual || stranded) ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
   </div>`;
 }

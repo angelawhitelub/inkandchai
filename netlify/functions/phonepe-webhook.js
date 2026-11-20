@@ -311,7 +311,7 @@ exports.handler = async (event) => {
     // A refund for a returned book (utils/return-auto-refund) belongs to the
     // return, not the order: settle it there and leave the order as it is.
     if (isRefundEvent && refundMerchantId) {
-      const ret = await settleReturnRefundEvent(supabase, refundMerchantId, state);
+      const ret = await settleReturnRefundEvent(supabase, refundMerchantId, state, {}, payload);
       if (ret) return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, ...ret }) };
     }
 

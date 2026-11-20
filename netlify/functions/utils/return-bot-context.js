@@ -40,7 +40,11 @@ function refundLine(ret, received) {
         : `Refund${amt} to the original payment method is released automatically once the returned books reach us.`;
     case 'refunding': return `Refund${amt} is being processed right now.`;
     case 'refunded': case 'completed':
-      return `Refund${amt} has been issued${ret.refunded_at ? ` on ${fmt(ret.refunded_at)}` : ''}${ret.refund_ref ? ` (reference ${ret.refund_ref})` : ''}.`;
+      // Only the bank UTR is worth quoting: REFUND-IC-… is our own id and
+      // means nothing to the customer's bank.
+      return `Refund${amt} has been issued${ret.refunded_at ? ` on ${fmt(ret.refunded_at)}` : ''}${ret.refund_utr
+        ? `. Reference (UTR, what the customer quotes to their bank): ${ret.refund_utr}`
+        : '. No bank reference recorded yet: do NOT invent one; say our team can share it if their bank asks'}.`;
     case 'manual_payout_pending':
       return `Refund${amt} will be paid by our team${ret.upi_id ? ' to the UPI ID they gave' : ret.bank_account ? ' to the bank account they gave' : ''} after the returned books reach us and are checked.${!ret.upi_id && !ret.bank_account ? ' We have NO UPI ID or bank account for this refund: ask the customer for their UPI ID.' : ''}`;
     case 'manual_refund_pending': return `Refund${amt} will be issued by our team from our side; it is in their queue.`;
@@ -110,6 +114,16 @@ async function returnsContext(db, from, orderIds = [], deps = {}) {
     .or(ors.join(',')).gte('created_at', since)
     .order('created_at', { ascending: false }).limit(3);
   if (error || !data || !data.length) return '';
+
+  // The bank UTR of a refunded return lives on its order (utils/return-auto-refund).
+  const refundedIds = [...new Set(data.filter((r) => r.refund_status === 'refunded' && r.order_id).map((r) => r.order_id))];
+  if (refundedIds.length) {
+    try {
+      const { data: ords } = await db.from('orders').select('id, refund_utr').in('id', refundedIds);
+      const utrOf = new Map((ords || []).map((o) => [o.id, o.refund_utr]));
+      for (const r of data) if (utrOf.get(r.order_id)) r.refund_utr = utrOf.get(r.order_id);
+    } catch (_) {}
+  }
 
   // Saved tracking if it is fresh, otherwise ask the courier (bounded, so a slow
   // courier API cannot hold the reply up).
