@@ -9904,6 +9904,8 @@ function trackGoogleAdsPurchase(orderId, value) {
   } catch (e) {}
   gtag('event', 'conversion', Object.assign({ send_to: 'AW-18119332653/dQPCCJ7L8KQcEK2m_L9D' }, base));
   gtag('event', 'conversion', Object.assign({ send_to: 'AW-18139908537/M2fkCNvV57ocELmT5MlD' }, base));
+  // Second Ads account (GTM-TCX6QW79 configures it). Purchase action created 17 Nov 2026.
+  gtag('event', 'conversion', Object.assign({ send_to: 'AW-18578646372/kpN5CLr24bkdEOTK_ppF' }, base));
   localStorage.setItem(key, '1');
 }
 
