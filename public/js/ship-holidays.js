@@ -96,8 +96,12 @@
   }
 
   function paint(handling) {
-    // High demand (Worker, utils/busy-ship): counted like one more handling day.
-    var busy = Math.max(0, Math.min(3, parseInt(root.__iacBusyShipDays, 10) || 0));
+    // High demand (Worker, utils/busy-ship): counted like one more handling day,
+    // but only for books on the normal date. A book with its own handling time
+    // already shows the handover date the admin set; that date wins and the
+    // demand day is not stacked on top (owner, 20 Nov 2026).
+    var own = Math.max(0, parseInt(handling, 10) || 0);
+    var busy = own > 0 ? 0 : Math.max(0, Math.min(3, parseInt(root.__iacBusyShipDays, 10) || 0));
     var p = plan(Date.now(), (parseInt(handling, 10) || 0) + busy);
     p.busy = busy > 0;
     p.handling = Math.max(0, p.handling - busy);
