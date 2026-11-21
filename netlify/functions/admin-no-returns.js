@@ -4,7 +4,8 @@
  * Stock clearance books: no returns, only replacements (utils/no-returns).
  *   GET  ?slug=…              → { slug, on, since }
  *   GET                       → { items: [{ slug, title, since, updated_at }] }
- *   POST { slug, on, title? } → { slug, on, since }
+ *   POST { slug, on, title?, all_orders?, title_match? } → { slug, on, since, all_orders }
+ *     all_orders: true also binds orders placed before the switch.
  *
  * Binds orders placed from the moment it is switched on; earlier buyers keep
  * their 7-day return. Checkout and returns read it within a minute.
@@ -34,17 +35,19 @@ exports.handler = async (event) => {
       const slug = normSlug(raw);
       if (!slug) return json(400, { error: 'Missing product slug' });
       const hit = items.find((i) => i.slug === slug);
-      return json(200, { slug, on: !!hit, since: hit ? hit.since : null });
+      return json(200, { slug, on: !!hit, since: hit ? hit.since : null, all_orders: !!(hit && hit.all_orders) });
     }
     if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
     let body;
     try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid JSON' }); }
     const slug = normSlug(body.slug);
     if (!slug) return json(400, { error: 'Missing product slug' });
-    const items = await NR.setNoReturns(slug, body.on === true, { title: body.title });
+    const items = await NR.setNoReturns(slug, body.on === true, { title: body.title,
+      allOrders: body.all_orders === undefined ? undefined : body.all_orders === true,
+      titleMatch: body.title_match === undefined ? undefined : String(body.title_match || '') });
     const hit = items.find((i) => i.slug === slug);
     console.log(`[admin-no-returns] ${slug} → ${hit ? 'no returns (clearance)' : 'returns allowed'}`);
-    return json(200, { slug, on: !!hit, since: hit ? hit.since : null });
+    return json(200, { slug, on: !!hit, since: hit ? hit.since : null, all_orders: !!(hit && hit.all_orders), title_match: (hit && hit.title_match) || '' });
   } catch (e) {
     console.error('[admin-no-returns]', e);
     return json(500, { error: e.message });

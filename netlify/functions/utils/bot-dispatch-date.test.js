@@ -21,6 +21,6 @@ test('no line once it has an AWB, or when nothing holds it', () => {
 test('the bot sees clearance books that cannot be returned', () => {
   const o = { ...order, status: 'delivered', tracking_id: '1434', cart_items: [{ title: 'Cheap Book', qty: 1, _no_returns: true }, { title: 'Verity', qty: 1 }] };
   const ctx = formatOrderContext(o, 'IC-1', null);
-  assert.match(ctx, /No returns \(stock clearance sale\): Cheap Book\./);
+  assert.match(ctx, /No returns: Cheap Book\./);
   assert.doesNotMatch(formatOrderContext(order, 'IC-1', null), /No returns/);
 });

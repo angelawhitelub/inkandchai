@@ -874,7 +874,7 @@ async function withQtySelector(response) {
     .on('div.trust', { element(el) {
       if (noRetDone || !slug || !noRet[String(slug).toLowerCase()]) return;
       noRetDone = true;
-      el.after(noReturns.noticeHtml(), { html: true });
+      el.after(noReturns.noticeHtml(noRet[String(slug).toLowerCase()]), { html: true });
     } })
     .on('div.details', { element(el) { if (!noted) { noted = true; el.after(copyrightNoteHtml(slug), { html: true }); } } })
     .on('body', { element(el) {

@@ -79,7 +79,7 @@ function pickReturnItems(order, picked, { noReturn } = {}) {
                    clearance: typeof noReturn === 'function' ? !!noReturn(i) : i._no_returns === true }));
   // Stock clearance books (utils/no-returns) are replaced, never refunded.
   const clearance = lines.filter((l) => !l.missing && l.clearance);
-  const clearanceError = (titles) => `${titles.join(', ')} ${titles.length === 1 ? 'was' : 'were'} bought in our stock clearance sale: no returns, only replacements. `
+  const clearanceError = (titles) => `${titles.join(', ')} cannot be returned for a refund: no returns, only replacements. `
     + 'If a copy is defective, misprinted or the wrong book, choose that reason instead for a free replacement.';
   const returnable = lines.filter((l) => !l.missing && !l.clearance);
   if (!returnable.length) {
