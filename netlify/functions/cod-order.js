@@ -115,7 +115,7 @@ exports.handler = async (event, context) => {
   // Shipping (utils/free-delivery orderShipping) and fees — must match cart.js +
   // checkout. Calculated server-side rather than trusting client input. Prices
   // come from the catalogue, NEVER from cart items (the browser is hostile).
-  const COD_HANDLING_FEE = 20;            // matches generate_site.py CHECKOUT_HTML
+  const COD_HANDLING_FEE = 30;            // matches generate_site.py CHECKOUT_HTML
   const COD_FEE_WAIVER_THRESHOLD = 999;   // fee waived on subtotal >= ₹999
   // Minimum item value for COD. Mirrors COD_MIN_SUBTOTAL in generate_site.py,
   // which disables the button — enforced here as well because the browser is
