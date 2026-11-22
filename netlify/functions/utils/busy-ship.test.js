@@ -6,13 +6,13 @@ const shipDates = require('../../../public/js/ship-holidays.js');
 
 const order = (id, items) => ({ razorpay_order_id: id, cart_items: items });
 
-test('more than 50 units of one book across orders, or in one, is busy', () => {
-  const many = Array.from({ length: 51 }, (_, i) => order(`IC-${i}`, [{ slug: 'book-a', qty: 1 }]));
-  const one = [order('IC-X', [{ slug: 'book-b', qty: 60 }])];
-  const fifty = Array.from({ length: 50 }, (_, i) => order(`IC-C${i}`, [{ slug: 'book-c', qty: 1 }]));
-  const out = busyFromOrders([...many, ...one, ...fifty]);
-  assert.deepStrictEqual(out, { 'book-a': 51, 'book-b': 60 });
-  assert.strictEqual(THRESHOLD, 50);
+test('more than 100 units of one book across orders, or in one, is busy', () => {
+  const many = Array.from({ length: 101 }, (_, i) => order(`IC-${i}`, [{ slug: 'book-a', qty: 1 }]));
+  const one = [order('IC-X', [{ slug: 'book-b', qty: 120 }])];
+  const hundred = Array.from({ length: 100 }, (_, i) => order(`IC-C${i}`, [{ slug: 'book-c', qty: 1 }]));
+  const out = busyFromOrders([...many, ...one, ...hundred]);
+  assert.deepStrictEqual(out, { 'book-a': 101, 'book-b': 120 });
+  assert.strictEqual(THRESHOLD, 100);
 });
 
 test('free replacements are not counted', () => {

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * High-demand dispatch delay (owner, 20 Nov 2026): when more than 50 copies of
+ * High-demand dispatch delay (owner, 20 Nov 2026): when more than 100 copies of (50 until 23 Nov)
  * one book are ordered -- across many orders or in one -- its product page
  * shows the Ships-by date one day later.
  *
@@ -17,7 +17,7 @@ const { newTally, addOrders, SOLD_STATUSES } = require('./lifetime-sales');
 
 const STORE = 'catalog';
 const KEY = 'busy-ship';
-const THRESHOLD = 50;          // more than this many units → +1 day
+const THRESHOLD = 100;         // more than this many units → +1 day (owner raised 50 → 100 on 23 Nov 2026)
 const EXTRA_DAYS = 1;
 const WINDOW_MS = 24 * 3600 * 1000;
 

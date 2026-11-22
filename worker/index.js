@@ -545,7 +545,7 @@ function withRelease(response, entry) {
 // Added on every request while a holiday is ahead, so the admin's list reaches
 // the ~2,700 baked pages and admin-added books alike within a minute. With none
 // ahead the page is untouched. A failed read leaves the page as it was.
-// High demand (utils/busy-ship): a book with more than 50 copies ordered in the
+// High demand (utils/busy-ship): a book with more than 100 copies ordered in the
 // last 24 hours gets window.__iacBusyShipDays, and the same script moves its
 // Ships-by date one day later. Both lists are read here so the script loads once.
 async function withShipHolidays(response, env, slug = '') {
