@@ -74,10 +74,11 @@ exports.handler = async (event) => {
   const restriction = findShippingRestriction(cart, customer);
   if (restriction.blocked) return json(400, restriction);
 
-  let delivered;
-  try { delivered = await PL.deliveredCount(supabase, customer.phone); }
+  let elig;
+  try { elig = await PL.eligibility(supabase, cfg, customer.phone); }
   catch (e) { console.error('[pay-later-order] eligibility', e.message); return json(503, { error: 'We could not check Pay Later right now. Please try again in a minute.' }); }
-  if (delivered < PL.MIN_DELIVERED) return json(403, { error: PL.NOT_ELIGIBLE, code: 'pay_later_not_eligible' });
+  if (!elig.eligible) return json(403, { error: PL.NOT_ELIGIBLE, code: 'pay_later_not_eligible' });
+  const delivered = elig.delivered;
 
   // One open request per phone at a time; a double tap returns the first one.
   const ten = PL.phone10(customer.phone);
@@ -122,7 +123,7 @@ exports.handler = async (event) => {
 
   cart[0]._payment = {
     mode: 'pay_later', state: 'review', applied_at: now, due_days: PL.DUE_DAYS,
-    kyc: prefix, pan_name: kyc.pan_name, account_last4: kyc.account.slice(-4), delivered_orders: delivered,
+    kyc: prefix, pan_name: kyc.pan_name, account_last4: kyc.account.slice(-4), delivered_orders: delivered, allowed_by_owner: elig.allowed,
   };
   const row = {
     razorpay_order_id: orderId,
@@ -149,6 +150,6 @@ exports.handler = async (event) => {
   }
 
   await notify.requestReceived(row);
-  await notify.ownerAlert(`💳 New Pay Later request ${orderId}\n${customer.name || ''} · ${customer.phone}\n₹${total.toLocaleString('en-IN')} · ${delivered} delivered orders before\nName on PAN: ${kyc.pan_name}\nReview it in admin → 💳 Pay Later.`);
+  await notify.ownerAlert(`💳 New Pay Later request ${orderId}\n${customer.name || ''} · ${customer.phone}\n₹${total.toLocaleString('en-IN')} · ${elig.allowed ? 'on your Pay Later customer list' : `${delivered} delivered orders before`}\nName on PAN: ${kyc.pan_name}\nReview it in admin → 💳 Pay Later.`);
   return json(200, { success: true, order_id: orderId, amount: total });
 };

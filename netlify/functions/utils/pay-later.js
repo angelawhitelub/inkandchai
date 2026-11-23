@@ -9,8 +9,9 @@
  *     One KV blob, `catalog:pay-later`: { enabled, items: [{ slug, title }] }.
  *   - Only a cart made entirely of selected books qualifies.
  *   - Only customers with at least MIN_DELIVERED delivered orders (matched by
- *     the last 10 digits of the phone) are eligible; everyone else is told
- *     they are not eligible yet. There is no application form.
+ *     the last 10 digits of the phone), or whom the owner added by phone in
+ *     the admin tab (`allow`), are eligible; everyone else is told they are
+ *     not eligible yet. There is no application form.
  *   - The customer uploads a PAN card photo and gives the name on PAN, the PAN
  *     number, a bank account number and IFSC, with consent, for the owner's
  *     manual credit-score check. Those details live ONLY in the private R2
@@ -61,6 +62,8 @@ async function readConfig() {
   return {
     enabled: !!(doc && doc.enabled === true),
     items: items.map((i) => ({ ...i, slug: normSlug(i && i.slug) })).filter((i) => i.slug),
+    // Customers the owner let in without MIN_DELIVERED delivered orders.
+    allow: (doc && Array.isArray(doc.allow) ? doc.allow : []).filter((a) => a && /^\d{10}$/.test(a.phone)),
     updated_at: (doc && doc.updated_at) || null,
   };
 }
@@ -71,14 +74,14 @@ let at = 0;
 async function config() {
   if (cache && Date.now() - at < 60000) return cache;
   try { cache = await readConfig(); }
-  catch (e) { console.warn('[pay-later] read failed:', e.message); cache = cache || { enabled: false, items: [] }; }
+  catch (e) { console.warn('[pay-later] read failed:', e.message); cache = cache || { enabled: false, items: [], allow: [] }; }
   at = Date.now();
   return cache;
 }
 
 async function writeConfig(next) {
   const now = new Date().toISOString();
-  const doc = { enabled: !!next.enabled, items: next.items, updated_at: now };
+  const doc = { enabled: !!next.enabled, items: next.items, allow: next.allow || [], updated_at: now };
   await getStore(STORE).setJSON(KEY, doc);
   cache = doc; at = Date.now();
   return doc;
@@ -98,6 +101,44 @@ async function setBook(slug, on, { title = '' } = {}) {
   if (on) items.unshift({ slug: s, title: String(title || (prev && prev.title) || '').slice(0, 200), since: (prev && prev.since) || new Date().toISOString() });
   if (items.length > 5000) throw new Error('At most 5000 books can be marked.');
   return writeConfig({ ...cur, items });
+}
+
+/**
+ * Lets one customer (by the last 10 digits of the phone) use Pay Later
+ * without MIN_DELIVERED delivered orders, or takes that back. Owner only.
+ */
+async function setAllowed(phone, on, { name = '', note = '' } = {}) {
+  const ten = phone10(phone);
+  if (ten.length !== 10) throw new Error('Enter a 10-digit mobile number.');
+  const cur = await readConfig();
+  const prev = cur.allow.find((a) => a.phone === ten);
+  const allow = cur.allow.filter((a) => a.phone !== ten);
+  if (on) {
+    allow.unshift({
+      phone: ten,
+      name: String(name || (prev && prev.name) || '').slice(0, 100),
+      note: String(note || (prev && prev.note) || '').slice(0, 200),
+      added_at: (prev && prev.added_at) || new Date().toISOString(),
+    });
+  }
+  if (allow.length > 5000) throw new Error('At most 5000 customers can be added.');
+  return writeConfig({ ...cur, allow });
+}
+
+const isAllowed = (cfg, phone) => {
+  const ten = phone10(phone);
+  return ten.length === 10 && (cfg && cfg.allow || []).some((a) => a.phone === ten);
+};
+
+/**
+ * Who may use Pay Later: MIN_DELIVERED delivered orders, or on the owner's
+ * allow-list. The list is checked first, so it needs no database read.
+ * @returns {{ eligible, allowed, delivered }}
+ */
+async function eligibility(supabase, cfg, phone) {
+  if (isAllowed(cfg, phone)) return { eligible: true, allowed: true, delivered: null };
+  const delivered = await deliveredCount(supabase, phone);
+  return { eligible: delivered >= MIN_DELIVERED, allowed: false, delivered };
 }
 
 // ── Cart and order helpers ──────────────────────────────────────────────────
@@ -200,7 +241,7 @@ function _reset() { cache = null; at = 0; }
 
 module.exports = {
   KEY, MIN_DELIVERED, DUE_DAYS, REVIEW_STATUS, NOT_ELIGIBLE, WHY_TEXT, CONSENT_TEXT,
-  readConfig, config, setEnabled, setBook, cartCoverage, cartItems, payLaterMeta, isPayLater,
+  readConfig, config, setEnabled, setBook, setAllowed, isAllowed, eligibility, cartCoverage, cartItems, payLaterMeta, isPayLater,
   isUnpaidPayLater, withMeta, phone10, deliveredCount, cleanKyc, kycProblem, decodeImage,
   maskAccount, kycPrefix, dueDate, _reset,
 };

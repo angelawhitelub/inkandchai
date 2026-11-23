@@ -8,6 +8,7 @@
  *   GET  ?action=kyc&order=IC-…          → { kyc, pan_image: { type, data } }  (full details)
  *   POST { action:'enabled', on }
  *   POST { action:'book', slug, on, title? }
+ *   POST { action:'allow', phone, on, name?, note? } → customer may use Pay Later without 5 delivered orders
  *   POST { action:'approve', order }     → pay_later_review → confirmed, customer emailed
  *   POST { action:'reject', order, reason? } → cancelled, customer emailed
  *   POST { action:'send_link', order }   → (re)sends the payment link (delivered orders)
@@ -48,7 +49,7 @@ function summary(o) {
     paid: !PL.isUnpaidPayLater(o), payment_id: o.razorpay_payment_id || '',
     state: m.state || '', pan_name: m.pan_name || '', account_last4: m.account_last4 || '', delivered_orders: m.delivered_orders,
     due_at: m.due_at || null, link_url: m.link_url || '', link_sent_at: m.link_sent_at || null, paid_at: m.paid_at || null,
-    reject_reason: m.reject_reason || '',
+    reject_reason: m.reject_reason || '', allowed_by_owner: !!m.allowed_by_owner,
     books: PL.cartItems(o).filter((i) => i && (i.title || i.name)).map((i) => ({ title: i.title || i.name, qty: Number(i.qty) || 1, slug: i.slug || '' })),
   };
 }
@@ -93,7 +94,7 @@ exports.handler = async (event) => {
         });
       }
       const cfg = await PL.readConfig();
-      return json(200, { enabled: cfg.enabled, items: cfg.items, updated_at: cfg.updated_at, min_orders: PL.MIN_DELIVERED, due_days: PL.DUE_DAYS });
+      return json(200, { enabled: cfg.enabled, items: cfg.items, allow: cfg.allow, updated_at: cfg.updated_at, min_orders: PL.MIN_DELIVERED, due_days: PL.DUE_DAYS });
     }
 
     if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
@@ -111,6 +112,12 @@ exports.handler = async (event) => {
         if (!slug) return json(400, { error: 'Missing product slug' });
         const doc = await PL.setBook(slug, body.on === true, { title: body.title });
         return json(200, { slug, on: doc.items.some((i) => i.slug === slug), enabled: doc.enabled });
+      }
+      case 'allow': {
+        const doc = await PL.setAllowed(body.phone, body.on === true, { name: body.name, note: body.note });
+        const ten = PL.phone10(body.phone);
+        console.log(`[admin-pay-later] allow-list ${body.on === true ? 'added' : 'removed'} …${ten.slice(-4)}`);
+        return json(200, { phone: ten, on: doc.allow.some((a) => a.phone === ten), allow: doc.allow });
       }
       case 'approve': {
         const order = await loadOrder(supabase, body.order);

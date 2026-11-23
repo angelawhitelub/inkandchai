@@ -3024,6 +3024,17 @@ select,input,textarea{font-size:1rem;}
         <span class="hint" id="plEnabledNote"></span>
       </div>
       <div id="plBooks" class="hint" style="margin-bottom:1rem;"></div>
+      <details id="plAllowBox" style="margin:0 0 1rem;padding:.8rem 1rem;border:1px solid var(--border);border-radius:12px;">
+        <summary style="cursor:pointer;font-weight:700;font-size:.8rem;">👤 Customers you allow without 5 delivered orders <span id="plAllowCount" class="hint"></span></summary>
+        <p class="hint" style="margin:.6rem 0 .5rem;">Add a customer's mobile number to let them use Pay Later even though they have fewer than 5 delivered orders. They still need Pay Later switched on, only Pay Later books in the cart, and the PAN + bank details, and every order still waits for your approval here.</p>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+          <input id="plAllowPhone" type="tel" inputmode="numeric" placeholder="10-digit mobile number" style="max-width:190px;"/>
+          <input id="plAllowName" type="text" placeholder="Name or note (optional)" style="max-width:260px;"/>
+          <button class="btn-green" type="button" onclick="payLaterAllow(true)">Allow Pay Later</button>
+        </div>
+        <p class="hint" id="plAllowMsg" style="margin-top:.5rem;"></p>
+        <div id="plAllowList" class="hint" style="margin-top:.4rem;"></div>
+      </details>
       <div id="plFilters" style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.2rem 0 1rem;">
         <button type="button" class="btn-outline" data-v="review" onclick="loadPayLater('review')">Waiting for you</button>
         <button type="button" class="btn-outline" data-v="open" onclick="loadPayLater('open')">Not paid yet</button>
@@ -14043,6 +14054,7 @@ async function loadPayLater(view) {
     if (books) books.innerHTML = (cfg.items || []).length
       ? `<strong>${cfg.items.length} Pay Later title${cfg.items.length === 1 ? '' : 's'}</strong> (tick or untick in the product editor):<br>` + cfg.items.map(i => `<a href="/product/${esc(i.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(i.title || i.slug)}</a>`).join(' · ')
       : 'No Pay Later titles yet. Tick "💳 Pay Later title" in a book\'s product editor.';
+    renderPayLaterAllow(cfg.allow || []);
     const d = await plCall({ query: '?action=orders&view=' + encodeURIComponent(_plView) });
     const rows = d.orders || [];
     const badge = document.getElementById('plBadge');
@@ -14056,7 +14068,7 @@ async function loadPayLater(view) {
       return `<div class="product-panel" style="margin:0 0 .8rem;padding:.9rem 1rem;border:1px solid var(--border);border-radius:12px;">
         <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
           <div><strong style="color:var(--gold);">${id}</strong> · ${plMoney(r.amount)} · <span>${esc(r.status)}</span> · ${state}${due}<br>
-            <span class="hint">${esc(r.customer_name)} · ${esc(r.customer_phone)} · ${esc(r.customer_email)} · ${r.delivered_orders != null ? esc(r.delivered_orders) + ' delivered orders before' : ''} · placed ${esc(plDate(r.created_at))}</span><br>
+            <span class="hint">${esc(r.customer_name)} · ${esc(r.customer_phone)} · ${esc(r.customer_email)} · ${r.allowed_by_owner ? '👤 on your allowed list' : (r.delivered_orders != null ? esc(r.delivered_orders) + ' delivered orders before' : '')} · placed ${esc(plDate(r.created_at))}</span><br>
             <span class="hint">${esc(r.customer_address)}</span><br>
             <span class="hint">Books: ${r.books.map(b => esc(b.title) + (b.qty > 1 ? ' ×' + b.qty : '')).join(', ')}</span><br>
             <span class="hint">Name on PAN: <strong>${esc(r.pan_name)}</strong> · bank account ending ${esc(r.account_last4)}${r.awb ? ' · AWB ' + esc(r.awb) : ''}${r.link_url ? ` · <a href="${esc(r.link_url)}" target="_blank" rel="noopener" style="color:var(--gold-dim);">payment link</a> sent ${esc(plDate(r.link_sent_at))}` : ''}${r.reject_reason ? ' · declined: ' + esc(r.reject_reason) : ''}</span>
@@ -14072,6 +14084,33 @@ async function loadPayLater(view) {
       </div>`;
     }).join('');
   } catch (e) { if (list) list.textContent = 'Could not load: ' + e.message; }
+}
+
+function renderPayLaterAllow(list) {
+  const box = document.getElementById('plAllowList');
+  const cnt = document.getElementById('plAllowCount');
+  if (cnt) cnt.textContent = list.length ? `(${list.length})` : '';
+  if (!box) return;
+  box.innerHTML = list.length
+    ? list.map(a => `<div style="display:flex;gap:.6rem;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--border);">
+        <span style="font-family:Menlo,monospace;">${esc(a.phone)}</span><span>${esc(a.name || a.note || '')}</span>
+        <span class="hint">added ${esc(String(a.added_at || '').slice(0, 10))}</span>
+        <button class="btn-outline" type="button" style="margin-left:auto;padding:.2rem .6rem;font-size:.7rem;" onclick="payLaterAllow(false,'${esc(a.phone)}')">Remove</button></div>`).join('')
+    : 'Nobody added yet.';
+}
+
+async function payLaterAllow(on, phone) {
+  const msg = document.getElementById('plAllowMsg');
+  const ph = phone || (document.getElementById('plAllowPhone')?.value || '').replace(/\D/g, '').slice(-10);
+  if (!/^\d{10}$/.test(ph)) { if (msg) { msg.textContent = 'Enter a 10-digit mobile number.'; msg.style.color = '#c96a6a'; } return; }
+  if (!on && !confirm(`Remove ${ph} from your Pay Later list? They will need 5 delivered orders again. Orders already placed are not affected.`)) return;
+  const name = on ? (document.getElementById('plAllowName')?.value || '').trim() : '';
+  try {
+    const d = await plCall({ body: { action: 'allow', phone: ph, on, name } });
+    renderPayLaterAllow(d.allow || []);
+    if (on) { document.getElementById('plAllowPhone').value = ''; document.getElementById('plAllowName').value = ''; }
+    if (msg) { msg.style.color = ''; msg.textContent = on ? `${ph} can now use Pay Later (within a minute).` : `${ph} removed.`; }
+  } catch (e) { if (msg) { msg.textContent = 'Could not save: ' + e.message; msg.style.color = '#c96a6a'; } }
 }
 
 async function viewPayLaterKyc(id, btn) {

@@ -35,8 +35,7 @@ exports.handler = async (event) => {
   if (ten.length !== 10) return json(200, { ...out, eligible: false, checked: false, message: 'Enter your 10-digit mobile number above to see if you are eligible for Pay Later.' });
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const n = await PL.deliveredCount(supabase, ten);
-    const eligible = n >= PL.MIN_DELIVERED;
+    const { eligible } = await PL.eligibility(supabase, cfg, ten);
     return json(200, { ...out, eligible, checked: true, message: eligible ? '' : PL.NOT_ELIGIBLE });
   } catch (e) {
     console.error('[pay-later-status]', e.message);

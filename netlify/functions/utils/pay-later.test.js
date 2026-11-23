@@ -158,3 +158,14 @@ test('the hourly job sends new links and flags overdue ones once', async () => {
   assert.deepEqual(again.overdue, []);
   assert.deepEqual(again.links_sent, []);
 });
+
+test('a customer on the owner\'s list is eligible without 5 delivered orders; others still need them', async () => {
+  const cfgAllow = { ...cfg, allow: [{ phone: '9811122233', name: 'Regular from shop' }] };
+  const countDb = (n) => ({ from() { const api = { select() { return api; }, like() { return api; }, eq() { return api; }, not() { return Promise.resolve({ count: n, error: null }); } }; return api; } });
+  const noDb = { from() { throw new Error('the allow-list must not need the database'); } };
+  assert.deepEqual(await PL.eligibility(noDb, cfgAllow, '+91 98111 22233'), { eligible: true, allowed: true, delivered: null });
+  assert.equal(PL.isAllowed(cfgAllow, '919811122233'), true);
+  assert.equal(PL.isAllowed(cfgAllow, '9811122234'), false);
+  assert.deepEqual(await PL.eligibility(countDb(2), cfgAllow, '9800000000'), { eligible: false, allowed: false, delivered: 2 });
+  assert.deepEqual(await PL.eligibility(countDb(5), cfgAllow, '9800000000'), { eligible: true, allowed: false, delivered: 5 });
+});
