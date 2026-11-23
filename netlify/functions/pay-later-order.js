@@ -123,7 +123,7 @@ exports.handler = async (event) => {
 
   cart[0]._payment = {
     mode: 'pay_later', state: 'review', applied_at: now, due_days: PL.DUE_DAYS,
-    kyc: prefix, pan_name: kyc.pan_name, account_last4: kyc.account.slice(-4), delivered_orders: delivered, allowed_by_owner: elig.allowed,
+    kyc: prefix, pan_name: kyc.pan_name, account_last4: kyc.account.slice(-4), delivered_orders: delivered, allowed_by_owner: elig.allowed, open_to_all: !!elig.everyone,
   };
   const row = {
     razorpay_order_id: orderId,
@@ -150,6 +150,6 @@ exports.handler = async (event) => {
   }
 
   await notify.requestReceived(row);
-  await notify.ownerAlert(`💳 New Pay Later request ${orderId}\n${customer.name || ''} · ${customer.phone}\n₹${total.toLocaleString('en-IN')} · ${elig.allowed ? 'on your Pay Later customer list' : `${delivered} delivered orders before`}\nName on PAN: ${kyc.pan_name}\nReview it in admin → 💳 Pay Later.`);
+  await notify.ownerAlert(`💳 New Pay Later request ${orderId}\n${customer.name || ''} · ${customer.phone}\n₹${total.toLocaleString('en-IN')} · ${elig.allowed ? 'on your Pay Later customer list' : `${delivered == null ? '?' : delivered} delivered orders before${elig.everyone ? ' (open to all)' : ''}`}\nName on PAN: ${kyc.pan_name}\nReview it in admin → 💳 Pay Later.`);
   return json(200, { success: true, order_id: orderId, amount: total });
 };

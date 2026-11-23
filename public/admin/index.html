@@ -3022,6 +3022,7 @@ select,input,textarea{font-size:1rem;}
       <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin:.2rem 0 1rem;padding:.8rem 1rem;border:1px solid var(--border);border-radius:12px;">
         <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;cursor:pointer;"><input type="checkbox" id="plEnabled" onchange="setPayLaterEnabled(this)" style="accent-color:var(--gold);width:18px;height:18px;"/> <strong>Pay Later is on for customers</strong></label>
         <span class="hint" id="plEnabledNote"></span>
+        <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;cursor:pointer;"><input type="checkbox" id="plEveryone" onchange="setPayLaterEveryone(this)" style="accent-color:var(--gold);width:18px;height:18px;"/> <strong>Open to every customer</strong> <span class="hint" style="margin:0;">(no 5-delivered-orders rule; you still approve each order)</span></label>
       </div>
       <div id="plBooks" class="hint" style="margin-bottom:1rem;"></div>
       <details id="plAllowBox" style="margin:0 0 1rem;padding:.8rem 1rem;border:1px solid var(--border);border-radius:12px;">
@@ -14037,6 +14038,15 @@ async function setPayLaterEnabled(box) {
   finally { box.disabled = false; }
 }
 
+async function setPayLaterEveryone(box) {
+  const on = !!box.checked;
+  if (!confirm(on ? 'Open Pay Later to EVERY customer? The 5-delivered-orders rule stops applying. Every order still waits for your approval.' : 'Go back to the 5-delivered-orders rule (plus your allowed customers)?')) { box.checked = !on; return; }
+  box.disabled = true;
+  try { await plCall({ body: { action: 'everyone', on } }); await loadPayLater(_plView); }
+  catch (e) { box.checked = !on; alert('Could not change it: ' + e.message); }
+  finally { box.disabled = false; }
+}
+
 function plMoney(n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); }
 function plDate(iso) { return iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
 
@@ -14049,6 +14059,7 @@ async function loadPayLater(view) {
   try {
     const cfg = await plCall({ query: '?action=config' });
     const en = document.getElementById('plEnabled'); if (en) en.checked = !!cfg.enabled;
+    const ev = document.getElementById('plEveryone'); if (ev) ev.checked = !!cfg.everyone;
     const note = document.getElementById('plEnabledNote');
     if (note) note.textContent = cfg.enabled ? 'Customers can see it now.' : 'Off: no customer sees Pay Later.';
     if (books) books.innerHTML = (cfg.items || []).length

@@ -61,6 +61,8 @@ async function readConfig() {
   const items = doc && Array.isArray(doc.items) ? doc.items : [];
   return {
     enabled: !!(doc && doc.enabled === true),
+    // Owner switch: every customer is eligible, no 5-delivered-orders rule.
+    everyone: !!(doc && doc.everyone === true),
     items: items.map((i) => ({ ...i, slug: normSlug(i && i.slug) })).filter((i) => i.slug),
     // Customers the owner let in without MIN_DELIVERED delivered orders.
     allow: (doc && Array.isArray(doc.allow) ? doc.allow : []).filter((a) => a && /^\d{10}$/.test(a.phone)),
@@ -74,14 +76,14 @@ let at = 0;
 async function config() {
   if (cache && Date.now() - at < 60000) return cache;
   try { cache = await readConfig(); }
-  catch (e) { console.warn('[pay-later] read failed:', e.message); cache = cache || { enabled: false, items: [], allow: [] }; }
+  catch (e) { console.warn('[pay-later] read failed:', e.message); cache = cache || { enabled: false, everyone: false, items: [], allow: [] }; }
   at = Date.now();
   return cache;
 }
 
 async function writeConfig(next) {
   const now = new Date().toISOString();
-  const doc = { enabled: !!next.enabled, items: next.items, allow: next.allow || [], updated_at: now };
+  const doc = { enabled: !!next.enabled, everyone: !!next.everyone, items: next.items, allow: next.allow || [], updated_at: now };
   await getStore(STORE).setJSON(KEY, doc);
   cache = doc; at = Date.now();
   return doc;
@@ -90,6 +92,11 @@ async function writeConfig(next) {
 async function setEnabled(on) {
   const cur = await readConfig();
   return writeConfig({ ...cur, enabled: on === true });
+}
+
+async function setEveryone(on) {
+  const cur = await readConfig();
+  return writeConfig({ ...cur, everyone: on === true });
 }
 
 async function setBook(slug, on, { title = '' } = {}) {
@@ -137,6 +144,12 @@ const isAllowed = (cfg, phone) => {
  */
 async function eligibility(supabase, cfg, phone) {
   if (isAllowed(cfg, phone)) return { eligible: true, allowed: true, delivered: null };
+  if (cfg && cfg.everyone) {
+    // Open to all: the count is only shown to the owner, so a failed read never blocks.
+    let delivered = null;
+    try { delivered = await deliveredCount(supabase, phone); } catch { /* informational only */ }
+    return { eligible: true, allowed: false, everyone: true, delivered };
+  }
   const delivered = await deliveredCount(supabase, phone);
   return { eligible: delivered >= MIN_DELIVERED, allowed: false, delivered };
 }
@@ -241,7 +254,7 @@ function _reset() { cache = null; at = 0; }
 
 module.exports = {
   KEY, MIN_DELIVERED, DUE_DAYS, REVIEW_STATUS, NOT_ELIGIBLE, WHY_TEXT, CONSENT_TEXT,
-  readConfig, config, setEnabled, setBook, setAllowed, isAllowed, eligibility, cartCoverage, cartItems, payLaterMeta, isPayLater,
+  readConfig, config, setEnabled, setEveryone, setBook, setAllowed, isAllowed, eligibility, cartCoverage, cartItems, payLaterMeta, isPayLater,
   isUnpaidPayLater, withMeta, phone10, deliveredCount, cleanKyc, kycProblem, decodeImage,
   maskAccount, kycPrefix, dueDate, _reset,
 };

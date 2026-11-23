@@ -7,6 +7,7 @@
  *   GET  ?action=orders&view=review|open|all → { orders: [...] }
  *   GET  ?action=kyc&order=IC-…          → { kyc, pan_image: { type, data } }  (full details)
  *   POST { action:'enabled', on }
+ *   POST { action:'everyone', on }      → every customer eligible (no 5-delivered-orders rule)
  *   POST { action:'book', slug, on, title? }
  *   POST { action:'allow', phone, on, name?, note? } → customer may use Pay Later without 5 delivered orders
  *   POST { action:'approve', order }     → pay_later_review → confirmed, customer emailed
@@ -94,7 +95,7 @@ exports.handler = async (event) => {
         });
       }
       const cfg = await PL.readConfig();
-      return json(200, { enabled: cfg.enabled, items: cfg.items, allow: cfg.allow, updated_at: cfg.updated_at, min_orders: PL.MIN_DELIVERED, due_days: PL.DUE_DAYS });
+      return json(200, { enabled: cfg.enabled, everyone: cfg.everyone, items: cfg.items, allow: cfg.allow, updated_at: cfg.updated_at, min_orders: PL.MIN_DELIVERED, due_days: PL.DUE_DAYS });
     }
 
     if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
@@ -106,6 +107,11 @@ exports.handler = async (event) => {
         const doc = await PL.setEnabled(body.on === true);
         console.log(`[admin-pay-later] Pay Later ${doc.enabled ? 'ON' : 'OFF'}`);
         return json(200, { enabled: doc.enabled, items: doc.items });
+      }
+      case 'everyone': {
+        const doc = await PL.setEveryone(body.on === true);
+        console.log(`[admin-pay-later] open to every customer ${doc.everyone ? 'ON' : 'OFF'}`);
+        return json(200, { enabled: doc.enabled, everyone: doc.everyone });
       }
       case 'book': {
         const slug = normSlug(body.slug);

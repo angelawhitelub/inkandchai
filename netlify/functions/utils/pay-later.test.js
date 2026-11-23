@@ -169,3 +169,10 @@ test('a customer on the owner\'s list is eligible without 5 delivered orders; ot
   assert.deepEqual(await PL.eligibility(countDb(2), cfgAllow, '9800000000'), { eligible: false, allowed: false, delivered: 2 });
   assert.deepEqual(await PL.eligibility(countDb(5), cfgAllow, '9800000000'), { eligible: true, allowed: false, delivered: 5 });
 });
+
+test('open to every customer: eligible with no delivered orders, even if the count fails', async () => {
+  const failDb = { from() { throw new Error('db down'); } };
+  const r = await PL.eligibility(failDb, { ...cfg, everyone: true, allow: [] }, '9800000000');
+  assert.equal(r.eligible, true);
+  assert.equal(r.everyone, true);
+});
