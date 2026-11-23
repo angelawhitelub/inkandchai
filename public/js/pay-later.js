@@ -68,7 +68,7 @@
       + '<label style="' + label + '">Bank account number (in the same name as your PAN)<input id="plAcc" type="text" inputmode="numeric" autocomplete="off" style="' + input + '"/></label>'
       + '<label style="' + label + '">Bank account number again<input id="plAcc2" type="text" inputmode="numeric" autocomplete="off" style="' + input + '"/></label>'
       + '<label style="' + label + '">IFSC code<input id="plIfsc" type="text" maxlength="11" autocomplete="off" placeholder="SBIN0001234" style="' + input + 'text-transform:uppercase;"/></label>'
-      + '<label style="display:flex;gap:.55rem;align-items:flex-start;margin-top:.85rem;font-size:.7rem;line-height:1.5;cursor:pointer;"><input id="plConsent" type="checkbox" style="margin-top:.15rem;accent-color:#5b34b0;"/><span>' + esc(d.consent || '') + '</span></label>'
+      + '<label style="display:flex;gap:.55rem;align-items:flex-start;margin-top:.85rem;font-size:.7rem;line-height:1.5;cursor:pointer;"><input id="plConsent" type="checkbox" style="width:18px;height:18px;min-width:18px;max-width:18px;flex:0 0 18px;padding:0;margin:.1rem 0 0;border-radius:3px;accent-color:#5b34b0;appearance:auto;-webkit-appearance:checkbox;"/><span>' + esc(d.consent || '') + '</span></label>'
       + '<div id="plErr" role="alert" style="display:none;margin-top:.7rem;color:#b3261e;font-size:.74rem;"></div>'
       + '<button type="button" id="plSubmit" style="' + BTN + 'border:none;background:#5b34b0;color:#fff;cursor:pointer;">Request Pay Later order</button>'
       + '<button type="button" id="plCancel" style="display:block;margin:.5rem auto 0;background:none;border:none;color:var(--cream-dim);font-size:.7rem;text-decoration:underline;cursor:pointer;">Choose another way to pay</button>'
