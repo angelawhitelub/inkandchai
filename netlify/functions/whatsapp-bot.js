@@ -810,6 +810,12 @@ function payLaterLine(order) {
   const paid = !require('./utils/pay-later-kind').isUnpaidPayLater(order);
   if (order.status === 'pay_later_review') return '\nPay Later: request WAITING for our team to check the credit score and confirm (usually within 24 hours). Nothing is charged yet. Do not promise approval. No OTP is ever needed and our team never asks for one.';
   if (paid) return '\nPay Later: PAID. Treat it like a prepaid order.';
+  const md = m.mandate || {};
+  const ap = md.charge_status === 'pending' ? ' AutoPay debit for this order is in progress (their bank or UPI app notifies them before the money is taken); do not send them the payment link.'
+    : md.status === 'active' ? ' AutoPay is set up: if still unpaid on the day it is delivered, we collect it through AutoPay.'
+    : md.status === 'pending' ? ' AutoPay bank mandate is waiting for their bank to confirm it.' : '';
+  if (ap && order.status !== 'delivered') return `\nPay Later: NOT a Cash on Delivery order. Nothing is paid to the courier.${ap} No OTP is ever needed and our team never asks for one.`;
+  if (md.charge_status === 'pending') return `\nPay Later: NOT a Cash on Delivery order.${ap} No OTP is ever needed and our team never asks for one.`;
   const due = m.due_at ? new Date(m.due_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }) : '';
   return `\nPay Later: NOT a Cash on Delivery order. Nothing is paid to the courier. ${m.link_url ? `Payment link: ${m.link_url}${due ? ` (due ${due})` : ''}. Share it if they ask how to pay.` : 'We send a Razorpay payment link when it is delivered; it is due 7 days after delivery.'} No OTP is ever needed and our team never asks for one.`;
 }

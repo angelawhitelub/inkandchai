@@ -7,6 +7,10 @@
  *   2. a link already out → asked whether it was paid (the webhook is the
  *      fast path; this is the net under it);
  *   3. past the due date and still unpaid → marked overdue, owner told once.
+ * AutoPay (utils/pay-later-mandate): an order with an active mandate is
+ * charged on the day it is delivered instead of being sent a link; the link
+ * goes out only if there is no mandate or the debit fails. A bank mandate still
+ * waiting for the bank is checked each hour first.
  * Only touches orders whose cart says mode 'pay_later'. Admin may POST to run now.
  */
 const { createClient } = require('@supabase/supabase-js');
@@ -14,6 +18,7 @@ const { requireAdmin } = require('./utils/admin-auth');
 const PL = require('./utils/pay-later');
 const notify = require('./utils/pay-later-notify');
 const { sendPayLaterLink, syncLink, saveMeta } = require('./utils/pay-later-link');
+const Mandate = require('./utils/pay-later-mandate');
 
 const json = (statusCode, body) => ({ statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -26,7 +31,7 @@ async function handle(event = {}, deps = {}) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const now = deps.now || Date.now();
-  const out = { links_sent: [], paid: [], overdue: [], errors: [] };
+  const out = { links_sent: [], charged: [], paid: [], overdue: [], errors: [] };
   try {
     const { data, error } = await db.from('orders').select('*')
       .eq('cart_items->0->_payment->>mode', 'pay_later')
@@ -42,6 +47,21 @@ async function handle(event = {}, deps = {}) {
       const id = order.razorpay_order_id;
       const meta = PL.payLaterMeta(order) || {};
       try {
+        const md = meta.mandate || {};
+        if (md.status === 'pending') await (deps.refreshMandate || Mandate.refreshMandate)(db, order, deps);
+        const fresh = md.status === 'pending' ? await reload(db, order) : order;
+        const mm = (PL.payLaterMeta(fresh) || {}).mandate || {};
+        // AutoPay: charge on the delivery day; Razorpay debits after its notice.
+        if (mm.status === 'active' && !mm.charge_order_id && !meta.link_url) {
+          const r = await (deps.chargeMandate || Mandate.chargeMandate)(db, fresh, deps);
+          if (r.ok) { out.charged.push(id); await saveMeta(db, await reload(db, fresh), (m) => ({ ...m, state: 'autopay_charged', due_at: m.due_at || PL.dueDate(new Date(now).toISOString()) })); continue; }
+          out.errors.push(`${id}: AutoPay ${r.error}`);
+        } else if (mm.charge_status === 'pending') {
+          const s = await (deps.syncCharge || Mandate.syncCharge)(db, fresh, { ...deps, now });
+          if (s.paid) { out.paid.push(id); continue; }
+          if (!s.failed) continue; // still inside Razorpay's retry days
+          // Failed for good: fall through to the payment link.
+        }
         if (!meta.link_url) {
           const r = await sendPayLaterLink(db, order, deps);
           if (r.ok) out.links_sent.push(id); else out.errors.push(`${id}: ${r.error}`);
@@ -65,6 +85,11 @@ async function handle(event = {}, deps = {}) {
     console.error('[pay-later]', e.message);
     return json(500, { error: e.message });
   }
+}
+
+async function reload(db, order) {
+  const { data } = await db.from('orders').select('*').eq('id', order.id).limit(1);
+  return (data && data[0]) || order;
 }
 
 exports.handler = (event) => handle(event);

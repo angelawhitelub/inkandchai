@@ -8404,7 +8404,7 @@ window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
      the server re-verifies before pricing. Without it the grants array is always
      empty and a Google-discounted price silently reverts to full price. -->
 <script src="/js/google-discount.js"></script>
-<script src="/js/policy-sheet.js" defer></script><script src="/js/pay-later.js?v=20261123c" defer></script>
+<script src="/js/policy-sheet.js" defer></script><script src="/js/pay-later.js?v=20261124a" defer></script>
 
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────

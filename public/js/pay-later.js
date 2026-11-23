@@ -141,14 +141,58 @@
         + '<div style="font-size:1.6rem;">🕒</div><div style="font-weight:700;font-size:1rem;">Pay Later request received</div>'
         + '<div style="font-size:.8rem;margin-top:.3rem;">Order <strong>' + esc(d.order_id) + '</strong> · ₹' + esc(Number(d.amount || 0).toLocaleString('en-IN')) + ' to pay after delivery</div>'
         + '<div style="font-size:.74rem;color:var(--cream-dim);margin-top:.5rem;">Nothing has been charged. We will check your credit score and email you once your order is confirmed, usually within 24 hours. No OTP is needed, and our employees will never call or message you asking for one.</div>'
+        + (d.mandate_key ? '<div id="plAutopay" style="margin-top:1rem;padding:.9rem;border:1px dashed #7b55c7;border-radius:12px;background:#fff;text-align:left;">'
+          + '<div style="font-weight:700;">🔁 Last step: set up AutoPay</div>'
+          + '<div style="font-size:.76rem;margin:.35rem 0 .6rem;">If your order is still unpaid on the day it is delivered, we collect ₹' + esc(Number(d.amount || 0).toLocaleString('en-IN')) + ' through AutoPay. Your bank or UPI app tells you before any money is taken. Nothing is taken now (UPI asks for a ₹1 approval). If we decline your request, we cancel the AutoPay.</div>'
+          + '<button type="button" data-m="upi" style="' + BTN + 'border:1px solid #7b55c7;background:#f1eafb;color:#4b2a8c;cursor:pointer;margin:0 0 .45rem;">UPI AutoPay (any UPI app)</button>'
+          + '<button type="button" data-m="emandate" style="' + BTN + 'border:1px solid #7b55c7;background:#fff;color:#4b2a8c;cursor:pointer;margin:0;">Bank mandate on the account you gave (net banking)</button>'
+          + '<div id="plApMsg" style="font-size:.74rem;margin-top:.5rem;"></div></div>' : '')
         + '<a href="/" style="display:inline-block;margin-top:.9rem;color:#5b34b0;">Continue browsing</a></div>';
       block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (d.mandate_key) {
+        Array.prototype.forEach.call(document.querySelectorAll('#plAutopay button[data-m]'), function (b) {
+          b.onclick = function () { autopay(d.order_id, d.mandate_key, b.getAttribute('data-m')); };
+        });
+      }
     }).catch(function (e) {
       fail(e.message || 'Could not place your request.');
     }).then(function () {
       state.busy = false;
       var b = document.getElementById('plSubmit'); if (b) { b.disabled = false; b.textContent = 'Request Pay Later order'; }
     });
+  }
+
+  /* AutoPay mandate (pay-later-mandate): Razorpay Checkout in recurring mode. */
+  function apMsg(t, ok) { var el = document.getElementById('plApMsg'); if (el) { el.style.color = ok ? '#2e7d32' : '#b3261e'; el.textContent = t; } }
+  function apCall(body) {
+    return fetch('/.netlify/functions/pay-later-mandate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (x) { if (!r.ok) throw new Error(x.error || 'AutoPay could not be set up.'); return x; }); });
+  }
+  function autopay(orderId, key, method) {
+    if (typeof Razorpay !== 'function') return apMsg('Payment window did not load. Please refresh the page and try again.');
+    apMsg('Opening…', true);
+    apCall({ action: 'start', order: orderId, key: key, method: method }).then(function (s) {
+      if (s.already) { apMsg(s.status === 'active' ? '✅ AutoPay is already set up.' : '⏳ Your bank is confirming the mandate.', true); return; }
+      var rzp = new Razorpay({
+        key: s.key_id, order_id: s.order_id, customer_id: s.customer_id, recurring: method === 'upi' ? '1' : true,
+        name: 'Ink & Chai', description: 'Pay Later AutoPay for ' + orderId, notes: s.notes || {},
+        prefill: { name: s.name || '', email: s.email || '', contact: s.contact || '' },
+        theme: { color: '#5b34b0' },
+        handler: function (resp) {
+          apMsg('Checking…', true);
+          apCall({ action: 'verify', order: orderId, key: key, razorpay_payment_id: resp.razorpay_payment_id, razorpay_order_id: resp.razorpay_order_id, razorpay_signature: resp.razorpay_signature })
+            .then(function (v) {
+              var box = document.getElementById('plAutopay');
+              if (box) box.innerHTML = v.status === 'active'
+                ? '<div style="font-weight:700;color:#2e7d32;">✅ AutoPay is set up</div><div style="font-size:.76rem;margin-top:.3rem;">We will only collect it if the order is still unpaid on the day it is delivered. No OTP is needed, and our employees will never call or message you asking for one.</div>'
+                : '<div style="font-weight:700;color:#4b2a8c;">⏳ Sent to your bank</div><div style="font-size:.76rem;margin-top:.3rem;">Your bank confirms the mandate in 1 to 2 working days. Nothing more to do.</div>';
+            }).catch(function (e) { apMsg(e.message); });
+        },
+        modal: { ondismiss: function () { apMsg('AutoPay was not set up. You can try again.'); } },
+      });
+      rzp.on && rzp.on('payment.failed', function (r) { apMsg((r && r.error && r.error.description) || 'AutoPay approval failed. Please try again.'); });
+      rzp.open();
+    }).catch(function (e) { apMsg(e.message); });
   }
 
   var ph = document.getElementById('ch-phone');

@@ -51,6 +51,8 @@ function summary(o) {
     state: m.state || '', pan_name: m.pan_name || '', account_last4: m.account_last4 || '', delivered_orders: m.delivered_orders,
     due_at: m.due_at || null, link_url: m.link_url || '', link_sent_at: m.link_sent_at || null, paid_at: m.paid_at || null,
     reject_reason: m.reject_reason || '', allowed_by_owner: !!m.allowed_by_owner,
+    autopay: m.mandate ? { method: m.mandate.method || '', status: m.mandate.status || '', charge_status: m.mandate.charge_status || '',
+      charged_at: m.mandate.charged_at || null, charge_error: m.mandate.charge_error || m.mandate.charge_last_error || '' } : null,
     books: PL.cartItems(o).filter((i) => i && (i.title || i.name)).map((i) => ({ title: i.title || i.name, qty: Number(i.qty) || 1, slug: i.slug || '' })),
   };
 }
@@ -146,17 +148,21 @@ exports.handler = async (event) => {
         if (error) throw new Error(error.message);
         if (!data || !data.length) return json(409, { error: 'Someone else changed this order first. Refresh.' });
         const mail = await notify.rejected({ ...order, cart_items: cart }, reason);
+        await require('./utils/pay-later-mandate').cancelMandate(supabase, { ...order, cart_items: cart });
         return json(200, { ok: true, status: 'cancelled', emailed: !!mail.sent });
       }
       case 'send_link': {
         const order = await loadOrder(supabase, body.order);
         if (order.status !== 'delivered') return json(409, { error: `The link goes out once the order is delivered (it is ${order.status}).` });
+        const md = (PL.payLaterMeta(order) || {}).mandate || {};
+        if (md.charge_status === 'pending' && !body.force) return json(409, { error: 'An AutoPay debit is still in progress for this order. A link now could charge the customer twice. Wait for it, or press again to send anyway.', code: 'autopay_pending' });
         const r = await sendPayLaterLink(supabase, order);
         return json(r.ok ? 200 : 409, r);
       }
       case 'mark_paid': {
         const order = await loadOrder(supabase, body.order);
         const r = await markPayLaterPaid(supabase, order, { how: 'manual', note: body.note });
+        if (r.ok && !r.already) await require('./utils/pay-later-mandate').cancelMandate(supabase, order);
         return json(200, r);
       }
       default:

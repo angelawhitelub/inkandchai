@@ -21,6 +21,7 @@ const { findShippingRestriction } = require('./utils/shipping-restrictions');
 const { orderShipping } = require('./utils/free-delivery');
 const { siteSaleDiscount } = require('./utils/site-sale');
 const { r2PutObject, r2EbookConfig, r2EbookConfigured } = require('./utils/r2-put');
+const M = require('./utils/pay-later-mandate');
 const { mirrorOrder } = require('./utils/order-fallback');
 
 const CORS = {
@@ -84,12 +85,18 @@ exports.handler = async (event) => {
   const ten = PL.phone10(customer.phone);
   {
     const { data: open } = await supabase.from('orders')
-      .select('razorpay_order_id, amount_paise, created_at')
+      .select('id, razorpay_order_id, amount_paise, created_at, cart_items')
       .like('customer_phone', `%${ten}`).eq('status', PL.REVIEW_STATUS)
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (open) {
       const recent = Date.now() - Date.parse(open.created_at) < 10 * 60 * 1000;
-      if (recent) return json(200, { success: true, order_id: open.razorpay_order_id, amount: Math.round(open.amount_paise / 100), deduped: true });
+      if (recent) {
+        // A double tap: hand this browser a fresh AutoPay key (only the hash is kept).
+        const key = M.newKey();
+        const cartNow = PL.withMeta(open, (m) => ({ ...m, mandate_key_hash: M.hashKey(key) }));
+        await supabase.from('orders').update({ cart_items: cartNow }).eq('id', open.id).is('razorpay_payment_id', null);
+        return json(200, { success: true, order_id: open.razorpay_order_id, amount: Math.round(open.amount_paise / 100), deduped: true, mandate_key: key });
+      }
       return json(409, { error: `You already have a Pay Later request (${open.razorpay_order_id}) waiting for confirmation. Please wait for our reply before placing another.`, code: 'pay_later_open' });
     }
   }
@@ -121,7 +128,11 @@ exports.handler = async (event) => {
     return json(503, { error: 'We could not save your PAN photo just now. Please try again in a minute.' });
   }
 
+  // The AutoPay step (pay-later-mandate) is shown straight after this; only
+  // this browser gets the key that unlocks it.
+  const mandateKey = M.newKey();
   cart[0]._payment = {
+    mandate_key_hash: M.hashKey(mandateKey),
     mode: 'pay_later', state: 'review', applied_at: now, due_days: PL.DUE_DAYS,
     kyc: prefix, pan_name: kyc.pan_name, account_last4: kyc.account.slice(-4), delivered_orders: delivered, allowed_by_owner: elig.allowed, open_to_all: !!elig.everyone,
   };
@@ -151,5 +162,5 @@ exports.handler = async (event) => {
 
   await notify.requestReceived(row);
   await notify.ownerAlert(`💳 New Pay Later request ${orderId}\n${customer.name || ''} · ${customer.phone}\n₹${total.toLocaleString('en-IN')} · ${elig.allowed ? 'on your Pay Later customer list' : `${delivered == null ? '?' : delivered} delivered orders before${elig.everyone ? ' (open to all)' : ''}`}\nName on PAN: ${kyc.pan_name}\nReview it in admin → 💳 Pay Later.`);
-  return json(200, { success: true, order_id: orderId, amount: total });
+  return json(200, { success: true, order_id: orderId, amount: total, mandate_key: mandateKey });
 };

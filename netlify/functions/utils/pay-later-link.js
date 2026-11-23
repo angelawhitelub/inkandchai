@@ -71,7 +71,12 @@ async function markPayLaterPaid(supabase, order, { paymentId = '', how = 'link',
     (m) => ({ ...m, state: paymentId ? 'paid' : 'paid_manual', paid_at: now, paid_how: how, ...(note ? { paid_note: String(note).slice(0, 300) } : {}) }),
     paymentId ? { razorpay_payment_id: paymentId } : {});
   if (!saved) return { ok: true, already: true };
-  await alert(`✅ Pay Later paid: ${idOf(order)} · ₹${Math.round(Number(order.amount_paise) / 100).toLocaleString('en-IN')}${paymentId ? ` (${paymentId})` : ' (marked paid by hand)'}`);
+  await alert(`✅ Pay Later paid: ${idOf(order)} · ₹${Math.round(Number(order.amount_paise) / 100).toLocaleString('en-IN')}${paymentId ? ` (${paymentId})` : ' (marked paid by hand)'}${how === 'autopay' ? ' by AutoPay' : ''}`);
+  // The AutoPay mandate has done its job (or is no longer needed): cancel it.
+  const mandate = (PL.payLaterMeta(saved) || {}).mandate;
+  if (mandate && mandate.token_id && mandate.status !== 'cancelled') {
+    await (deps.cancelMandate || require('./pay-later-mandate').cancelMandate)(supabase, saved, deps);
+  }
   return { ok: true };
 }
 

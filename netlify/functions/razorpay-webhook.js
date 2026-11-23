@@ -66,6 +66,36 @@ function emailBase(content) {
   </div>`;
 }
 
+/** token.confirmed / rejected / cancelled and failed AutoPay debits for Pay Later. */
+async function payLaterMandateEvent(type, payload, payment) {
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const PL = require('./utils/pay-later');
+  const write = async (order, fn) => {
+    const cart = PL.withMeta(order, (m) => ({ ...m, mandate: fn((m && m.mandate) || {}) }));
+    await supabase.from('orders').update({ cart_items: cart }).eq('id', order.id);
+  };
+  if (type === 'payment.failed') {
+    const { data: order } = await supabase.from('orders').select('*').eq('razorpay_order_id', String((payment.notes || {}).order_id || '')).maybeSingle();
+    // Razorpay retries a failed debit, so this only records the reason; the
+    // hourly job decides when it has really failed (pay-later-mandate syncCharge).
+    if (order) await write(order, (m) => ({ ...m, charge_last_error: String(payment.error_description || payment.error_reason || 'failed').slice(0, 200), charge_last_error_at: new Date().toISOString() }));
+    return;
+  }
+  const tok = payload.payload && payload.payload.token && payload.payload.token.entity;
+  if (!tok || !tok.id) return;
+  const { data } = await supabase.from('orders').select('*').eq('cart_items->0->_payment->mandate->>token_id', tok.id).limit(1);
+  const order = data && data[0];
+  if (!order) return;
+  const status = { 'token.confirmed': 'active', 'token.rejected': 'failed', 'token.cancelled': 'cancelled', 'token.paused': 'paused' }[type];
+  if (!status) return;
+  await write(order, (m) => ({ ...m, status: m.status === 'cancelled' && status !== 'cancelled' ? m.status : status, [`${status}_at`]: new Date().toISOString() }));
+  if (status === 'cancelled' || status === 'paused') {
+    if (PL.isUnpaidPayLater(order)) await require('./utils/pay-later-notify').ownerAlert(`ℹ️ AutoPay ${status} by the customer for Pay Later ${order.razorpay_order_id}. They will get the payment link after delivery instead.`).catch(() => null);
+  }
+}
+
 exports.handler = async (event, context) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
@@ -94,6 +124,13 @@ exports.handler = async (event, context) => {
   const paymentLink = payload.payload?.payment_link?.entity || null;
 
   console.log(`[razorpay-webhook] event=${event_type} payment_id=${payment?.id} order_id=${payment?.order_id} status=${payment?.status}`);
+
+  // ── Pay Later AutoPay (utils/pay-later-mandate): token events and failed debits ──
+  if (/^token\./.test(event_type || '') || (event_type === 'payment.failed' && payment && (payment.notes || {}).via === 'autopay')) {
+    try { await payLaterMandateEvent(event_type, payload, payment); }
+    catch (e) { console.error('[razorpay-webhook] AutoPay event', event_type, e.message); }
+    return { statusCode: 200, body: 'OK — autopay event' };
+  }
 
   // Only process captured payments. Payment Links usually arrive as
   // payment_link.paid with payment + order + payment_link entities.
@@ -158,6 +195,25 @@ exports.handler = async (event, context) => {
   // The order was placed (and shipped) before this payment, so nothing is
   // created here: the payment id is written onto that order, which makes it
   // an ordinary prepaid order from now on.
+  // The AutoPay approval (₹1 UPI / ₹0 bank) is not a purchase: it only records
+  // the mandate, never a payment id on the order. Recurring payments without
+  // our notes are matched by their Razorpay order id.
+  if (notes.kind === 'pay_later_mandate' || ((payment.token_id || payment.recurring) && notes.kind !== 'pay_later')) {
+    const M = require('./utils/pay-later-mandate');
+    const hit = await M.orderForRazorpayOrder(supabase, razorpay_order_id);
+    if (hit && hit.kind === 'auth') {
+      const r = await M.recordApproval(supabase, hit.order, razorpay_payment_id);
+      console.log('[razorpay-webhook] AutoPay approval', hit.order.razorpay_order_id, r.status || r.error);
+      return { statusCode: 200, body: 'OK — autopay approval' };
+    }
+    if (hit && hit.kind === 'charge') {
+      notes.kind = 'pay_later'; notes.order_id = hit.order.razorpay_order_id; notes.via = 'autopay';
+    } else if (notes.kind === 'pay_later_mandate') {
+      console.warn('[razorpay-webhook] AutoPay approval for an unknown order', razorpay_order_id);
+      return { statusCode: 200, body: 'OK — autopay approval, order not found' };
+    }
+  }
+
   const plRef = String((paymentLink && paymentLink.reference_id) || '');
   if (notes.kind === 'pay_later' || /^PL-IC-/i.test(plRef)) {
     const plId = String(notes.order_id || plRef.replace(/^PL-/i, '')).trim();
@@ -167,8 +223,12 @@ exports.handler = async (event, context) => {
       await require('./utils/pay-later-notify').ownerAlert(`⚠️ Pay Later payment ${razorpay_payment_id} (₹${Math.round(amount_paise / 100)}) for order ${plId}, which was not found. Check it by hand.`);
       return { statusCode: 200, body: 'OK — pay later order not found' };
     }
-    const done = await require('./utils/pay-later-link').markPayLaterPaid(supabase, plOrder, { paymentId: razorpay_payment_id, how: 'link' });
+    const done = await require('./utils/pay-later-link').markPayLaterPaid(supabase, plOrder, { paymentId: razorpay_payment_id, how: notes.via === 'autopay' ? 'autopay' : 'link' });
     console.log('[razorpay-webhook] Pay Later', plId, done.already ? 'already paid' : 'marked paid');
+    // Paid twice (link and AutoPay both went through): the owner refunds one.
+    if (done.already && plOrder.razorpay_payment_id && plOrder.razorpay_payment_id !== razorpay_payment_id) {
+      await require('./utils/pay-later-notify').ownerAlert(`⚠️ Pay Later ${plId} was paid TWICE: ${plOrder.razorpay_payment_id} and ${razorpay_payment_id} (₹${Math.round(amount_paise / 100)}). Refund one of them.`).catch(() => null);
+    }
     return { statusCode: 200, body: 'OK — pay later' };
   }
 

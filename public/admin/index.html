@@ -14082,7 +14082,8 @@ async function loadPayLater(view) {
             <span class="hint">${esc(r.customer_name)} · ${esc(r.customer_phone)} · ${esc(r.customer_email)} · ${r.allowed_by_owner ? '👤 on your allowed list' : (r.delivered_orders != null ? esc(r.delivered_orders) + ' delivered orders before' : '')} · placed ${esc(plDate(r.created_at))}</span><br>
             <span class="hint">${esc(r.customer_address)}</span><br>
             <span class="hint">Books: ${r.books.map(b => esc(b.title) + (b.qty > 1 ? ' ×' + b.qty : '')).join(', ')}</span><br>
-            <span class="hint">Name on PAN: <strong>${esc(r.pan_name)}</strong> · bank account ending ${esc(r.account_last4)}${r.awb ? ' · AWB ' + esc(r.awb) : ''}${r.link_url ? ` · <a href="${esc(r.link_url)}" target="_blank" rel="noopener" style="color:var(--gold-dim);">payment link</a> sent ${esc(plDate(r.link_sent_at))}` : ''}${r.reject_reason ? ' · declined: ' + esc(r.reject_reason) : ''}</span>
+            <span class="hint">Name on PAN: <strong>${esc(r.pan_name)}</strong> · bank account ending ${esc(r.account_last4)}${r.awb ? ' · AWB ' + esc(r.awb) : ''}${r.link_url ? ` · <a href="${esc(r.link_url)}" target="_blank" rel="noopener" style="color:var(--gold-dim);">payment link</a> sent ${esc(plDate(r.link_sent_at))}` : ''}${r.reject_reason ? ' · declined: ' + esc(r.reject_reason) : ''}</span><br>
+            <span class="hint">${plAutopayLine(r.autopay)}</span>
           </div>
           <div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:flex-start;">
             <button class="btn-outline" type="button" onclick="viewPayLaterKyc('${id}', this)">🪪 PAN + bank</button>
@@ -14148,6 +14149,17 @@ async function viewPayLaterKyc(id, btn) {
   finally { btn.disabled = false; }
 }
 
+// AutoPay mandate (utils/pay-later-mandate), one line per order card.
+function plAutopayLine(a) {
+  if (!a || !a.status || a.status === 'started') return '🔁 AutoPay: <strong>not set up</strong> (gets the payment link after delivery)';
+  const how = a.method === 'upi' ? 'UPI AutoPay' : 'bank mandate';
+  const st = { active: '✅ ready', pending: '⏳ waiting for the bank', failed: '❌ failed', cancelled: 'cancelled', paused: '⏸ paused by the customer' }[a.status] || esc(a.status);
+  const ch = a.charge_status === 'pending' ? ` · debit in progress since ${esc(plDate(a.charged_at))}`
+    : a.charge_status === 'failed' ? ` · debit failed${a.charge_error ? ': ' + esc(a.charge_error) : ''} (link sent instead)`
+    : a.charge_status === 'paid' ? ' · debited' : '';
+  return `🔁 AutoPay: ${how} ${st}${ch}`;
+}
+
 async function payLaterDecide(id, action, btn) {
   let reason = '', note = '';
   if (action === 'approve' && !confirm(`Approve Pay Later order ${id}? It becomes a confirmed order and ships as prepaid (nothing collected at the door). The customer is emailed that it is confirmed.`)) return;
@@ -14162,7 +14174,12 @@ async function payLaterDecide(id, action, btn) {
   }
   btn.disabled = true;
   try {
-    const d = await plCall({ body: { action, order: id, reason, note } });
+    let d;
+    try { d = await plCall({ body: { action, order: id, reason, note } }); }
+    catch (e) {
+      if (action !== 'send_link' || !/AutoPay debit/.test(e.message) || !confirm(e.message)) throw e;
+      d = await plCall({ body: { action, order: id, force: true } });
+    }
     if (action === 'send_link' && d.url) alert('Link sent: ' + d.url);
     await loadPayLater(_plView);
   } catch (e) { alert('Could not do it: ' + e.message); btn.disabled = false; }
