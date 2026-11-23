@@ -449,4 +449,4 @@ async function makeOrderId(prefixBase, cart, supabase) {
   return `${prefix}-${datePart}-${randPart}`;
 }
 
-module.exports = { resolveCartPrices, getCatalogIndex, cartHasPublisherSourced, cartHasNoCod, makeOrderId, makeSlug };
+module.exports = { extractSlug, resolveCartPrices, getCatalogIndex, cartHasPublisherSourced, cartHasNoCod, makeOrderId, makeSlug };

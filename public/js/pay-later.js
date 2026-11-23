@@ -26,7 +26,7 @@
     if (!c.length) { slot.innerHTML = ''; return; }
     fetch('/.netlify/functions/pay-later-status', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phone(), slugs: c.map(function (i) { return i && i.slug; }).filter(Boolean) }),
+      body: JSON.stringify({ phone: phone(), items: c.filter(Boolean).map(function (i) { return { slug: i.slug || '', id: i.id || '', url: i.url || '' }; }) }),
     }).then(function (r) { return r.json(); }).then(function (d) {
       var keep = state.open && d && d.enabled && d.eligible && d.cart === 'all';
       state.status = d;
@@ -41,12 +41,12 @@
     var d = state.status;
     if (!d || !d.enabled || d.cart === 'none') { slot.innerHTML = ''; return; }
     if (!d.eligible) {
-      slot.innerHTML = '<button type="button" disabled aria-disabled="true" style="' + BTN + 'border:1px dashed #b9a3dc;background:#f6f1fb;color:#8a7aa6;cursor:not-allowed;">🕒 Pay Later · pay within ' + esc(d.due_days || 7) + ' days of delivery</button>'
+      slot.innerHTML = '<button type="button" disabled aria-disabled="true" style="' + BTN + 'border:1px dashed #b9a3dc;background:#f6f1fb;color:#8a7aa6;cursor:not-allowed;">🕒 Pay Later · pay after delivery</button>'
         + '<div style="font-size:.66rem;line-height:1.6;text-align:center;margin-top:.4rem;color:var(--cream-dim);">' + esc(d.message || '') + '</div>';
       return;
     }
     if (!state.open) {
-      slot.innerHTML = '<button type="button" id="plOpenBtn" style="' + BTN + 'border:1px solid #7b55c7;background:#f1eafb;color:#4b2a8c;cursor:pointer;">🕒 Pay Later · pay within ' + esc(d.due_days || 7) + ' days of delivery</button>'
+      slot.innerHTML = '<button type="button" id="plOpenBtn" style="' + BTN + 'border:1px solid #7b55c7;background:#f1eafb;color:#4b2a8c;cursor:pointer;">🕒 Pay Later · pay after delivery</button>'
         + '<div style="font-size:.66rem;line-height:1.6;text-align:center;margin-top:.4rem;color:var(--cream-dim);">You are eligible. Your order is placed after we confirm it.</div>';
       document.getElementById('plOpenBtn').onclick = function () {
         if (typeof collectAddr === 'function' && !collectAddr()) return;

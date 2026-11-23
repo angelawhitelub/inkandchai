@@ -49,9 +49,9 @@ const WHY_TEXT = [
   'Your PAN card is how a credit bureau identifies you, so we need a clear photo of it (front side, all four corners visible) and your PAN number.',
   'Your bank account number and IFSC let us confirm that the account belongs to the same person as the PAN.',
   'The name on your PAN card must match the name on your bank account exactly. If the names differ, the credit score check fails and we cannot approve Pay Later.',
-  'We use these details only to check your credit score and confirm your identity for this order. We never debit your account.',
+  'We use these details only to check your credit score, confirm your identity and set up AutoPay for this order.',
   'No OTP is needed for Pay Later. Our employees will never call or message you asking for an OTP, PIN, password or card details. If anyone does, it is not us: do not share it.',
-  'Nothing is charged now. We confirm or decline your order, usually within 24 hours. Once it is delivered we send you a secure Razorpay payment link, to be paid within 7 days.',
+  'Nothing is charged now. We confirm or decline your order, usually within 24 hours. Next you set up AutoPay (UPI or your bank): if the order is still unpaid on the day it is delivered, we collect it through AutoPay, and your bank or UPI app tells you before any money is taken. Without AutoPay, we send a secure Razorpay payment link on delivery, to be paid within 7 days.',
 ];
 const CONSENT_TEXT = 'I agree that Ink & Chai may use my PAN and bank account details to check my credit score and confirm my identity for this Pay Later order.';
 

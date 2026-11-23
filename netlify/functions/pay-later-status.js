@@ -25,7 +25,12 @@ exports.handler = async (event) => {
 
   const cfg = await PL.config();
   if (!cfg.enabled) return json(200, { enabled: false });
-  const slugs = (Array.isArray(body.slugs) ? body.slugs : []).slice(0, 50).map((slug) => ({ slug }));
+  // Cart lines (Buy Now and the basket store { id, url } and often no slug):
+  // read the slug the same way checkout pricing does.
+  const { extractSlug } = require('./utils/pricing');
+  const slugs = Array.isArray(body.items) && body.items.length
+    ? body.items.slice(0, 50).map((i) => ({ slug: extractSlug(i) })).filter((i) => i.slug)
+    : (Array.isArray(body.slugs) ? body.slugs : []).slice(0, 50).map((slug) => ({ slug }));
   const cart = PL.cartCoverage(slugs, cfg);
   const out = { enabled: true, cart, min_orders: PL.MIN_DELIVERED, due_days: PL.DUE_DAYS, why: PL.WHY_TEXT, consent: PL.CONSENT_TEXT };
   if (cart === 'none') return json(200, out);
