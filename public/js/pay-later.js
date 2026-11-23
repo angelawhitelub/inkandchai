@@ -41,12 +41,12 @@
     var d = state.status;
     if (!d || !d.enabled || d.cart === 'none') { slot.innerHTML = ''; return; }
     if (!d.eligible) {
-      slot.innerHTML = '<button type="button" disabled aria-disabled="true" style="' + BTN + 'border:1px dashed rgba(176,124,255,.55);background:rgba(176,124,255,.06);color:rgba(240,232,216,.55);cursor:not-allowed;">🕒 Pay Later · pay within ' + esc(d.due_days || 7) + ' days of delivery</button>'
+      slot.innerHTML = '<button type="button" disabled aria-disabled="true" style="' + BTN + 'border:1px dashed #b9a3dc;background:#f6f1fb;color:#8a7aa6;cursor:not-allowed;">🕒 Pay Later · pay within ' + esc(d.due_days || 7) + ' days of delivery</button>'
         + '<div style="font-size:.66rem;line-height:1.6;text-align:center;margin-top:.4rem;color:var(--cream-dim);">' + esc(d.message || '') + '</div>';
       return;
     }
     if (!state.open) {
-      slot.innerHTML = '<button type="button" id="plOpenBtn" style="' + BTN + 'border:1px solid rgba(176,124,255,.75);background:rgba(176,124,255,.14);color:#d9c2ff;cursor:pointer;">🕒 Pay Later · pay within ' + esc(d.due_days || 7) + ' days of delivery</button>'
+      slot.innerHTML = '<button type="button" id="plOpenBtn" style="' + BTN + 'border:1px solid #7b55c7;background:#f1eafb;color:#4b2a8c;cursor:pointer;">🕒 Pay Later · pay within ' + esc(d.due_days || 7) + ' days of delivery</button>'
         + '<div style="font-size:.66rem;line-height:1.6;text-align:center;margin-top:.4rem;color:var(--cream-dim);">You are eligible. Your order is placed after we confirm it.</div>';
       document.getElementById('plOpenBtn').onclick = function () {
         if (typeof collectAddr === 'function' && !collectAddr()) return;
@@ -56,9 +56,9 @@
       return;
     }
     var why = (d.why || []).map(function (t) { return '<li style="margin:.25rem 0;">' + esc(t) + '</li>'; }).join('');
-    var input = 'width:100%;padding:.65rem .75rem;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:inherit;font-size:.85rem;margin-top:.25rem;';
+    var input = 'width:100%;padding:.65rem .75rem;border-radius:8px;border:1px solid var(--border);background:#fff;color:inherit;font-size:.85rem;margin-top:.25rem;';
     var label = 'display:block;font-size:.7rem;margin-top:.7rem;color:var(--cream-dim);';
-    slot.innerHTML = '<div id="plForm" style="margin-top:.85rem;padding:1rem;border:1px solid rgba(176,124,255,.55);border-radius:14px;background:rgba(176,124,255,.06);text-align:left;">'
+    slot.innerHTML = '<div id="plForm" style="margin-top:.85rem;padding:1rem;border:1px solid #b9a3dc;border-radius:14px;background:#faf7fd;text-align:left;">'
       + '<div style="font-weight:700;font-size:.9rem;margin-bottom:.4rem;">🕒 Pay Later: a few details for your credit check</div>'
       + '<div style="font-weight:600;font-size:.74rem;margin-top:.4rem;">Why we ask for your PAN and bank details</div>'
       + '<ul style="font-size:.7rem;line-height:1.6;padding-left:1.1rem;margin:.3rem 0 .4rem;color:var(--cream-dim);">' + why + '</ul>'
@@ -68,9 +68,9 @@
       + '<label style="' + label + '">Bank account number (in the same name as your PAN)<input id="plAcc" type="text" inputmode="numeric" autocomplete="off" style="' + input + '"/></label>'
       + '<label style="' + label + '">Bank account number again<input id="plAcc2" type="text" inputmode="numeric" autocomplete="off" style="' + input + '"/></label>'
       + '<label style="' + label + '">IFSC code<input id="plIfsc" type="text" maxlength="11" autocomplete="off" placeholder="SBIN0001234" style="' + input + 'text-transform:uppercase;"/></label>'
-      + '<label style="display:flex;gap:.55rem;align-items:flex-start;margin-top:.85rem;font-size:.7rem;line-height:1.5;cursor:pointer;"><input id="plConsent" type="checkbox" style="margin-top:.15rem;accent-color:#b07cff;"/><span>' + esc(d.consent || '') + '</span></label>'
-      + '<div id="plErr" role="alert" style="display:none;margin-top:.7rem;color:#f09a8c;font-size:.74rem;"></div>'
-      + '<button type="button" id="plSubmit" style="' + BTN + 'border:none;background:#b07cff;color:#140b22;cursor:pointer;">Request Pay Later order</button>'
+      + '<label style="display:flex;gap:.55rem;align-items:flex-start;margin-top:.85rem;font-size:.7rem;line-height:1.5;cursor:pointer;"><input id="plConsent" type="checkbox" style="margin-top:.15rem;accent-color:#5b34b0;"/><span>' + esc(d.consent || '') + '</span></label>'
+      + '<div id="plErr" role="alert" style="display:none;margin-top:.7rem;color:#b3261e;font-size:.74rem;"></div>'
+      + '<button type="button" id="plSubmit" style="' + BTN + 'border:none;background:#5b34b0;color:#fff;cursor:pointer;">Request Pay Later order</button>'
       + '<button type="button" id="plCancel" style="display:block;margin:.5rem auto 0;background:none;border:none;color:var(--cream-dim);font-size:.7rem;text-decoration:underline;cursor:pointer;">Choose another way to pay</button>'
       + '</div>';
     document.getElementById('plCancel').onclick = function () { state.open = false; render(); };
@@ -137,11 +137,11 @@
     }).then(function (d) {
       try { if (typeof clearCart === 'function') clearCart(); } catch (e) { /* cart already gone */ }
       var block = document.getElementById('paymentBlock') || slot;
-      block.innerHTML = '<div style="padding:1.2rem;border:1px solid rgba(176,124,255,.55);border-radius:14px;background:rgba(176,124,255,.08);text-align:center;line-height:1.7;">'
+      block.innerHTML = '<div style="padding:1.2rem;border:1px solid #b9a3dc;border-radius:14px;background:#faf7fd;text-align:center;line-height:1.7;">'
         + '<div style="font-size:1.6rem;">🕒</div><div style="font-weight:700;font-size:1rem;">Pay Later request received</div>'
         + '<div style="font-size:.8rem;margin-top:.3rem;">Order <strong>' + esc(d.order_id) + '</strong> · ₹' + esc(Number(d.amount || 0).toLocaleString('en-IN')) + ' to pay after delivery</div>'
         + '<div style="font-size:.74rem;color:var(--cream-dim);margin-top:.5rem;">Nothing has been charged. We will check your credit score and email you once your order is confirmed, usually within 24 hours. No OTP is needed, and our employees will never call or message you asking for one.</div>'
-        + '<a href="/" style="display:inline-block;margin-top:.9rem;color:#d9c2ff;">Continue browsing</a></div>';
+        + '<a href="/" style="display:inline-block;margin-top:.9rem;color:#5b34b0;">Continue browsing</a></div>';
       block.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }).catch(function (e) {
       fail(e.message || 'Could not place your request.');
