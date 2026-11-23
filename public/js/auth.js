@@ -2528,6 +2528,10 @@ window.IACClaimEvidence = {
     const noRet = new Set(Array.isArray(order.no_return_titles) ? order.no_return_titles : []);
     const allNoRet = lineItems.every(it => noRet.has(it.title));
     const returnNote = allNoRet ? ' (not available — stock clearance sale)' : closedNote;
+    // Books not replaced either (server: no_replacement_titles, e.g. Belonging).
+    const noRepl = new Set(Array.isArray(order.no_replacement_titles) ? order.no_replacement_titles : []);
+    const allNoRepl = lineItems.every(it => noRepl.has(it.title));
+    const replNote = allNoRepl ? ' (not available for this book)' : closedNote;
     const oid = order.razorpay_order_id || order.id;
     const q   = order.customer_email || order.customer_phone || '';
     const field = 'width:100%;box-sizing:border-box;background:#0d0b08;border:1px solid rgba(201,168,76,0.22);color:#f0e8d8;padding:0.5rem 0.7rem;font-family:inherit;font-size:0.72rem;';
@@ -2538,13 +2542,14 @@ window.IACClaimEvidence = {
           Return any book within 7 days of delivery for a full refund — we collect it from you (Cash on Delivery orders are refunded as store credit). A defective, misprinted, wrong or missing book is replaced free of charge.
           ${win.eligible ? `<span style="color:#7a6330;">${win.daysLeft} day${win.daysLeft === 1 ? '' : 's'} left to return or replace.</span>` : ''}
         </div>
-        ${noRet.size ? `<div style="font-size:0.62rem;color:#e8a030;line-height:1.5;margin-bottom:0.6rem;">🏷️ Stock clearance sale: no returns, only replacements — ${escHtml([...noRet].join(', '))}.</div>` : ''}
+        ${noRepl.size ? `<div style="font-size:0.62rem;color:#e8a030;line-height:1.5;margin-bottom:0.6rem;">🏷️ No returns or replacements — ${escHtml([...noRepl].join(', '))}.</div>` : ''}
+        ${[...noRet].some(t => !noRepl.has(t)) ? `<div style="font-size:0.62rem;color:#e8a030;line-height:1.5;margin-bottom:0.6rem;">🏷️ Stock clearance sale: no returns, only replacements — ${escHtml([...noRet].filter(t => !noRepl.has(t)).join(', '))}.</div>` : ''}
         <select class="repl-reason" onchange="iacReplReasonChanged(this)" style="${field}font-size:0.76rem;padding:0.6rem 0.7rem;margin-bottom:0.6rem;">
           <option value="">Choose what you need…</option>
           <option value="return"${win.eligible && !allNoRet ? '' : ' disabled'}>Return for a refund${returnNote}</option>
-          <option value="defective"${win.eligible ? '' : ' disabled'}>Defective book / misprint${closedNote}</option>
-          <option value="wrong_book"${win.eligible ? '' : ' disabled'}>Wrong book received${closedNote}</option>
-          <option value="missing">Book missing from the parcel</option>
+          <option value="defective"${win.eligible && !allNoRepl ? '' : ' disabled'}>Defective book / misprint${replNote}</option>
+          <option value="wrong_book"${win.eligible && !allNoRepl ? '' : ' disabled'}>Wrong book received${replNote}</option>
+          <option value="missing"${allNoRepl ? ' disabled' : ''}>Book missing from the parcel${allNoRepl ? ' (not available for this book)' : ''}</option>
         </select>
         <div class="repl-body" style="display:none;">
           <div class="repl-which" style="font-size:0.62rem;color:#a09080;line-height:1.5;margin-bottom:0.5rem;">Tap the book(s) that need replacing.</div>

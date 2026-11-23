@@ -148,6 +148,18 @@ exports.handler = async (event) => {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Selected book(s) are not part of this order.' }) };
     }
 
+    // Books the owner does not replace at all (utils/no-returns no_replacements).
+    {
+      const NR = require('./utils/no-returns');
+      let map = null;
+      try { map = await NR.noReturnMap(); } catch { map = null; }
+      const blocked = NR.noReplacementTitles(order, map, valid.map((v) => v.title));
+      if (blocked.length) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ code: 'no_replacements',
+          error: `${blocked.join(', ')} cannot be replaced or returned, so it cannot be reported here. Please message us on WhatsApp about it.` }) };
+      }
+    }
+
     // Stamp the report, create the free replacement, notify customer + owner.
     const result = await fileMissingBookReport(supabase, order, { valid, comment, refundUpi, photos: body.photos, via: 'website' });
     const missingLabels = result.missing;

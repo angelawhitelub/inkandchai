@@ -202,6 +202,19 @@ exports.handler = async (event) => {
     picked = match.valid.map((v) => ({ title: v.title, qty: v.qty }));
   }
 
+  // Books the owner does not replace at all (utils/no-returns no_replacements,
+  // e.g. Belonging). Picked books only; with nothing picked, the whole order.
+  {
+    const NR = require('./utils/no-returns');
+    let map = null;
+    try { map = await NR.noReturnMap(); } catch { map = null; }
+    const blocked = NR.noReplacementTitles(orig, map, picked);
+    if (blocked.length) {
+      return json(400, { code: 'no_replacements', error: `${blocked.join(', ')} cannot be replaced or returned. `
+        + (picked ? 'Please untick it and choose only the other book(s).' : 'If another book on this order needs replacing, choose just that book.') });
+    }
+  }
+
   let claim;
   try { claim = await beginClaim(sb, orig, photos); }
   catch (error) { return json(error.statusCode || 503, { error: error.message }); }

@@ -71,3 +71,20 @@ test('an all-orders book binds orders placed before the switch, and title-only l
   assert.equal(refused.ok, false);
   assert.equal(refused.code, 'no_returns');
 });
+
+test('a no-replacements book is refused for replacement; other books on the order are not', () => {
+  const slug = 'belonging-a-journey-of-love-by-sonia-gandhi';
+  const map = { [slug]: { since: NR.ALL_ORDERS_SINCE, title: 'Belonging: A Journey of Love by Sonia Gandhi', all_orders: true,
+    title_match: '\\bbelonging\\b|journey\\s+of\\s+love', no_replacements: true }, ...MAP };
+  const order = { created_at: '2026-11-01T08:00:00Z', cart_items: [
+    { slug, title: 'Belonging: A Journey of Love by Sonia Gandhi', qty: 1 }, { slug: 'verity', title: 'Verity', qty: 1 }] };
+  assert.deepEqual(NR.noReplacementTitles(order, map), ['Belonging: A Journey of Love by Sonia Gandhi']);
+  assert.deepEqual(NR.noReplacementTitles(order, map, [{ title: 'Verity' }]), []);
+  assert.deepEqual(NR.noReplacementTitles(order, map, ['belonging: a journey of love by sonia gandhi']).length, 1);
+  // WhatsApp orders carry only a title.
+  assert.equal(NR.isNoReplacementLine({ title: 'Belonging by Sonia Gandhi' }, map, '2026-11-12T00:00:00Z'), true);
+  // A clearance book is still replaced, and a stamp alone never blocks a replacement.
+  assert.equal(NR.isNoReplacementLine({ slug: 'clearance-book', title: 'Clearance Book' }, map, '2026-11-12T00:00:00Z'), false);
+  assert.equal(NR.isNoReplacementLine({ slug: 'x', _no_returns: true }, {}, '2026-11-12T00:00:00Z'), false);
+  assert.match(NR.noticeHtml(map[slug]), /No returns or replacements on this title/);
+});

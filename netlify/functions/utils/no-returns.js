@@ -14,6 +14,11 @@
  * Enforced in request-return (pickReturnItems refuses the line). A free
  * replacement for a defective, misprinted, wrong or missing copy is unchanged.
  * Shown on the product page (Worker), in My Orders and to the WhatsApp bot.
+ *
+ * no_replacements (owner's choice per book, Belonging 24 Nov 2026): the book
+ * is not replaced either, for any reason. request-replacement and
+ * report-missing-books refuse it (noReplacementTitles); admin can still make
+ * a replacement by hand.
  */
 let blobs = null;
 try { blobs = require('@netlify/blobs'); } catch { blobs = null; }
@@ -37,6 +42,8 @@ const NOTICE_PLAIN_DETAIL = 'This title cannot be returned for a refund. '
 // `since` for all_orders: earlier than any order, so orders placed before the
 // switch are bound too (owner's choice per book, e.g. Belonging, 21 Nov 2026).
 const ALL_ORDERS_SINCE = '2000-01-01T00:00:00.000Z';
+const NOTICE_NONE = 'No returns or replacements on this title.';
+const NOTICE_NONE_DETAIL = 'This title cannot be returned for a refund or replaced. Please check your copy when it arrives.';
 
 const titleKey = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -50,7 +57,7 @@ let cache = null;
 let at = 0;
 
 const entryOf = (i) => ({ since: i.since || i.updated_at || null, title: i.title || '',
-  all_orders: i.all_orders === true, title_match: i.title_match || '' });
+  all_orders: i.all_orders === true, title_match: i.title_match || '', no_replacements: i.no_replacements === true });
 
 /** { slug: { since, title } }, cached a minute per isolate; a failed read keeps the last good map. */
 async function noReturnMap() {
@@ -73,7 +80,7 @@ async function noReturnMap() {
  * is a regex for order lines that carry only a title (WhatsApp orders).
  * Both are kept from the earlier entry when not given.
  */
-async function setNoReturns(slug, on, { title = '', allOrders, titleMatch } = {}) {
+async function setNoReturns(slug, on, { title = '', allOrders, titleMatch, noReplacements } = {}) {
   const s = normSlug(slug);
   if (!s) throw new Error('Missing product slug');
   const list = await readList();
@@ -90,6 +97,8 @@ async function setNoReturns(slug, on, { title = '', allOrders, titleMatch } = {}
     const entry = { slug: s, title: String(title || (prev && prev.title) || '').slice(0, 200), since, updated_at: now };
     if (all) entry.all_orders = true;
     if (tm) entry.title_match = tm;
+    const noRepl = noReplacements === undefined ? !!(prev && prev.no_replacements) : noReplacements === true;
+    if (noRepl) entry.no_replacements = true;
     items.unshift(entry);
   }
   if (items.length > MAX_ITEMS) throw new Error(`At most ${MAX_ITEMS} books can be marked.`);
@@ -114,17 +123,41 @@ function isNoReturnLine(item, map, placedAt) {
   if (!item) return false;
   if (item._no_returns === true) return true;
   if (item._no_returns === false) return false;
-  if (!map) return false;
+  return !!lineEntry(item, map, placedAt);
+}
+
+/** The switch entry that binds this line (by slug, else by title), or null. */
+function lineEntry(item, map, placedAt) {
+  if (!item || !map) return null;
   let hit = map[normSlug(item.slug)] || null;
   if (!hit && !item.slug) {
     const k = titleKey(item.title || item.name);
     const raw = String(item.title || item.name || '');
     if (k) hit = Object.values(map).find((v) => v && (titleKey(v.title) === k || titleMatches(v, raw))) || null;
   }
-  if (!hit) return false;
+  if (!hit) return null;
   const since = Date.parse(hit.since || '');
   const placed = Date.parse(placedAt || '');
-  return !(Number.isFinite(since) && Number.isFinite(placed) && placed < since);
+  return Number.isFinite(since) && Number.isFinite(placed) && placed < since ? null : hit;
+}
+
+/** Not replaced either: the book's entry says no_replacements (stamps do not decide this). */
+function isNoReplacementLine(item, map, placedAt) {
+  const hit = lineEntry(item, map, placedAt);
+  return !!(hit && hit.no_replacements);
+}
+
+/**
+ * Titles on the order that cannot be replaced. With `only` (titles the
+ * customer picked), just those of them; without, every book on the order.
+ */
+function noReplacementTitles(order, map, only) {
+  const want = Array.isArray(only) && only.length
+    ? new Set(only.map((t) => String((t && t.title) || t || '').trim().toLowerCase())) : null;
+  return cartLines(order)
+    .filter((i) => !want || want.has(String(i.title || i.name).trim().toLowerCase()))
+    .filter((i) => isNoReplacementLine(i, map, order && order.created_at))
+    .map((i) => String(i.title || i.name).trim());
 }
 
 function titleMatches(entry, title) {
@@ -140,6 +173,11 @@ function noReturnTitles(order, map) {
 }
 
 function noticeHtml(entry) {
+  if (entry && entry.no_replacements) {
+    return '<div data-no-returns="1" style="border:1px solid rgba(214,184,94,0.45);background:rgba(214,184,94,0.08);padding:0.85rem 1.05rem;'
+      + 'border-radius:14px;margin:0.9rem 0;font-size:0.8rem;line-height:1.6;">'
+      + `<strong style="display:block;margin-bottom:0.2rem;">🏷️ ${NOTICE_NONE}</strong>${NOTICE_NONE_DETAIL}</div>`;
+  }
   const plain = !!(entry && entry.all_orders);
   return '<div data-no-returns="1" style="border:1px solid rgba(214,184,94,0.45);background:rgba(214,184,94,0.08);padding:0.85rem 1.05rem;'
     + 'border-radius:14px;margin:0.9rem 0;font-size:0.8rem;line-height:1.6;">'
@@ -148,4 +186,4 @@ function noticeHtml(entry) {
 
 function _reset() { cache = null; at = 0; }
 
-module.exports = { readList, noReturnMap, setNoReturns, isNoReturnLine, noReturnTitles, noticeHtml, NOTICE, NOTICE_DETAIL, NOTICE_PLAIN, ALL_ORDERS_SINCE, KEY, _reset };
+module.exports = { readList, noReturnMap, setNoReturns, isNoReturnLine, noReturnTitles, isNoReplacementLine, noReplacementTitles, noticeHtml, NOTICE, NOTICE_DETAIL, NOTICE_PLAIN, NOTICE_NONE, ALL_ORDERS_SINCE, KEY, _reset };

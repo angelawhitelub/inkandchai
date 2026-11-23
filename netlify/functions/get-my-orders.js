@@ -175,6 +175,8 @@ exports.handler = async (event) => {
         // (utils/no-returns), the same answer request-return gives.
         const noRet = noReturns.noReturnTitles(o, noRetMap);
         if (noRet.length) o.no_return_titles = noRet;
+        const noRepl = noReturns.noReplacementTitles(o, noRetMap);
+        if (noRepl.length) o.no_replacement_titles = noRepl;
         // The server's own answer to "will report-missing-books demand a UPI
         // ID?", so My Orders shows the box exactly when it will be required --
         // the same flag track-order already sends. A browser-side copy of this
