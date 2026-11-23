@@ -150,13 +150,16 @@ async function allHandling(db) {
 
 /**
  * A function order → hold or null, for checking many orders on one read of the
- * books. Pre-orders first, then handling time. Never throws: if the books
+ * books. Pre-orders first, then handling time (skipped with opts.ignoreHandling). Never throws: if the books
  * cannot be read, both rules fall back to what checkout stamped on the order.
  */
 async function preorderChecker(db, now = Date.now(), opts = {}) {
   let live = null;
   try { live = await allReleases(db, now); }
   catch (e) { console.error('[preorder-hold] books unreadable, using the dates on the orders:', e.message); }
+  // ignoreHandling: the XpressBees panel push and its feed take handling-time
+  // books straight away (owner, 23 Nov 2026); only pre-orders are held there.
+  if (opts.ignoreHandling) return (order) => holdFromReleases(order, live, now);
   let handling = null;
   try { handling = await allHandling(db); }
   catch (e) { console.error('[preorder-hold] handling days unreadable, using the days on the orders:', e.message); }

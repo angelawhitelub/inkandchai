@@ -988,7 +988,7 @@ exports.handler = async (event) => {
   catch (e) { return wpError('woocommerce_rest_cannot_view', e.message, 500); }
 
   // A pre-order stays out of the feed until its publish date.
-  const split = splitHeld(rows, await preorderChecker(supabase));
+  const split = splitHeld(rows, await preorderChecker(supabase, Date.now(), { ignoreHandling: true }));
   rows = split.free;
   if (split.held.length) console.log(`[woo-channel] held ${split.held.length} pre-orders: ${split.held.map((h) => h.order.razorpay_order_id || h.order.id).join(', ')}`);
 

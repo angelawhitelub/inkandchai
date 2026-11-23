@@ -27,3 +27,9 @@ test('the release store reads as empty when KV is unavailable, so orders stay he
   const set = await releasedOrders();
   assert.equal(set.size, 0);
 });
+
+test('the XpressBees panel push ignores handling time but still holds pre-orders', async () => {
+  const holdFor = await preorderChecker(db, now, { ignoreHandling: true });
+  assert.equal(holdFor(order('IC-4', { title: 'Belonging', slug: 'belonging', _handling_days: 7 })), null);
+  assert.equal(holdFor(order('IC-5', { title: 'Future Book', slug: 'future-book', _release: '2026-12-01' })).kind, 'preorder');
+});

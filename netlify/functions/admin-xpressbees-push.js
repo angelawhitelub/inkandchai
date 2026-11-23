@@ -94,7 +94,7 @@ exports.handler = async (event) => {
     try { rows = await loadCandidates(supabase, null); }
     catch (e) { return json(500, { error: e.message }); }
     // Pre-orders are held out of the feed, so they are not visible to XpressBees.
-    const split = splitHeld(rows, await preorderChecker(supabase));
+    const split = splitHeld(rows, await preorderChecker(supabase, Date.now(), { ignoreHandling: true }));
     rows = split.free;
     const inWindow = rows.filter((o) => o.created_at >= since);
     const older    = rows.filter((o) => o.created_at < since);
@@ -129,7 +129,7 @@ exports.handler = async (event) => {
   const results = [];
 
   // A pre-order stays out of the feed until its publish date, so it is not queued.
-  const split = splitHeld(rows, await preorderChecker(supabase));
+  const split = splitHeld(rows, await preorderChecker(supabase, Date.now(), { ignoreHandling: true }));
   rows = split.free;
   for (const h of split.held) {
     results.push({ orderNumber: h.order.razorpay_order_id, action: 'refused', reason: h.reason });
