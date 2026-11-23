@@ -8322,6 +8322,8 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
           🚚 Cash on Delivery
         </button>
         <div class="cod-note" id="codNote" style="font-size:0.66rem;color:var(--cream-dim);line-height:1.6;margin-top:0.5rem;text-align:center;padding:0 0.2rem;"></div>
+        <!-- Pay Later (public/js/pay-later.js): empty unless the owner switched it on and the cart has a Pay Later title. -->
+        <div id="payLaterSlot"></div>
 
         <!-- Marketing consent. Deliberately UNCHECKED: a pre-ticked box is not
              consent, and sending marketing to people who never agreed is what
@@ -8402,7 +8404,7 @@ window.SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY_PLACEHOLDER";
      the server re-verifies before pricing. Without it the grants array is always
      empty and a Google-discounted price silently reverts to full price. -->
 <script src="/js/google-discount.js"></script>
-<script src="/js/policy-sheet.js" defer></script>
+<script src="/js/policy-sheet.js" defer></script><script src="/js/pay-later.js?v=20261123" defer></script>
 
 <script>
 // ── Cart (must match cart.js CART_KEY) ────────────────────────────────────

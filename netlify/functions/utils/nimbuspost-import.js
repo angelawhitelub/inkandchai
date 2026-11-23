@@ -99,7 +99,8 @@ async function buildPayload(order, opts = {}) {
     || Number(order.advance_paid_paise || 0) > 0
     || Number(paymentMeta.balance || 0) > 0);
   const fullyPrepaid = !isPartialCod
-    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid'
+      || require('./pay-later-kind').isPayLater(order));
 
   // What the courier collects. For a replacement amount_paise is authoritative
   // — 0 means free — so no fallback may apply: the subtotal is what the

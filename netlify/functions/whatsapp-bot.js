@@ -802,6 +802,18 @@ function pickupWaitLine(order) {
       + (q.refundPaise > 0 ? ', with a FULL refund of everything they paid.' : ' (Cash on Delivery: nothing to refund).'));
 }
 
+// Pay Later orders (utils/pay-later): nothing is collected at the door; the
+// customer pays a Razorpay link within 7 days of delivery.
+function payLaterLine(order) {
+  const m = require('./utils/pay-later-kind').payLaterMeta(order);
+  if (!m) return '';
+  const paid = !require('./utils/pay-later-kind').isUnpaidPayLater(order);
+  if (order.status === 'pay_later_review') return '\nPay Later: request WAITING for our team to check the credit score and confirm (usually within 24 hours). Nothing is charged yet. Do not promise approval. No OTP is ever needed and our team never asks for one.';
+  if (paid) return '\nPay Later: PAID. Treat it like a prepaid order.';
+  const due = m.due_at ? new Date(m.due_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }) : '';
+  return `\nPay Later: NOT a Cash on Delivery order. Nothing is paid to the courier. ${m.link_url ? `Payment link: ${m.link_url}${due ? ` (due ${due})` : ''}. Share it if they ask how to pay.` : 'We send a Razorpay payment link when it is delivered; it is due 7 days after delivery.'} No OTP is ever needed and our team never asks for one.`;
+}
+
 function noReturnLine(order) {
   let titles = [];
   try { titles = require('./utils/no-returns').noReturnTitles(order, _noRetMap); } catch { titles = []; }
@@ -817,7 +829,7 @@ function formatOrderContext(order, displayId, hold) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}${earlyCancelLine(order)}${pickupWaitLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}${payLaterLine(order)}${earlyCancelLine(order)}${pickupWaitLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**

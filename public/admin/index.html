@@ -984,6 +984,7 @@ select,input,textarea{font-size:1rem;}
         <a class="admin-tab" data-tab="returns" href="/admin/#returns" onclick="return adminTabClick(event,'returns')">↩ Returns <span id="pendingReturnsBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
         <div class="admin-menu-divider" aria-hidden="true"></div>
         <a class="admin-tab" data-tab="tickets" href="/admin/#tickets" onclick="return adminTabClick(event,'tickets')">🎫 Tickets <span id="ticketsBadge" style="display:none;background:#c98a36;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
+        <a class="admin-tab owner-only" data-tab="paylater" href="/admin/#paylater" onclick="return adminTabClick(event,'paylater')">💳 Pay Later <span id="plBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
         <a class="admin-tab owner-only" data-tab="copyright" href="/admin/#copyright" onclick="return adminTabClick(event,'copyright')">©️ Copyright <span id="crBadge" style="display:none;background:#c93636;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
         <a class="admin-tab" data-tab="reviews" href="/admin/#reviews" onclick="return adminTabClick(event,'reviews')">⭐ Reviews <span id="pendingReviewsBadge" style="display:none;background:#e07020;color:#fff;border-radius:10px;padding:0 5px;font-size:.55rem;margin-left:2px;line-height:1.6"></span></a>
       </div>
@@ -2211,6 +2212,15 @@ select,input,textarea{font-size:1rem;}
             </div>
             <p class="hint" id="prodNoReturnsMsg" style="margin-top:.65rem;"></p>
             <div id="prodNoReturnsList" class="hint" style="margin-top:.4rem;"></div>
+            <p class="hint" id="prodPayLaterCurrent" style="margin:.85rem 0 0;padding-top:.75rem;border-top:1px solid var(--border);color:var(--cream-dim);"></p>
+            <label style="display:flex;align-items:center;gap:.5rem;margin:.75rem 0 0;font-size:.8rem;cursor:pointer;">
+              <input type="checkbox" id="prodPayLater" style="accent-color:var(--gold);"/> 💳 Pay Later title (pay within 7 days of delivery)
+            </label>
+            <p class="hint" style="margin:.35rem 0 0;">Checkout offers Pay Later only when every book in the cart is ticked here, only while Pay Later is switched on in the 💳 Pay Later tab, and only to customers with at least 5 delivered orders. Every Pay Later order waits for your approval there.</p>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+              <button class="btn-green" type="button" id="prodPayLaterSaveBtn" onclick="savePayLaterBook()">Save Pay Later Setting</button>
+            </div>
+            <p class="hint" id="prodPayLaterMsg" style="margin-top:.65rem;"></p>
           </details>
           <details id="prodNewTitleAlert" ontoggle="if (this.open) loadNtaReport()" style="margin-top:1rem;border:1px solid var(--border);padding:.85rem;border-radius:12px;background:rgba(37,211,102,.05);">
             <summary style="cursor:pointer;color:#25d366;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;">📣 New-title alert (WhatsApp + email)</summary>
@@ -3003,6 +3013,23 @@ select,input,textarea{font-size:1rem;}
         <div id="taReportBox" class="hint" style="margin-top:.5rem;"></div>
         <p class="hint" style="margin-top:.7rem;">WhatsApp uses the template <code>new_title_alert_v1</code> (or <code>WHATSAPP_NEW_TITLE_TEMPLATE</code>), which Meta must approve first. Nobody gets the same book twice on the same channel; STOP and unsubscribes are always respected.</p>
       </div>
+    </section>
+  </div>
+
+  <div class="admin-section" id="tab-paylater">
+    <section class="product-panel">
+      <div class="product-head"><div><h2>Pay Later</h2><p>Customers with at least <strong>5 delivered orders</strong> can order your ticked books now and pay within <strong>7 days of delivery</strong> by a Razorpay link we send when it is delivered. Every request waits here: open the PAN and bank details, check the credit score, then <strong>Approve</strong> (it becomes an ordinary confirmed order and ships as prepaid, nothing collected at the door) or <strong>Decline</strong> (cancelled, customer emailed). PAN photos and bank details are kept in the private store and are shown only here.</p></div><button class="btn-outline" onclick="loadPayLater()">↻ Refresh</button></div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin:.2rem 0 1rem;padding:.8rem 1rem;border:1px solid var(--border);border-radius:12px;">
+        <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;cursor:pointer;"><input type="checkbox" id="plEnabled" onchange="setPayLaterEnabled(this)" style="accent-color:var(--gold);width:18px;height:18px;"/> <strong>Pay Later is on for customers</strong></label>
+        <span class="hint" id="plEnabledNote"></span>
+      </div>
+      <div id="plBooks" class="hint" style="margin-bottom:1rem;"></div>
+      <div id="plFilters" style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.2rem 0 1rem;">
+        <button type="button" class="btn-outline" data-v="review" onclick="loadPayLater('review')">Waiting for you</button>
+        <button type="button" class="btn-outline" data-v="open" onclick="loadPayLater('open')">Not paid yet</button>
+        <button type="button" class="btn-outline" data-v="all" onclick="loadPayLater('all')">All</button>
+      </div>
+      <div id="plList">Loading…</div>
     </section>
   </div>
 
@@ -7477,13 +7504,13 @@ function updateStats(opts = {}) {
       cod_pending:'COD', partial_cod_pending:'Partial COD', paid:'Paid Online',
       confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery',
       delivered:'Delivered', undelivered:'Undelivered', rto:'RTO', lost:'Lost',
-      cancelled:'Cancelled', refunded:'Refunded',
+      cancelled:'Cancelled', refunded:'Refunded', pay_later_review:'Pay Later (review)',
     };
     const COLOR = {
       __delivery_failed:'#e06060', shipped:'#c9a84c', out_for_delivery:'#4db8ff', delivered:'#6dbf6d',
       cancelled:'#e06060', rto:'#e06060', undelivered:'#e8a030', lost:'#e06060',
       refunded:'#a09080', paid:'#6dbf6d', confirmed:'#c9a84c',
-      cod_pending:'#e8a030', partial_cod_pending:'#e8a030',
+      cod_pending:'#e8a030', partial_cod_pending:'#e8a030', pay_later_review:'#b07cff',
     };
     const parts = [...ORDER, ...Object.keys(counts).filter(s => !ORDER.includes(s))]
       .filter(s => counts[s])
@@ -10352,6 +10379,7 @@ function selectProduct(slug) {
   loadSoldHiddenEditor(row);
   loadQtyLimitEditor(row);
   loadNoReturnsEditor(row);
+  loadPayLaterEditor(row);
   resetNewTitleAlert();
   loadProductCouponsForAdmin(row.slug);
   renderProductList();
@@ -13947,6 +13975,147 @@ async function listNoReturns() {
       ? `<strong>${items.length} book${items.length === 1 ? '' : 's'} with no returns:</strong><br>` + items.map(i => `<a href="/product/${esc(i.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(i.title || i.slug)}</a> · since ${esc(String(i.since || '').slice(0, 10))}`).join('<br>')
       : 'No book is marked no-returns.';
   } catch (e) { box.textContent = 'Could not load: ' + e.message; }
+}
+
+// ── Pay Later (admin-pay-later; owner only) ────────────────────────────────
+let _plView = 'review';
+async function plCall(opts) {
+  const res = await adminFetch('/.netlify/functions/admin-pay-later' + (opts.query || ''), opts.body
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts.body) } : {});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function loadPayLaterEditor(row) {
+  const cur = document.getElementById('prodPayLaterCurrent');
+  const box = document.getElementById('prodPayLater');
+  const msg = document.getElementById('prodPayLaterMsg');
+  if (msg) msg.textContent = '';
+  if (!row?.slug || !cur || !box) return;
+  cur.textContent = 'Checking Pay Later…';
+  try {
+    const d = await plCall({ query: '?slug=' + encodeURIComponent(row.slug) });
+    if (selectedProduct?.slug !== row.slug) return;
+    box.checked = !!d.on;
+    cur.textContent = (d.on ? 'This book is a Pay Later title.' : 'Not a Pay Later title.') + (d.enabled ? '' : ' (Pay Later is switched OFF for customers in the 💳 Pay Later tab.)');
+  } catch (e) { if (selectedProduct?.slug === row.slug) cur.textContent = 'Could not load Pay Later: ' + e.message; }
+}
+
+async function savePayLaterBook() {
+  const row = selectedProduct;
+  if (!row) return;
+  const on = !!document.getElementById('prodPayLater')?.checked;
+  const msg = document.getElementById('prodPayLaterMsg');
+  const btn = document.getElementById('prodPayLaterSaveBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const d = await plCall({ body: { action: 'book', slug: row.slug, on, title: mergedProduct(row).title || row.slug } });
+    if (msg) { msg.style.color = ''; msg.textContent = d.on ? ('Saved: Pay Later title.' + (d.enabled ? ' Checkout uses it within a minute.' : ' Customers see it once you switch Pay Later on in the 💳 Pay Later tab.')) : 'Saved: no longer a Pay Later title.'; }
+    loadPayLaterEditor(row);
+  } catch (e) { if (msg) { msg.textContent = 'Could not save: ' + e.message; msg.style.color = '#c96a6a'; } }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function setPayLaterEnabled(box) {
+  const on = !!box.checked;
+  if (!confirm(on ? 'Switch Pay Later ON for customers? Eligible customers (5+ delivered orders) will see it at checkout for your ticked books.' : 'Switch Pay Later OFF? Checkout stops offering it at once. Orders already placed are not affected.')) { box.checked = !on; return; }
+  box.disabled = true;
+  try { await plCall({ body: { action: 'enabled', on } }); await loadPayLater(_plView); }
+  catch (e) { box.checked = !on; alert('Could not change it: ' + e.message); }
+  finally { box.disabled = false; }
+}
+
+function plMoney(n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); }
+function plDate(iso) { return iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
+
+async function loadPayLater(view) {
+  if (view) _plView = view;
+  document.querySelectorAll('#plFilters button').forEach(b => b.classList.toggle('active', b.dataset.v === _plView));
+  const list = document.getElementById('plList');
+  const books = document.getElementById('plBooks');
+  if (list) list.textContent = 'Loading…';
+  try {
+    const cfg = await plCall({ query: '?action=config' });
+    const en = document.getElementById('plEnabled'); if (en) en.checked = !!cfg.enabled;
+    const note = document.getElementById('plEnabledNote');
+    if (note) note.textContent = cfg.enabled ? 'Customers can see it now.' : 'Off: no customer sees Pay Later.';
+    if (books) books.innerHTML = (cfg.items || []).length
+      ? `<strong>${cfg.items.length} Pay Later title${cfg.items.length === 1 ? '' : 's'}</strong> (tick or untick in the product editor):<br>` + cfg.items.map(i => `<a href="/product/${esc(i.slug)}/" target="_blank" rel="noopener" style="color:var(--gold-dim);">${esc(i.title || i.slug)}</a>`).join(' · ')
+      : 'No Pay Later titles yet. Tick "💳 Pay Later title" in a book\'s product editor.';
+    const d = await plCall({ query: '?action=orders&view=' + encodeURIComponent(_plView) });
+    const rows = d.orders || [];
+    const badge = document.getElementById('plBadge');
+    if (badge && _plView === 'review') { badge.textContent = rows.length; badge.style.display = rows.length ? '' : 'none'; }
+    if (!list) return;
+    if (!rows.length) { list.innerHTML = '<p class="hint">Nothing here.</p>'; return; }
+    list.innerHTML = rows.map(r => {
+      const due = r.due_at ? ` · due ${esc(plDate(r.due_at))}` : '';
+      const state = r.paid ? '✅ paid' : (r.state === 'overdue' ? '⏰ OVERDUE' : esc(r.state || ''));
+      const id = esc(r.order_id);
+      return `<div class="product-panel" style="margin:0 0 .8rem;padding:.9rem 1rem;border:1px solid var(--border);border-radius:12px;">
+        <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+          <div><strong style="color:var(--gold);">${id}</strong> · ${plMoney(r.amount)} · <span>${esc(r.status)}</span> · ${state}${due}<br>
+            <span class="hint">${esc(r.customer_name)} · ${esc(r.customer_phone)} · ${esc(r.customer_email)} · ${r.delivered_orders != null ? esc(r.delivered_orders) + ' delivered orders before' : ''} · placed ${esc(plDate(r.created_at))}</span><br>
+            <span class="hint">${esc(r.customer_address)}</span><br>
+            <span class="hint">Books: ${r.books.map(b => esc(b.title) + (b.qty > 1 ? ' ×' + b.qty : '')).join(', ')}</span><br>
+            <span class="hint">Name on PAN: <strong>${esc(r.pan_name)}</strong> · bank account ending ${esc(r.account_last4)}${r.awb ? ' · AWB ' + esc(r.awb) : ''}${r.link_url ? ` · <a href="${esc(r.link_url)}" target="_blank" rel="noopener" style="color:var(--gold-dim);">payment link</a> sent ${esc(plDate(r.link_sent_at))}` : ''}${r.reject_reason ? ' · declined: ' + esc(r.reject_reason) : ''}</span>
+          </div>
+          <div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:flex-start;">
+            <button class="btn-outline" type="button" onclick="viewPayLaterKyc('${id}', this)">🪪 PAN + bank</button>
+            ${r.status === 'pay_later_review' ? `<button class="btn-green" type="button" onclick="payLaterDecide('${id}','approve',this)">Approve</button><button class="btn-outline" type="button" style="color:#e06060;border-color:#e06060;" onclick="payLaterDecide('${id}','reject',this)">Decline</button>` : ''}
+            ${r.status === 'delivered' && !r.paid ? `<button class="btn-outline" type="button" onclick="payLaterDecide('${id}','send_link',this)">${r.link_url ? 'Resend' : 'Send'} payment link</button>` : ''}
+            ${!r.paid && r.status !== 'cancelled' && r.status !== 'pay_later_review' ? `<button class="btn-outline" type="button" onclick="payLaterDecide('${id}','mark_paid',this)">Mark paid (other way)</button>` : ''}
+          </div>
+        </div>
+        <div id="plKyc-${id}" style="display:none;margin-top:.8rem;"></div>
+      </div>`;
+    }).join('');
+  } catch (e) { if (list) list.textContent = 'Could not load: ' + e.message; }
+}
+
+async function viewPayLaterKyc(id, btn) {
+  const box = document.getElementById('plKyc-' + id);
+  if (!box) return;
+  if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+  btn.disabled = true;
+  try {
+    const d = await plCall({ query: '?action=kyc&order=' + encodeURIComponent(id) });
+    const k = d.kyc || {};
+    box.innerHTML = `<div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      ${d.pan_image ? `<img src="data:${esc(d.pan_image.type)};base64,${d.pan_image.data}" alt="PAN card" style="max-width:420px;width:100%;border-radius:8px;border:1px solid var(--border);"/>` : '<p class="hint">PAN photo missing.</p>'}
+      <table style="font-size:.85rem;line-height:1.9;"><tbody>
+        <tr><td class="hint" style="padding-right:1rem;">Name on PAN</td><td><strong>${esc(k.name_on_pan)}</strong></td></tr>
+        <tr><td class="hint" style="padding-right:1rem;">PAN</td><td style="font-family:Menlo,monospace;">${esc(k.pan)}</td></tr>
+        <tr><td class="hint" style="padding-right:1rem;">Bank account</td><td style="font-family:Menlo,monospace;">${esc(k.bank_account)}</td></tr>
+        <tr><td class="hint" style="padding-right:1rem;">IFSC</td><td style="font-family:Menlo,monospace;">${esc(k.ifsc)}</td></tr>
+        <tr><td class="hint" style="padding-right:1rem;">Consent</td><td>${esc(plDate(k.consent && k.consent.at))}</td></tr>
+        <tr><td class="hint" style="padding-right:1rem;">Order name / phone</td><td>${esc(k.customer && k.customer.name)} · ${esc(k.customer && k.customer.phone)}</td></tr>
+      </tbody></table></div>
+      <p class="hint" style="margin-top:.5rem;">Check that the name on the PAN matches the bank account holder, then check the credit score before you approve.</p>`;
+    box.style.display = '';
+  } catch (e) { alert('Could not load: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+async function payLaterDecide(id, action, btn) {
+  let reason = '', note = '';
+  if (action === 'approve' && !confirm(`Approve Pay Later order ${id}? It becomes a confirmed order and ships as prepaid (nothing collected at the door). The customer is emailed that it is confirmed.`)) return;
+  if (action === 'reject') {
+    reason = prompt(`Decline Pay Later order ${id}? It will be cancelled and the customer emailed.\n\nReason for the customer (optional, e.g. "the name on the PAN does not match the bank account"):`, '');
+    if (reason === null) return;
+  }
+  if (action === 'send_link' && !confirm(`Send the payment link for ${id} to the customer now (email, and SMS from Razorpay)?`)) return;
+  if (action === 'mark_paid') {
+    note = prompt(`Mark ${id} as paid another way (cash, UPI to you, etc.)? Note for the record:`, '');
+    if (note === null) return;
+  }
+  btn.disabled = true;
+  try {
+    const d = await plCall({ body: { action, order: id, reason, note } });
+    if (action === 'send_link' && d.url) alert('Link sent: ' + d.url);
+    await loadPayLater(_plView);
+  } catch (e) { alert('Could not do it: ' + e.message); btn.disabled = false; }
 }
 
 function copyGoogleItemId() {
@@ -19252,7 +19421,7 @@ async function savePromotionAdmin() {
 async function promotionAction(id,action){if(action==='end'&&!confirm('End this promotion now?'))return;const r=await adminFetch('/.netlify/functions/admin-promotions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not update');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 async function deletePromotionAdmin(id){if(!confirm('Permanently delete this promotion? Use End if you want to preserve its history.'))return;const r=await adminFetch('/.netlify/functions/admin-promotions?id='+encodeURIComponent(id),{method:'DELETE'});const d=await r.json().catch(()=>({}));if(!r.ok)return alert(d.error||'Could not delete');promotionRows=d.promotions||[];renderPromotionsAdmin();}
 
-const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','titlealerts','copyright','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','readinglists','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
+const TABS = ['orders','tools','create','products','inventory','ebooks','bundles','coupons','titlealerts','paylater','copyright','promotions','reels','banners','abandoned','reviews','replacements','missingbooks','returns','tickets','notpicked','npcancelled','rtorefunds','botinbox','bookreq','bestsellers','readinglists','insights','feedback','bugs','inkai','bot','recover','reports','profit','adminaccess'];
 let adminTabInitialized = false;
 
 function activeAdminTabName() {
@@ -20466,6 +20635,7 @@ function switchTab(tab, pushState = true) {
   if (tab === 'returns' && _authed) { fetchReturnRequests(); fetchReturnTracking(); }
   if (tab === 'tickets' && _authed) loadTickets();
   if (tab === 'copyright' && _authed && adminRole === 'owner') loadCopyrightReports();
+  if (tab === 'paylater' && _authed && adminRole === 'owner') loadPayLater();
   if (tab === 'notpicked' && _authed) loadNotPicked();
   if (tab === 'botinbox' && _authed) fetchInbox();
   if (tab === 'bookreq' && _authed) fetchBookRequests();

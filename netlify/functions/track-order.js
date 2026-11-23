@@ -129,7 +129,7 @@ exports.handler = async (event) => {
     const items = data.cart_items || [];
     const meta = Array.isArray(items) ? items[0]?._payment : null;
     const isPartial = meta?.mode === 'partial_cod' || data.status === 'partial_cod_pending';
-    const isCOD = isPartial || !data.razorpay_payment_id;
+    const isCOD = (isPartial || !data.razorpay_payment_id) && !require('./utils/pay-later-kind').isPayLater(data);
     const paidNow = data.amount_paise ? (data.amount_paise / 100) : null;
     const total = isPartial ? (Number(meta?.full_total) || ((paidNow || 0) + (Number(meta?.balance) || 0))) : paidNow;
 

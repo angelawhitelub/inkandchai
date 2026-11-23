@@ -192,6 +192,11 @@ exports.handler = async (event) => {
     if (isReplacementOrder(order)) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'A free replacement order cannot be returned for a refund.' }) };
     }
+    // Pay Later not paid yet (utils/pay-later): there is nothing to refund, and a
+    // refund path would otherwise read "no payment id" as COD and mint credit.
+    if (require('./utils/pay-later-kind').isUnpaidPayLater(order)) {
+      return { statusCode: 409, headers: CORS, body: JSON.stringify({ code: 'pay_later_unpaid', error: 'This is a Pay Later order that has not been paid yet, so there is no refund to make. If you want to send the books back instead of paying, please message us on WhatsApp and we will arrange the pickup and cancel the amount due.' }) };
+    }
     if (order.razorpay_order_id) {
       const { data: repl } = await supabase.from('orders').select('razorpay_order_id')
         .eq('cart_items->0->_replacement->>original_order_id', order.razorpay_order_id).limit(1);

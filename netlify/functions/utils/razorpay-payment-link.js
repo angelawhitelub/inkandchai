@@ -15,6 +15,7 @@
  * @param {string} [opts.shippingAddress] Full delivery address — stored in notes so the webhook can save it
  * @param {string} [opts.books] Book title(s) — stored in notes for the webhook's placeholder cart
  * @param {string} [opts.referenceId] Our own id (bot order id) — echoed back in webhook
+ * @param {object} [opts.notes] Extra notes (e.g. { kind: 'pay_later', order_id }); with them, referenceId is not a bot order
  * @param {string} [opts.callbackUrl] Where to redirect after payment
  * @returns {Promise<{id:string, short_url:string, status:string}>}
  */
@@ -46,7 +47,8 @@ async function createRazorpayPaymentLink(opts) {
     // Razorpay's void@razorpay.com placeholder email, because a payment link has
     // no browser checkout to run verify-payment.
     notes: {
-      ...(opts.referenceId ? { bot_order_id: opts.referenceId } : {}),
+      ...(opts.referenceId && !opts.notes ? { bot_order_id: opts.referenceId } : {}),
+      ...(opts.notes || {}),
       ...(opts.customerName ? { customer_name: String(opts.customerName).slice(0, 100) } : {}),
       ...(contact ? { customer_phone: contact } : {}),
       ...(opts.shippingAddress ? { shipping_address: String(opts.shippingAddress).slice(0, 300) } : {}),

@@ -275,7 +275,8 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId, gu
   // Fully prepaid = a gateway payment covering the whole order (razorpay_payment_id
   // holds PhonePe ids too — see phonepe-refund.js), or an explicit 'paid'.
   const fullyPrepaid = !isPartialCod
-    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid'
+      || require('./utils/pay-later-kind').isPayLater(order));
   // Every replacement is a prepaid fulfilment shipment. A non-zero amount on
   // one is its declared value, not permission to collect cash at the door.
   const isCOD = !isReplacement && (isPartialCod || (!fullyPrepaid && amountRs > 0));
@@ -469,7 +470,8 @@ exports.handler = async (event) => {
         || Number(order.advance_paid_paise || 0) > 0
         || Number(_svcPm.balance || 0) > 0;
       const _svcPrepaid = !_svcPartial
-        && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+        && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid'
+          || require('./utils/pay-later-kind').isPayLater(order));
       const isCOD = _svcPartial || (!_svcPrepaid && Number(order.amount_paise || 0) > 0);
 
       const couriers = await npServiceability(token, {

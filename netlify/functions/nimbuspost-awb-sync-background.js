@@ -459,7 +459,7 @@ async function notifyShipped(order, awb, courier) {
   const trackUrl  = npTrackUrl(awb);
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
   const bookList  = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
-  const isCOD     = ['cod_pending', 'partial_cod_pending'].includes(order.status) || !order.razorpay_payment_id;
+  const isCOD     = (['cod_pending', 'partial_cod_pending'].includes(order.status) || !order.razorpay_payment_id) && !require('./utils/pay-later-kind').isPayLater(order);
   const total     = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
 
   if (order.customer_email) {

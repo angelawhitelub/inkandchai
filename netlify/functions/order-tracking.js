@@ -160,8 +160,8 @@ async function sendOFDNotification(order) {
   const firstName = (order.customer_name || 'there').split(' ')[0];
   const items     = Array.isArray(order.cart_items) ? order.cart_items : [];
   const bookTitle = items[0]?.title || 'your book';
-  const isCOD     = ['cod_pending', 'partial_cod_pending'].includes(order.status) ||
-                    !order.razorpay_payment_id;
+  const isCOD     = (['cod_pending', 'partial_cod_pending'].includes(order.status) ||
+                    !order.razorpay_payment_id) && !require('./utils/pay-later-kind').isPayLater(order);
   const total     = order.amount_paise
     ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}`
     : '';

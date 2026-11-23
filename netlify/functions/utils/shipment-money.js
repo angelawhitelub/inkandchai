@@ -42,6 +42,8 @@ function parseCartItems(cartItems) {
  *            advanceRs, shipmentPaymentType}}
  * @throws when a partial-COD order has no balance metadata
  */
+const { isPayLater } = require('./pay-later-kind');
+
 function classifyShipmentMoney(order, isReplacement) {
   const amountRs = order.amount_paise ? Math.round(order.amount_paise / 100) : 0;
 
@@ -55,7 +57,9 @@ function classifyShipmentMoney(order, isReplacement) {
     || partialBalanceRs > 0);
 
   const fullyPrepaid = !isPartialCod
-    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid'
+      // Pay Later: paid by link after delivery, never collected at the door.
+      || isPayLater(order));
 
   const isCOD = !isReplacement && (isPartialCod || (!fullyPrepaid && amountRs > 0));
 

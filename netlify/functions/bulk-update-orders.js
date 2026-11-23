@@ -72,7 +72,7 @@ function shipmentEmailHtml(order, reship = false) {
   const isPartial = meta.mode === 'partial_cod' || order.status === 'partial_cod_pending';
   const total = order.amount_paise ? (order.amount_paise / 100) : items.reduce((s, i) => s + i.price * i.qty, 0);
   const balance = isPartial ? Math.max(0, Number(meta.balance) || 0) : 0;
-  const isCOD = isPartial || order.status === 'cod_pending' || !order.razorpay_payment_id;
+  const isCOD = (isPartial || order.status === 'cod_pending' || !order.razorpay_payment_id) && !require('./utils/pay-later-kind').isPayLater(order);
   const rows = items.map(i => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;">${i.title}</td>

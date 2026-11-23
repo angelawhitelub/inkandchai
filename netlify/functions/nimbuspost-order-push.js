@@ -100,7 +100,8 @@ async function buildPayload(order) {
   // Decide on captured money instead: prepaid only when a gateway payment exists
   // or the order is explicitly 'paid'. A ₹0 order has nothing to collect.
   const fullyPrepaid = !isPartialCod
-    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid');
+    && (Boolean(order.razorpay_payment_id) || String(order.status || '').toLowerCase() === 'paid'
+      || require('./utils/pay-later-kind').isPayLater(order));
   // Replacements are always prepaid fulfilment shipments. Even when an admin
   // records a non-zero declared value, it must not become a COD collection.
   const isCod = !isReplacement && (isPartialCod || (!fullyPrepaid && collectable > 0));

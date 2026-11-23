@@ -154,6 +154,24 @@ exports.handler = async (event, context) => {
     return { statusCode: 200, body: 'OK — ebook' };
   }
 
+  // ── Pay Later links (utils/pay-later-link) settle an existing order ─────
+  // The order was placed (and shipped) before this payment, so nothing is
+  // created here: the payment id is written onto that order, which makes it
+  // an ordinary prepaid order from now on.
+  const plRef = String((paymentLink && paymentLink.reference_id) || '');
+  if (notes.kind === 'pay_later' || /^PL-IC-/i.test(plRef)) {
+    const plId = String(notes.order_id || plRef.replace(/^PL-/i, '')).trim();
+    const { data: plOrder } = await supabase.from('orders').select('*').eq('razorpay_order_id', plId).maybeSingle();
+    if (!plOrder) {
+      console.error('[razorpay-webhook] Pay Later payment for an unknown order', plId, razorpay_payment_id);
+      await require('./utils/pay-later-notify').ownerAlert(`⚠️ Pay Later payment ${razorpay_payment_id} (₹${Math.round(amount_paise / 100)}) for order ${plId}, which was not found. Check it by hand.`);
+      return { statusCode: 200, body: 'OK — pay later order not found' };
+    }
+    const done = await require('./utils/pay-later-link').markPayLaterPaid(supabase, plOrder, { paymentId: razorpay_payment_id, how: 'link' });
+    console.log('[razorpay-webhook] Pay Later', plId, done.already ? 'already paid' : 'marked paid');
+    return { statusCode: 200, body: 'OK — pay later' };
+  }
+
   // ── Check if order already exists (handler() may have already saved it) ──
   const { data: existing } = await supabase
     .from('orders')

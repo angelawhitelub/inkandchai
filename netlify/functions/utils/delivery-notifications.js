@@ -86,7 +86,8 @@ async function sendOFDNotification(order) {
   // List EVERY book (with qty), like the in-transit and delivered messages —
   // using only items[0] made a 2-book order read as if the second wasn't coming.
   const bookList  = items.map(i => i.title ? (Number(i.qty) > 1 ? `${i.title} ×${i.qty}` : i.title) : (i.name || '')).filter(Boolean).join(', ') || 'your books';
-  const isCOD     = !order.razorpay_payment_id || ['cod_pending','partial_cod_pending'].includes(order.status);
+  const isCOD     = (!order.razorpay_payment_id || ['cod_pending','partial_cod_pending'].includes(order.status))
+    && !require('./pay-later-kind').isPayLater(order);  // Pay Later: nothing collected at the door
   const total     = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
   const trackUrl  = order.tracking_url || siteTrackUrl(order);
 

@@ -156,7 +156,7 @@ async function sendShippedNotifications(order, awb) {
   const bookList   = items.map(i => i.title || i.name || '').filter(Boolean).join(', ') || 'your books';
   const courier    = order.courier_name || 'DTDC Surface';
   const total      = order.amount_paise ? `₹${(order.amount_paise / 100).toLocaleString('en-IN')}` : '';
-  const isCOD      = ['cod_pending','partial_cod_pending'].includes(order.status) || !order.razorpay_payment_id;
+  const isCOD      = (['cod_pending','partial_cod_pending'].includes(order.status) || !order.razorpay_payment_id) && !require('./utils/pay-later-kind').isPayLater(order);
 
   // ── Email ────────────────────────────────────────────────────────────────
   if (order.customer_email) {

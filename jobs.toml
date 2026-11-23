@@ -44,6 +44,11 @@
   # META_AD_ACCOUNT_IDS are set.
   schedule = "0 * * * *"
 
+# Pay Later (utils/pay-later): payment link on delivery, paid-link check,
+# overdue flag + owner alert. Shares the hourly "0 * * * *" trigger.
+[functions."pay-later-scheduled"]
+  schedule = "0 * * * *"
+
 [functions."lifetime-sales-scheduled"]
   # Lifetime units sold per book -> KV, for Reader Bestsellers and the product
   # page "N sold" line (utils/lifetime-sales). Read-only on orders.
