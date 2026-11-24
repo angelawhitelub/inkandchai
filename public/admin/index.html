@@ -2858,6 +2858,13 @@ select,input,textarea{font-size:1rem;}
         <button class="btn-outline" onclick="sendStockDelayNotices(this)" title="Customers whose booked order the courier has not picked up 3+ days after ordering, and the courier confirms is still waiting: email + WhatsApp that a book is out of stock with us and our supplier, with a link to request cancelling the order or removing the book. Shows the list first; sends nothing until you confirm. Each order is told once.">📣 Out-of-stock notices</button>
       </div>
     </div>
+    <div id="npuAutoCard" style="margin-bottom:.8rem;padding:.7rem .9rem;border:1px solid var(--border);border-radius:8px;background:var(--bg2);font-size:.72rem;line-height:1.6;">
+      <strong>🤖 Auto-cancel after 10 days</strong> — <span id="npuAutoState">checking…</span><br>
+      <span style="color:var(--cream-dim);">Every hour, orders placed 10+ days ago that no courier has picked up are cancelled and fully refunded (COD: nothing to refund), up to 10 an hour, oldest first. Each courier is asked live first; a parcel that has moved, a courier that does not answer or refuses, or an XpressBees panel booking without its AWB is never cancelled: you get a WhatsApp + email for those. Pre-orders and handling-time books inside their hold are skipped. The customer gets the usual "we could not get your book" email + WhatsApp.</span><br>
+      <button class="btn-outline" type="button" style="margin-top:.45rem;" onclick="npuAutoPreview(this)">👀 Preview (changes nothing)</button>
+      <button class="btn-outline" type="button" id="npuAutoBtn" style="margin-top:.45rem;" onclick="npuAutoToggle(this)">…</button>
+      <div id="npuAutoOut" style="margin-top:.45rem;"></div>
+    </div>
     <div id="npuBulkBar" style="display:none;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;padding:.55rem .8rem;border:1px solid rgba(224,96,96,.35);border-radius:8px;background:rgba(224,96,96,.06);font-size:.72rem;">
       <strong id="npuSelCount">0 selected</strong>
       <button class="btn-outline" style="border-color:#e06060;color:#e06060;" onclick="cancelNotPickedSelected(this)" title="Asks each courier first; only parcels still waiting for pickup are cancelled. Prepaid money goes back automatically; COD missing-book replacements get a UPI request by email and WhatsApp.">✕ Cancel &amp; refund selected</button>
@@ -4030,7 +4037,48 @@ async function refreshNotPickedBadge() {
 }
 setInterval(() => { if (document.visibilityState === 'visible') refreshNotPickedBadge(); }, 600000);
 
+// ── Auto-cancel after 10 days (unpicked-auto-cancel-scheduled) ─────────────
+const NPU_AUTO = '/.netlify/functions/unpicked-auto-cancel-scheduled';
+let _npuAutoOn = false;
+async function npuAutoCall(body) {
+  const res = await adminFetch(NPU_AUTO, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+  return d;
+}
+function npuAutoShow(on) {
+  _npuAutoOn = !!on;
+  const st = document.getElementById('npuAutoState'); const b = document.getElementById('npuAutoBtn');
+  if (st) st.innerHTML = on ? '<strong style="color:#4caf50;">ON</strong>' : '<strong style="color:#e06060;">OFF</strong>';
+  if (b) b.textContent = on ? 'Switch OFF' : 'Switch ON';
+}
+async function npuAutoLoad() {
+  try { npuAutoShow((await npuAutoCall({ action: 'status' })).on); }
+  catch (e) { const st = document.getElementById('npuAutoState'); if (st) st.textContent = 'could not read: ' + e.message; }
+}
+async function npuAutoToggle(btn) {
+  const on = !_npuAutoOn;
+  if (!confirm(on ? 'Switch auto-cancel ON? From the next hour, orders not picked up for 10+ days are cancelled and paid orders refunded in full, up to 10 an hour. Press Preview first to see what the first runs will do.' : 'Switch auto-cancel OFF?')) return;
+  btn.disabled = true;
+  try { npuAutoShow((await npuAutoCall({ action: 'switch', on })).on); }
+  catch (e) { alert('Could not switch: ' + e.message); }
+  btn.disabled = false;
+}
+async function npuAutoPreview(btn) {
+  const out = document.getElementById('npuAutoOut');
+  btn.disabled = true; out.textContent = 'Asking the couriers about the oldest 25 (up to a minute)…';
+  try {
+    const d = await npuAutoCall({ dry_run: true });
+    const rows = (d.results || []).map(r => `<tr><td style="padding:2px 8px 2px 0;">${esc(r.order_id)}</td><td style="padding:2px 8px;">${esc(r.outcome)}</td><td style="padding:2px 8px;">${r.refund && r.refund.amount_rs ? '₹' + esc(r.refund.amount_rs) + ' ' + esc(r.refund.via || '') : '—'}</td><td style="padding:2px 0;color:var(--cream-dim);">${esc(r.reason || '')}</td></tr>`).join('');
+    out.innerHTML = `<strong>${esc(d.eligible)}</strong> order(s) are past 10 days now. Of the oldest ${esc(d.checked)}: <strong>${esc(d.would_cancel)}</strong> would be cancelled, refunding <strong>₹${esc(Number(d.would_refund_rs || 0).toLocaleString('en-IN'))}</strong> to cards/UPI.`
+      + (d.skipped && d.skipped.length ? ` ${esc(d.skipped.length)} skipped (pre-order / handling hold or split order).` : '')
+      + `<div style="overflow-x:auto;max-height:320px;overflow-y:auto;margin-top:.4rem;"><table style="border-collapse:collapse;font-size:.7rem;">${rows}</table></div>`;
+  } catch (e) { out.textContent = 'Preview failed: ' + e.message; }
+  btn.disabled = false;
+}
+
 async function loadNotPicked(opts = {}) {
+  npuAutoLoad();
   const msg = document.getElementById('npuMsg');
   if (!msg) return;
   if (!opts.quiet) { msg.style.color = 'var(--cream-dim)'; msg.textContent = 'Loading…'; }

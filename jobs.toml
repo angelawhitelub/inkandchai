@@ -49,6 +49,12 @@
 [functions."pay-later-scheduled"]
   schedule = "0 * * * *"
 
+[functions."unpicked-auto-cancel-scheduled"]
+  # Owner rule 24 Nov 2026: not picked up 10+ days -> cancel + full refund
+  # (courier asked live first). OFF until switched on in admin Not Picked Up.
+  # Shares the hourly "0 * * * *" trigger.
+  schedule = "0 * * * *"
+
 [functions."lifetime-sales-scheduled"]
   # Lifetime units sold per book -> KV, for Reader Bestsellers and the product
   # page "N sold" line (utils/lifetime-sales). Read-only on orders.

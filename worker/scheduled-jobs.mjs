@@ -66,6 +66,7 @@ export const ENABLED_JOBS = new Set([
   'reading-list-agent-scheduled',  // one AI reading list every few days (draft unless auto-publish); no messages
   'lifetime-sales-scheduled',
   'busy-ship-scheduled',            // every 15 min: >100 copies in 24 h → product page ships a day later
+  'unpicked-auto-cancel-scheduled', // hourly: not picked up 10+ days -> cancel + refund (KV switch, default OFF)
   'pay-later-scheduled',            // hourly: Pay Later link on delivery, paid check, overdue alert (no-op until orders exist)
   // auto-mark-delivered is deliberately absent: delivered now comes from the
   // NimbusPost webhook. Run it by hand if orders stick in out_for_delivery.
