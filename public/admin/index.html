@@ -226,6 +226,9 @@ tr.selected-row td{background:rgba(35,122,59,0.08);}
 .cust-name .cust-link:hover{color:var(--gold);border-bottom-style:solid;}
 .items-cell .item-line .it-link{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor;}
 .items-cell .item-line .it-link:hover{color:var(--gold);border-bottom-style:solid;}
+.npu-book{cursor:copy;user-select:none;-webkit-user-select:none;border-bottom:1px dotted currentColor;}
+.npu-book:hover{color:var(--gold);border-bottom-style:solid;}
+.npu-book.npu-copied::after{content:' ✓ Copied';color:#6dbf6d;font-size:0.65rem;white-space:nowrap;}
 .items-cell .item-line .it-price{flex-shrink:0;color:var(--gold);font-variant-numeric:tabular-nums;font-size:0.7rem;}
 .items-cell .items-subtotal{margin-top:0.25rem;padding-top:0.25rem;border-top:1px dashed var(--border);color:var(--gold-dim);font-size:0.66rem;}
 .amount{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--gold);}
@@ -4237,11 +4240,35 @@ function npuBooksHtml(r) {
   return '<div class="items-cell">' + items.map(i => {
     const slug = itemProductSlug(i);
     const full = esc(i.title || '');
-    const name = slug
-      ? '<a class="it-link" href="/product/' + encodeURIComponent(slug) + '/" target="_blank" rel="noopener">' + full + '</a>'
-      : full;
-    return '<div class="item-line">' + itemThumbHtml(i, slug) + '<span class="it-title" title="' + full + '">' + name + ' ×' + (Number(i.qty) || 1) + '</span></div>';
+    // One click copies the title; a double click opens the book's page.
+    const name = '<span class="npu-book" data-title="' + full + '" data-slug="' + esc(slug) + '"'
+      + ' title="Click to copy' + (slug ? ' · double-click to open the book page' : '') + '"'
+      + ' onclick="npuBookClick(this)" ondblclick="npuBookOpen(this)">' + full + '</span>';
+    return '<div class="item-line">' + itemThumbHtml(i, slug) + '<span class="it-title">' + name + ' ×' + (Number(i.qty) || 1) + '</span></div>';
   }).join('') + '</div>';
+}
+// A single click waits a moment so a double click can cancel the copy.
+let npuBookTimer = null;
+function npuBookClick(el) {
+  clearTimeout(npuBookTimer);
+  npuBookTimer = setTimeout(() => {
+    const text = el.dataset.title || '';
+    const done = () => { el.classList.add('npu-copied'); setTimeout(() => el.classList.remove('npu-copied'), 1200); };
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch {}
+      ta.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }, 250);
+}
+function npuBookOpen(el) {
+  clearTimeout(npuBookTimer);
+  const slug = el.dataset.slug;
+  if (slug) window.open('/product/' + encodeURIComponent(slug) + '/', '_blank', 'noopener');
 }
 
 function renderNotPicked() {
