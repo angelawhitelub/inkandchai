@@ -39,10 +39,21 @@ function paymentLabel(order) {
   return isDefinitelyCod(order) ? 'cod' : 'prepaid';
 }
 
-/** The books as { title, qty } -- for counting, where a title may contain a comma. */
+/**
+ * The books as { title, qty, img, url } -- for counting, where a title may
+ * contain a comma, and for the admin's one-line-per-book list with covers.
+ */
 function itemsOf(order) {
   return (Array.isArray(order.cart_items) ? order.cart_items : [])
-    .map((i) => ({ title: String(i?.title || i?.name || '').replace(/\s+/g, ' ').trim(), qty: Math.max(1, Number(i?.qty || i?.quantity) || 1) }))
+    .map((i) => {
+      const img = String(i?.img || i?.image || i?.image_url || '');
+      return {
+        title: String(i?.title || i?.name || '').replace(/\s+/g, ' ').trim(),
+        qty: Math.max(1, Number(i?.qty || i?.quantity) || 1),
+        img: img && !img.startsWith('data:') ? img : '',
+        url: String(i?.url || i?.slug || i?.id || ''),
+      };
+    })
     .filter((i) => i.title);
 }
 

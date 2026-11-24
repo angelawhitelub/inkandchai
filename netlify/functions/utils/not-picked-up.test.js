@@ -142,5 +142,17 @@ test('refund on cancel: a missing-book replacement of a COD order is paid by UPI
 test('itemsOf keeps titles whole and quantities numeric, for the repeated-books count', () => {
   const { itemsOf } = require('./not-picked-up');
   assert.deepEqual(itemsOf({ cart_items: [{ title: 'Atomic Habits, Hardcover', qty: 2 }, { name: '  Ikigai ' }, { _payment: {} }] }),
-    [{ title: 'Atomic Habits, Hardcover', qty: 2 }, { title: 'Ikigai', qty: 1 }]);
+    [{ title: 'Atomic Habits, Hardcover', qty: 2, img: '', url: '' }, { title: 'Ikigai', qty: 1, img: '', url: '' }]);
+});
+
+test('itemsOf carries each book\'s cover and link for the admin list, never an inline data: image', () => {
+  const { itemsOf } = require('./not-picked-up');
+  const [a, b] = itemsOf({ cart_items: [
+    { title: 'Ikigai', qty: 1, img: 'https://cdn.example/ikigai.jpg', url: '/product/ikigai/' },
+    { title: 'Belonging', image: 'data:image/png;base64,AAAA', id: '/product/belonging/' },
+  ] });
+  assert.equal(a.img, 'https://cdn.example/ikigai.jpg');
+  assert.equal(a.url, '/product/ikigai/');
+  assert.equal(b.img, '');
+  assert.equal(b.url, '/product/belonging/');
 });

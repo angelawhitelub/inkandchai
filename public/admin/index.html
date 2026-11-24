@@ -1213,6 +1213,7 @@ select,input,textarea{font-size:1rem;}
     </select>
     <input type="date" id="shipByOn" onchange="applyFilters()" title="Ship-by date" style="display:none;"/>
   </div>
+  <div id="allCancHidden" class="hint" style="display:none;margin:-0.4rem 0 0.8rem;font-size:0.72rem;color:var(--cream-dim);"></div>
 
   <!-- ── Cancelled sub-filters (shown only when the Cancelled tab is active) ── -->
   <div class="sub-toolbar" id="cancelledSubBar" style="display:none;">
@@ -4229,6 +4230,20 @@ function npuUpiCell(r) {
   return '';
 }
 
+// One line per book with its cover (Orders tab look), not one joined string.
+function npuBooksHtml(r) {
+  const items = Array.isArray(r.items) && r.items.length ? r.items : null;
+  if (!items) return esc(r.books || '—');
+  return '<div class="items-cell">' + items.map(i => {
+    const slug = itemProductSlug(i);
+    const full = esc(i.title || '');
+    const name = slug
+      ? '<a class="it-link" href="/product/' + encodeURIComponent(slug) + '/" target="_blank" rel="noopener">' + full + '</a>'
+      : full;
+    return '<div class="item-line">' + itemThumbHtml(i, slug) + '<span class="it-title" title="' + full + '">' + name + ' ×' + (Number(i.qty) || 1) + '</span></div>';
+  }).join('') + '</div>';
+}
+
 function renderNotPicked() {
   const table = document.getElementById('npuTable');
   const counts = document.getElementById('npuCounts');
@@ -4277,7 +4292,7 @@ function renderNotPicked() {
         + td('<input type="checkbox" ' + (npuSel.has(r.id) ? 'checked' : '') + ' onchange="npuToggle(\'' + esc(r.id) + '\', this.checked)"/>')
         + td('<span style="font-family:ui-monospace,Menlo,monospace;user-select:all;">' + esc(r.order_id) + '</span><div class="hint">' + new Date(r.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>' + repl)
         + td('<strong>' + npuAge(r.age_hours) + '</strong>', 'white-space:nowrap;')
-        + td(esc(r.books || '—'), 'min-width:180px;max-width:280px;line-height:1.45;')
+        + td(npuBooksHtml(r), 'min-width:200px;max-width:300px;')
         + td(stage)
         + td(awb)
         + td(scan)
@@ -6122,6 +6137,14 @@ let currentFilter = '';
 // refunded / refund_failed. So "cancelled orders" really spans this whole family,
 // and querying only 'cancelled' returns COD orders exclusively.
 const CANCELLED_FAMILY = ['cancelled','refund_pending','refunded','refund_failed','partially_refunded'];
+// A cancelled order: status cancelled, or refunded after a cancel. Older prepaid
+// cancels carry no cancelled_at, so a full refund on a parcel that never moved
+// counts too; a refunded return (shipment moved) and partial refunds stay.
+function isCancelledOrder(o) {
+  const s = String(o?.status || '').toLowerCase();
+  if (s === 'cancelled' || (CANCELLED_FAMILY.includes(s) && o?.cancelled_at)) return true;
+  return ['refunded', 'refund_pending', 'refund_failed'].includes(s) && !o?.shipment_moved_at;
+}
 
 // Cancelled tab sub-slices — two independent dimensions:
 //   cancelledRange:  '' | 'today' | 'yesterday' | '7d'   (by cancellation date)
@@ -7751,7 +7774,13 @@ function applyFilters() {
   const dateTo   = document.getElementById('dateTo')?.value;
 
   const match = compileOrderQuery(q);
+  let cancHidden = 0;
   filtered = allOrders.filter(o => {
+    // All leaves cancelled orders out (owner, 25 Nov 2026); the Cancelled tab has them.
+    if (!currentFilter && isCancelledOrder(o)) {
+      if ((!match || match(o)) && (!dateFrom || new Date(o.created_at) >= new Date(dateFrom)) && (!dateTo || new Date(o.created_at) <= new Date(dateTo + 'T23:59:59'))) cancHidden++;
+      return false;
+    }
     if (currentFilter === '__unshipped' && !orderIsUnshipped(o)) return false;
     if (currentFilter === '__in_transit' && !isInTransit(o)) return false;
     if (currentFilter === '__delivery_failed' && !isDeliveryFailed(o)) return false;
@@ -7810,6 +7839,14 @@ function applyFilters() {
     } else {
       cancCount.textContent = '';
     }
+  }
+
+  const hid = document.getElementById('allCancHidden');
+  if (hid) {
+    hid.style.display = cancHidden ? 'block' : 'none';
+    hid.innerHTML = cancHidden
+      ? `${cancHidden} cancelled order${cancHidden === 1 ? '' : 's'} not shown here · <a href="#" style="color:var(--gold);" onclick="event.preventDefault(); setFilter(document.querySelector('.filter-btn[data-status=cancelled]'), 'cancelled')">see Cancelled</a>`
+      : '';
   }
 
   // Counters follow the search / date range (see statsScope).
