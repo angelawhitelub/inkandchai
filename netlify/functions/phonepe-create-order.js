@@ -52,7 +52,7 @@ const COUPONS = {
   INKLOVE10:  { type: 'percent', value: 10, minSubtotal: 499  },
   '499HIT':   { type: 'percent', value: 10, minSubtotal: 499  },
   SAVE12:     { type: 'percent', value: 12, minSubtotal: 999  },
-  SAVE15:     { type: 'percent', value: 15, minSubtotal: 1499 },
+  SAVE15:     { type: 'percent', value: 15, minSubtotal: 1499, maxDiscount: 250 },
   CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 399  },
 };
 
@@ -63,7 +63,7 @@ function couponDiscount(subtotal, code) {
   const discount = coupon.type === 'percent'
     ? Math.floor(subtotal * coupon.value / 100)
     : Math.floor(coupon.value);
-  return { code: normalized, discount: Math.max(0, discount) };
+  return { code: normalized, discount: Math.max(0, coupon.maxDiscount > 0 ? Math.min(discount, coupon.maxDiscount) : discount) };
 }
 
 // A site-wide sale (utils/site-sale) -- an opt-in one only when rawCode is its

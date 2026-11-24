@@ -83,7 +83,7 @@ THE SHOP
 PAYING
 - UPI, cards, net banking, Cash on Delivery, or Partial COD (10% online now, 90% cash on delivery).
 - Free delivery on prepaid orders above ₹399 (₹400 and up) and on Cash on Delivery / Partial COD orders of ₹499 or more; otherwise ₹40.
-- Prepaid coupons: INKLOVE10 (10% above ₹499), SAVE12 (12% above ₹999), SAVE15 (15% above ₹1499). COD orders cannot use coupons.
+- Prepaid coupons: INKLOVE10 (10% above ₹499), SAVE12 (12% above ₹999), SAVE15 (15% above ₹1499, max ₹250 off). COD orders cannot use coupons.
 
 DELIVERY — always say "after dispatch"
 - Delhi/NCR 1–2 business days, other metros 2–3, rest of India 3–5.

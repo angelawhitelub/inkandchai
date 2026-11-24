@@ -8368,7 +8368,7 @@ footer{text-align:center;padding:2rem;border-top:1px solid var(--border);font-si
 <!--SALE:END-->            <option value="">Choose another prepaid offer</option>
             <option value="INKLOVE10">INKLOVE10 · 10% off prepaid above ₹499</option>
             <option value="SAVE12">SAVE12 · 12% off prepaid above ₹999</option>
-            <option value="SAVE15">SAVE15 · 15% off prepaid above ₹1499</option>
+            <option value="SAVE15">SAVE15 · 15% off prepaid above ₹1499, max ₹250</option>
             <option value="499HIT">499HIT · 10% off prepaid above ₹499</option>
           </select>
           <label for="couponCode">Coupon Code</label>
@@ -8485,7 +8485,7 @@ const COUPONS = {
   INKLOVE10: { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
   '499HIT':  { type: 'percent', value: 10, minSubtotal: 499, onlineOnly: true, label: '10% prepaid discount' },
   SAVE12:    { type: 'percent', value: 12, minSubtotal: 999, onlineOnly: true, label: '12% prepaid discount' },
-  SAVE15:    { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, label: '15% prepaid discount' },
+  SAVE15:    { type: 'percent', value: 15, minSubtotal: 1499, onlineOnly: true, maxDiscount: 250, label: '15% prepaid discount' },
   CHAI10BACK:{ type: 'percent', value: 10, minSubtotal: 399, onlineOnly: true, label: 'Private 10% recovery discount' },
 };
 const PARTIAL_PAYMENT_THRESHOLD = 299;

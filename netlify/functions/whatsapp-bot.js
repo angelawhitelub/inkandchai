@@ -97,7 +97,7 @@ COPYRIGHT REPORTS — authors, publishers, rights holders or their agents:
 COUPONS (share only when customer asks about discounts):
 - 10% off on prepaid orders above ₹499 (code: INKLOVE10)
 - 12% off on prepaid orders above ₹999 (code: SAVE12)
-- 15% off on prepaid orders above ₹1499 (code: SAVE15)
+- 15% off on prepaid orders above ₹1499, up to ₹250 off (code: SAVE15)
 - Coupons only apply to Pay Now (not COD)
 
 ORDER TRACKING — "where is my order?" / "order status?" / "AWB?":
@@ -1281,7 +1281,7 @@ function saleInstructions(now = Date.now()) {
   }
   return `\n\nSALE ON NOW — ${sale.name} (${sale.code}), until ${ends}:\n`
     + `- ${sale.percent}% off EVERY order above ₹${sale.threshold} (₹${sale.threshold + 1} and up) — on prepaid, Cash on Delivery AND partial COD. It is applied automatically at checkout; no code is needed (${sale.code} is the sale's name if they ask for a code).\n`
-    + `- It does not stack with the coupons above: on a prepaid order the checkout applies whichever is bigger (e.g. SAVE15 on ₹1499+ beats the sale).\n`
+    + `- It does not stack with the coupons above: on a prepaid order the checkout applies whichever is bigger (e.g. SAVE15 on ₹1499+ usually beats the sale).\n`
     + `- Orders placed in this chat get it too — the total in the order summary already includes it, so never subtract it again.\n`
     + `- Mention it when someone asks about discounts, offers or prices, or is about to order. Do not push it in complaints, tracking or refund chats.`;
 }

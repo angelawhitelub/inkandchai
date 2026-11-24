@@ -38,7 +38,7 @@ const COUPONS = {
   INKLOVE10:  { type: 'percent', value: 10, minSubtotal: 499  },
   '499HIT':   { type: 'percent', value: 10, minSubtotal: 499  },
   SAVE12:     { type: 'percent', value: 12, minSubtotal: 999  },
-  SAVE15:     { type: 'percent', value: 15, minSubtotal: 1499 },
+  SAVE15:     { type: 'percent', value: 15, minSubtotal: 1499, maxDiscount: 250 },
   CHAI10BACK: { type: 'percent', value: 10, minSubtotal: 399  },
 };
 
@@ -53,7 +53,7 @@ function staticCouponDiscount(subtotal, rawCode) {
   const discount = c.type === 'percent'
     ? Math.floor(subtotal * c.value / 100)
     : Math.floor(c.value);
-  return { code, discount: Math.max(0, discount) };
+  return { code, discount: Math.max(0, c.maxDiscount > 0 ? Math.min(discount, c.maxDiscount) : discount) };
 }
 
 async function resolveCoupon(supabase, cart, subtotal, rawCode, { saleOnly = false } = {}) {
