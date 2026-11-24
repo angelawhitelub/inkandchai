@@ -1142,6 +1142,7 @@ select,input,textarea{font-size:1rem;}
       <button class="btn-green" onclick="exportUnshippedCsv()">Download Unshipped CSV</button>
       <button class="btn-green" onclick="orderReportPdf(this,'unshipped')" title="PDF of every unshipped order: all books with their total quantity, most copies first (a pick list), then the orders, most copies first.">📄 Unshipped Report (PDF)</button>
       <button class="btn-outline" onclick="orderReportPdf(this,'selected')" title="The same PDF for only the orders you have ticked in the list below.">📄 Selected Orders Report (PDF)</button>
+      <button class="btn-outline" onclick="amazonForOrders(getSelectedOrders(), 'Orders', this)" title="Every book in the ticked orders, copies added up, searched on amazon.in and added to your Amazon cart by the helper on your Mac. You check out yourself.">🛒 Amazon cart (ticked)</button>
       <button class="btn-green" onclick="pushAllToNimbusPanel(this)" title="Checks which unshipped orders XpressBees can deliver first, then lets you push only the XpressBees-unserviceable ones to the NimbusPost Orders panel, or all of them. No couriers chosen, no AWBs generated.">Push to NimbusPost Panel (No AWB)</button>
       <button class="btn-green" onclick="pushAllToXpressbeesPanel(this)" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Make every unshipped order visible to the XpressBees Sales Channel. Recent orders are collected automatically; this also queues the older ones. No courier is chosen and no AWB is generated.">Push to XpressBees Panel (No AWB)</button>
       <button class="btn-green" onclick="downloadCourierLabels(this,'xpressbees','latest')" style="background:rgba(228,0,43,0.14);border-color:rgba(228,0,43,0.55);color:#ff6a5e;" title="Only the XpressBees labels you have not downloaded yet (from either label button): the fresh batch, so nothing is printed twice. One PDF sorted for packing: pick list first, same-book orders grouped, book names stamped under each label. Read-only at XpressBees.">🏷️ XpressBees Labels — Latest dispatched</button>
@@ -2645,6 +2646,7 @@ select,input,textarea{font-size:1rem;}
         <p>Every replacement request raised by a customer. Photo evidence is required. Only one replacement or missing-book request is accepted per original order.</p>
       </div>
       <div class="mini-actions">
+        <button class="btn-outline" onclick="amazonForReplacementsTicked(this)" title="Every book in the ticked replacements, searched on amazon.in and added to your Amazon cart by the helper on your Mac">🛒 Amazon cart (ticked)</button>
         <button class="btn-outline" onclick="refreshReplacementRequests(this)">↻ Refresh</button>
       </div>
     </div>
@@ -2872,6 +2874,7 @@ select,input,textarea{font-size:1rem;}
     <div id="npuBulkBar" style="display:none;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;padding:.55rem .8rem;border:1px solid rgba(224,96,96,.35);border-radius:8px;background:rgba(224,96,96,.06);font-size:.72rem;">
       <strong id="npuSelCount">0 selected</strong>
       <button class="btn-outline" style="border-color:#e06060;color:#e06060;" onclick="cancelNotPickedSelected(this)" title="Asks each courier first; only parcels still waiting for pickup are cancelled. Prepaid money goes back automatically; COD missing-book replacements get a UPI request by email and WhatsApp.">✕ Cancel &amp; refund selected</button>
+      <button class="btn-outline" onclick="amazonForNpuSelected(this)" title="Every book in the selected orders, searched on amazon.in and added to your Amazon cart by the helper on your Mac">🛒 Amazon cart</button>
       <button class="btn-outline" onclick="exportNotPickedCsv()">⬇ CSV</button>
       <button class="btn-outline" onclick="exportNotPickedPdf()">⬇ PDF</button>
       <button class="btn-outline" onclick="npuClearSel()">Clear</button>
@@ -4328,6 +4331,7 @@ function renderNotPicked() {
           + npuRefundCell(r))
         + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
         + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;')
+          + '<button class="btn-outline" style="display:block;margin-top:.35rem;font-size:.6rem;padding:.3rem .6rem;white-space:nowrap;" title="Search this order\'s book(s) on amazon.in and add to your Amazon cart" onclick="amazonForNpuRow(\'' + esc(r.id) + '\', this)">🛒 Amazon</button>'
           + (moved ? '' : '<button class="btn-outline" style="display:block;margin-top:.35rem;font-size:.6rem;padding:.3rem .6rem;border-color:#e06060;color:#e06060;white-space:nowrap;" title="Asks the courier first; only a parcel still waiting for pickup is cancelled, then refunded the same way as bulk" onclick="cancelNotPickedOne(\'' + esc(r.id) + '\', this)">✕ Cancel</button>'))
         + '</tr>';
     }).join('') + '</tbody>';
@@ -7171,6 +7175,135 @@ function itemThumbHtml(i, slug) {
     : `<span class="it-thumb">${img}</span>`;
 }
 
+
+// ─── 🛒 Amazon cart helper ───────────────────────────────────────────────
+// Books picked here go to ~/Downloads/amazon-cart/amazon_cart.py on the
+// owner's Mac (`python3 amazon_cart.py serve`), which finds them on amazon.in
+// and adds the best offer to the owner's Amazon cart; the owner checks out.
+// Not running → the list downloads as a file for `amazon_cart.py run FILE`.
+const AMZ_HELPER = 'http://127.0.0.1:8765';
+function amzBinding(title) {
+  const t = String(title || '').toLowerCase();
+  return /hard ?cover|hardbound/.test(t) ? 'hardcover' : /paperback/.test(t) ? 'paperback' : '';
+}
+function amzLines(o) {
+  return (Array.isArray(o?.cart_items) ? o.cart_items : []).filter(i => String(i?.title || i?.name || '').trim());
+}
+function amzBooks(entries) {
+  // entries: [{ order, lines }] → one row per book, copies added up across orders.
+  const by = new Map();
+  for (const { order, lines } of entries) {
+    const oid = String(order?.razorpay_order_id || order?.id || '');
+    for (const i of lines) {
+      const title = String(i.title || i.name || '').replace(/\s+/g, ' ').trim();
+      const key = title.toLowerCase() + '|' + amzBinding(title);
+      const cur = by.get(key) || { title, author: String(i.author || ''), qty: 0, paid: 0, binding: amzBinding(title),
+        img: String(i.img || i.image || '').startsWith('data:') ? '' : String(i.img || i.image || ''), slug: itemProductSlug(i), orders: [] };
+      cur.qty += itemQty(i);
+      const unit = itemUnit(i);
+      if (unit > 0) cur.paid = cur.paid ? Math.min(cur.paid, unit) : unit;   // the lowest a customer paid per copy
+      if (oid && !cur.orders.includes(oid)) cur.orders.push(oid);
+      by.set(key, cur);
+    }
+  }
+  return [...by.values()];
+}
+function amzDownload(list) {
+  const blob = new Blob([JSON.stringify(list, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  const name = 'amazon-list-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json';
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  return name;
+}
+async function amzSend(books, source, btn) {
+  if (!books.length) { alert('No books to search.'); return; }
+  const list = { source, created_at: new Date().toISOString(), books };
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '🛒 Sending…'; }
+  const reset = () => { if (btn) setTimeout(() => { btn.disabled = false; btn.textContent = old; }, 2500); };
+  try {
+    // Straight to the helper when Chrome allows this page to reach the Mac.
+    const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 1500);
+    const res = await fetch(AMZ_HELPER + '/list', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(list), signal: ctl.signal });
+    clearTimeout(timer);
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error || 'HTTP ' + res.status);
+    if (btn) btn.textContent = '✓ Sent ' + books.length;
+    alert('🛒 Sent ' + books.length + ' book' + (books.length === 1 ? '' : 's') + ' to the Amazon helper' + (out.ahead ? ' (' + out.ahead + ' list ahead of it)' : '') + '.\n\nWatch the Chrome window it opened; the report opens when it is done. Nothing is ordered until you check out on Amazon yourself.');
+    reset(); return;
+  } catch (e) { /* blocked or not running: the helper tab below */ }
+  // The helper's own page, with the list in the address; it sends on one click.
+  const tab = window.open(AMZ_HELPER + '/add#' + encodeURIComponent(JSON.stringify(list)), '_blank');
+  if (tab) {
+    if (btn) btn.textContent = '↗ Helper tab';
+    alert('🛒 A helper tab opened with ' + books.length + ' book' + (books.length === 1 ? '' : 's') + '. Press "Add these to my Amazon cart" there.\n\nIf that tab says "This site can’t be reached", the helper is not running. Start it in Terminal, then press 🛒 again:\n  python3 ~/Downloads/amazon-cart/amazon_cart.py serve');
+  } else {
+    const name = amzDownload(list);
+    if (btn) btn.textContent = '⬇ Saved list';
+    alert('Pop-ups are blocked, so the list was downloaded as ' + name + '.\n\nRun it in Terminal:\n  python3 ~/Downloads/amazon-cart/amazon_cart.py run ~/Downloads/' + name);
+  }
+  reset();
+}
+// An order with several books: ask which to search (all ticked to start).
+function amzPickLines(order) {
+  const lines = amzLines(order);
+  if (lines.length <= 1) return Promise.resolve(lines);
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+    wrap.innerHTML = '<div style="background:var(--bg2,#1d1a16);color:var(--cream,#eee);border:1px solid var(--border,#444);border-radius:10px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:18px 20px;font-family:Manrope,sans-serif;">'
+      + '<div style="font-weight:700;margin-bottom:4px;">🛒 Which books to search on Amazon?</div>'
+      + '<div class="hint" style="margin-bottom:12px;">' + esc(order.razorpay_order_id || order.id || '') + ' · ' + lines.length + ' books</div>'
+      + '<div class="items-cell" style="max-width:none;">' + lines.map((i, n) => '<label class="item-line" style="justify-content:flex-start;cursor:pointer;"><input type="checkbox" data-n="' + n + '" checked style="margin-top:18px;"/>'
+        + itemThumbHtml(i, '') + '<span class="it-title">' + esc(i.title || i.name || '') + ' ×' + itemQty(i) + '</span></label>').join('') + '</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">'
+      + '<button class="btn-outline" data-act="none">Untick all</button><button class="btn-outline" data-act="cancel">Cancel</button><button class="btn-gold" data-act="go">Search ticked</button></div></div>';
+    const done = (v) => { wrap.remove(); resolve(v); };
+    wrap.addEventListener('click', (e) => {
+      const act = e.target?.dataset?.act;
+      if (e.target === wrap || act === 'cancel') return done(null);
+      if (act === 'none') { wrap.querySelectorAll('input[data-n]').forEach(c => { c.checked = false; }); return; }
+      if (act === 'go') {
+        const picked = [...wrap.querySelectorAll('input[data-n]:checked')].map(c => lines[Number(c.dataset.n)]);
+        if (!picked.length) { alert('Tick at least one book.'); return; }
+        done(picked);
+      }
+    });
+    document.body.appendChild(wrap);
+  });
+}
+async function amazonForOrder(order, btn, source) {
+  if (!order) { alert('Order not loaded yet.'); return; }
+  const lines = await amzPickLines(order);
+  if (!lines || !lines.length) return;
+  amzSend(amzBooks([{ order, lines }]), source + ' · ' + (order.razorpay_order_id || order.id), btn);
+}
+function amazonForOrderId(id, btn) {
+  amazonForOrder(allOrders.find(o => String(o.id) === String(id)), btn, 'Orders');
+}
+function amazonForOrders(orders, source, btn) {
+  if (!orders || !orders.length) { alert('Tick the orders first.'); return; }
+  amzSend(amzBooks(orders.map(order => ({ order, lines: amzLines(order) }))), source + ' · ' + orders.length + ' orders', btn);
+}
+// Not Picked Up rows carry their own items; the full order is used when loaded.
+function amzNpuOrder(r) {
+  return allOrders.find(o => String(o.id) === String(r.id))
+    || { id: r.id, razorpay_order_id: r.order_id, cart_items: (r.items || []).map(i => ({ title: i.title, qty: i.qty, img: i.img, url: i.url, price: i.price, author: i.author })) };
+}
+function amazonForNpuRow(id, btn) {
+  const r = (npuData?.orders || []).find(x => String(x.id) === String(id));
+  if (r) amazonForOrder(amzNpuOrder(r), btn, 'Not Picked Up');
+}
+function amazonForNpuSelected(btn) {
+  const rows = npuVisibleRows().filter(r => npuSel.has(r.id));
+  amazonForOrders(rows.map(amzNpuOrder), 'Not Picked Up', btn);
+}
+const amzReplSel = new Set();
+function amazonForReplacementsTicked(btn) {
+  amazonForOrders(replacementRequestRows().filter(o => amzReplSel.has(String(o.id))), 'Replacements', btn);
+}
+
 // The customer's name filters the orders list to everyone of theirs. Searches
 // by the last 10 phone digits (rows are stored with and without the 91), else
 // the email, else the name -- two customers can share a name.
@@ -8169,6 +8302,10 @@ function _drawTable() {
           onmouseover="this.style.background='rgba(160,144,128,0.18)';"
           onmouseout="this.style.background='rgba(160,144,128,0.08)';">
           🖨 Print item list
+        </button>
+        <button onclick="amazonForOrderId('${esc(o.id)}', this)" title="Find this order's book(s) on amazon.in and add the best offer to your Amazon cart (helper on your Mac; you check out yourself). Several books: you pick which."
+          style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;">
+          🛒 Amazon
         </button>
         <button onclick="openEditOrderModal('${esc(o.id)}')" title="Edit customer name, phone, email, address or books"
           style="display:block;margin-top:0.4rem;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.4);color:var(--gold);padding:0.3rem 0.7rem;font-size:0.55rem;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;font-family:'Manrope',sans-serif;transition:all 0.2s;"
@@ -20423,7 +20560,7 @@ function renderReplacementRequests() {
       : '';
 
     return `<tr>
-      <td data-label="Requested" style="white-space:nowrap;">${esc(date)}</td>
+      <td data-label="Requested" style="white-space:nowrap;"><label style="display:flex;gap:.4rem;align-items:flex-start;cursor:pointer;"><input type="checkbox" title="Tick for 🛒 Amazon cart (ticked)" ${amzReplSel.has(String(o.id)) ? 'checked' : ''} onchange="this.checked ? amzReplSel.add('${esc(String(o.id))}') : amzReplSel.delete('${esc(String(o.id))}')"/><span>${esc(date)}</span></label></td>
       <td data-label="Replacement" data-card-head>
         <div class="order-id">${esc(replacementId)}</div>
         <div class="cust-sub">Original: ${originalId === '—' ? '—'
@@ -20459,6 +20596,7 @@ function renderReplacementRequests() {
           ? `<button class="btn-gold" style="padding:.4rem .65rem;margin-bottom:.35rem;display:block;width:100%;" onclick="openReplacementItemsEditor('${orderRowId}')">Edit books</button>`
           : ''}
         ${orderLink(o.razorpay_order_id || decodeURIComponent(orderRowId || ''), 'Open in Orders', 'padding:.4rem .65rem;')}
+        <button class="btn-outline" style="display:block;width:100%;margin-top:.35rem;padding:.4rem .65rem;" title="Search this replacement's book(s) on amazon.in and add to your Amazon cart" onclick="amazonForOrder(replacementRequestRows().find(x => String(x.id) === '${esc(String(o.id))}'), this, 'Replacements')">🛒 Amazon</button>
         ${missingValue > 0 && o.status === 'replacement_pending'
           ? `<button class="btn-outline" style="padding:.4rem .65rem;margin-top:.35rem;border-color:rgba(224,96,96,.5);color:#e06060;display:block;width:100%;"
                title="Cancel this replacement and refund only the missing book's value (₹${money(missingValue)}) on the original order"

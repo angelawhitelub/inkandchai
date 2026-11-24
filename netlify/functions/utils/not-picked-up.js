@@ -52,6 +52,8 @@ function itemsOf(order) {
         qty: Math.max(1, Number(i?.qty || i?.quantity) || 1),
         img: img && !img.startsWith('data:') ? img : '',
         url: String(i?.url || i?.slug || i?.id || ''),
+        price: Number(i?.price) || 0,
+        author: String(i?.author || ''),
       };
     })
     .filter((i) => i.title);
