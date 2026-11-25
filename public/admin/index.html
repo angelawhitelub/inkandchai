@@ -3711,6 +3711,20 @@ select,input,textarea{font-size:1rem;}
       take book requests and share coupons — this box is for anything store-specific they should also know.
     </div>
 
+    <!-- Instagram DM bot (instagram-webhook.js): same AI, book lookup only. OFF until the owner switches it on. -->
+    <div style="margin-top:1.2rem;border:1px solid rgba(201,168,76,0.22);border-radius:10px;padding:0.9rem 1rem;">
+      <div style="font-weight:700;font-size:0.8rem;">📸 Instagram DM bot (@inkandchai.in) — <span id="igBotNow">…</span></div>
+      <div style="font-size:0.68rem;color:var(--cream-dim,#8a7a62);margin:0.35rem 0 0.7rem;line-height:1.6;max-width:680px;">
+        Answers Instagram DMs with the same instructions as WhatsApp. It can look up books (price + link) and orders by ID, but cannot place, cancel or refund anything;
+        those go to Bot Inbox (📸 chats) with a WhatsApp alert to you. DMs are always saved to the inbox, even while it is off.
+        Instagram allows replies only within 24 hours of the customer's last message.
+      </div>
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+        <button class="btn-gold" id="igBotBtn" onclick="igBotToggle(this)">…</button>
+        <span id="igBotMsg" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);"></span>
+      </div>
+    </div>
+
     <!-- WhatsApp bot model. A new model only goes live after it passes the
          safety cases in bot-model-eval.js (nothing is executed by the test). -->
     <div style="margin-top:1.2rem;border:1px solid rgba(201,168,76,0.22);border-radius:10px;padding:0.9rem 1rem;">
@@ -5029,6 +5043,34 @@ async function runInkAiImprove(btn) {
 
 <script>
 // ── WhatsApp bot model (tested switch) ───────────────────────────────────────
+let igBotState = null;
+async function igBotCall(body) {
+  const res = await adminFetch('/.netlify/functions/instagram-webhook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+function igBotShow() {
+  const d = igBotState || {};
+  const now = document.getElementById('igBotNow'), btn = document.getElementById('igBotBtn'), msg = document.getElementById('igBotMsg');
+  if (now) { now.textContent = d.on ? 'ON' : 'OFF'; now.style.color = d.on ? '#6dbf6d' : '#e0a060'; }
+  if (btn) btn.textContent = d.on ? 'Switch OFF' : 'Switch ON';
+  const missing = [!d.token_set && 'INSTAGRAM_TOKEN', !d.verify_set && 'INSTAGRAM_VERIFY_TOKEN', !d.secret_set && 'INSTAGRAM_APP_SECRET'].filter(Boolean);
+  if (msg) msg.textContent = missing.length ? 'Not ready: set ' + missing.join(', ') + ' in the site settings.' : 'Connected settings present.';
+}
+async function igBotLoad() {
+  try { igBotState = await igBotCall({ action: 'status' }); igBotShow(); }
+  catch (e) { const el = document.getElementById('igBotNow'); if (el) el.textContent = 'unknown (' + e.message + ')'; }
+}
+async function igBotToggle(btn) {
+  const on = !(igBotState && igBotState.on);
+  if (on && !confirm('Switch the Instagram DM bot ON? It will reply to people who message @inkandchai.in on Instagram.')) return;
+  btn.disabled = true;
+  try { const d = await igBotCall({ action: 'switch', on }); igBotState = { ...(igBotState || {}), on: d.on }; igBotShow(); }
+  catch (e) { alert('Could not switch: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
 async function loadBotModel() {
   const el = document.getElementById('botModelNow');
   try {
@@ -5093,6 +5135,7 @@ async function revertBotModel(btn) {
 // ── Bot Instructions (edit the WhatsApp bot's extra rules / FAQ) ─────────────
 async function loadBotSettings() {
   loadBotModel();
+  igBotLoad();
   const ta = document.getElementById('botExtraInstructions');
   const msg = document.getElementById('botSettingsMsg');
   if (msg) msg.textContent = 'Loading…';
@@ -22787,7 +22830,7 @@ function renderInboxList() {
 
   list.innerHTML = convs.map(c => {
     const phone   = c.customer_phone;
-    const name    = c.customer_name || phone;
+    const name    = /^ig:/.test(String(phone)) ? '📸 ' + (c.customer_name || 'Instagram user') : (c.customer_name || phone);
     const preview = c.last_message || '';
     const time    = c.last_message_at ? relTime(c.last_message_at) : '';
     const unread  = c.unread_count > 0 ? `<span class="inbox-unread">${c.unread_count}</span>` : '';
@@ -22885,7 +22928,9 @@ function renderThreadActions(phone, conv) {
     ${!isTaken ? `<button class="btn-outline" style="font-size:0.65rem;" onclick="inboxAction('takeover','${esc(phone)}')">🙋 Take Over</button>` : ''}
     ${isTaken  ? `<button class="btn-outline" style="font-size:0.65rem;" onclick="inboxAction('release','${esc(phone)}')">🤖 Hand to Bot</button>` : ''}
     ${!isResolved ? `<button class="btn-green" style="font-size:0.65rem;" onclick="inboxAction('resolve','${esc(phone)}')">✓ Resolve</button>` : ''}
-    <a href="https://wa.me/${esc(phone)}" target="_blank" style="font-size:0.65rem;" class="btn-outline">Open in WhatsApp ↗</a>
+    ${/^ig:/.test(phone)
+      ? `<span class="btn-outline" style="font-size:0.65rem;cursor:default;" title="Instagram DM: replies go through Instagram, within 24 h of their last message">📸 Instagram DM</span>`
+      : `<a href="https://wa.me/${esc(phone)}" target="_blank" style="font-size:0.65rem;" class="btn-outline">Open in WhatsApp ↗</a>`}
   `;
 }
 

@@ -153,6 +153,24 @@ exports.handler = async (event) => {
       if (action === 'send') {
         if (!text) return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'text required' }) };
 
+        // Instagram DM (instagram-webhook): reply through Instagram. Within 24 h
+        // of their last message a plain reply; up to 7 days with the HUMAN_AGENT tag.
+        if (/^ig:\d+$/.test(String(phone))) {
+          const IG = require('./utils/instagram');
+          let result = await IG.sendInstagramText(phone, text);
+          if (!result.ok) {
+            const tagged = await IG.sendInstagramText(phone, text, { humanAgent: true });
+            if (tagged.ok) result = tagged;
+          }
+          if (!result.ok) {
+            return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: 'Instagram send failed', detail: `${result.error}. Instagram only allows replies within 24 hours of the customer's last message (7 days once Meta approves Human Agent).` }) };
+          }
+          const at = new Date().toISOString();
+          await db.from('bot_messages').insert({ customer_phone: phone, role: 'admin', message: text, created_at: at });
+          await db.from('bot_conversations').upsert({ customer_phone: phone, last_message: `[You]: ${text.slice(0, 80)}`, last_message_at: at, human_takeover: true, status: 'active' }, { onConflict: 'customer_phone' });
+          return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, channel: 'instagram' }) };
+        }
+
         // A single webhook serves multiple Ink & Chai WhatsApp numbers. Send
         // from the same business number that received this conversation.
         const { data: conversation, error: conversationError } = await db

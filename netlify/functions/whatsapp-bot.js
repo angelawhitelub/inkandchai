@@ -1222,7 +1222,7 @@ async function callOpenAIChat(messages, { tools = false, model = null, noFallbac
   // passed the safety cases in bot-model-eval.js (gpt-4o-mini was dropped after
   // it cancelled and refunded an order off a bare order id).
   const useModel = model || await currentBotModel();
-  const payload = chatPayload(useModel, { messages, tools: tools === 'all' ? OPENAI_TOOLS : (tools ? botTools() : null), maxTokens: 320, temperature: 0.4 });
+  const payload = chatPayload(useModel, { messages, tools: Array.isArray(tools) ? tools : tools === 'all' ? OPENAI_TOOLS : (tools ? botTools() : null), maxTokens: 320, temperature: 0.4 });
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1315,7 +1315,28 @@ function buildSystemContent(extraInstructions, known, extraContext, { noCancelRe
 }
 
 // ── Ask OpenAI (with order-intake tool support) ──────────────────────────────
-async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = null) {
+// Instagram DMs (instagram-webhook.js) get one read-only tool and none of the
+// order tools above: there is no phone number to attach an order to.
+const FIND_BOOK_TOOL = {
+  type: 'function',
+  function: {
+    name: 'find_book',
+    description: 'Look up ONE book in the Ink & Chai catalogue by its title (and author if known). Returns the exact title, author, this week\'s price in rupees and the inkandchai.in link, or found:false. Use it whenever someone asks about a book, its price, availability or link. Call it once per book.',
+    parameters: { type: 'object', properties: { title: { type: 'string', description: 'Book title as the customer wrote it, plus the author if they gave one' } }, required: ['title'] },
+  },
+};
+async function findBookForBot(args = {}) {
+  try {
+    const hit = await require('./utils/book-lookup').lookupBook(String(args.title || '').slice(0, 200));
+    if (!hit) return { found: false, note: 'Not found in our catalogue. Offer to note it as a book request; our team checks requests daily.' };
+    if (hit.removed) return { found: false, note: `"${hit.title}" is not available on inkandchai.in.` };
+    return { found: true, title: hit.title, author: hit.author || '', price_rs: hit.price, link: `https://inkandchai.in/product/${hit.slug}/`,
+      note: 'Stock and delivery date are on the page; ordering happens on the website.' };
+  } catch (e) { return { found: false, error: e.message }; }
+}
+
+async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = null, opts = {}) {
+  const instagram = opts.channel === 'instagram';
   const stored = await loadHistory(phone);
   if (stored) conversationHistory.set(phone, historyWithCurrent(stored, userMessage));
   else appendHistory(phone, 'user', userMessage);
@@ -1348,14 +1369,21 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
   // First pass — the model may decide to call submit_order_request.
   // Both passes on the same model, even if the setting changes mid-reply.
   const model = await currentBotModel();
-  const first = await callOpenAIChat(messages, { tools: true, model });
+  const first = await callOpenAIChat(messages, { tools: instagram ? [FIND_BOOK_TOOL] : true, model });
 
   if (first.tool_calls && first.tool_calls.length) {
     // Execute each tool call, then ask the model for a natural confirmation reply.
     messages.push(first);
     for (const call of first.tool_calls) {
       let result = { ok: false, error: 'unknown tool' };
-      if (BOT_MONEY_TOOLS.has(call.function?.name) && !botMayCancelOrRefund()) {
+      if (call.function?.name === 'find_book') {
+        let args = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+        result = await findBookForBot(args);
+      } else if (instagram) {
+        console.warn(`[INSTAGRAM] ${phone} model called ${call.function?.name}; refused`);
+        result = { ok: false, error: 'Not possible in an Instagram DM. Send them to inkandchai.in or say our team will reply here.' };
+      } else if (BOT_MONEY_TOOLS.has(call.function?.name) && !botMayCancelOrRefund()) {
         console.warn(`[BOT-NO-CANCEL-REFUND] ${phone} model called ${call.function.name}; refused`);
         result = NO_CANCEL_REFUND_RESULT;
       } else if (call.function?.name === 'submit_order_request') {
@@ -2434,5 +2462,5 @@ async function handleInboundMessage(msg, value) {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { botTools, botMayCancelOrRefund, NO_CANCEL_REFUND_RESULT, recordWrongCodUpi, refundWrongCodViaBot, loadHistory, historyWithCurrent, ORDER_QUERY_RE, buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+exports._internal = { findBookForBot, FIND_BOOK_TOOL, botTools, botMayCancelOrRefund, NO_CANCEL_REFUND_RESULT, recordWrongCodUpi, refundWrongCodViaBot, loadHistory, historyWithCurrent, ORDER_QUERY_RE, buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
   describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };

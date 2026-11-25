@@ -142,7 +142,8 @@ exports.handler = async event => {
       .limit(250);
     if (convError) throw convError;
 
-    const phones = (conversations || []).map(conv => conv.customer_phone).filter(Boolean);
+    // Instagram chats (ig:<id>) are answered by instagram-webhook, never resent over WhatsApp.
+    const phones = (conversations || []).map(conv => conv.customer_phone).filter(p => p && !/^ig:/.test(String(p)));
     if (!phones.length) {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, dry_run: dryRun, candidate_count: 0 }) };
     }
