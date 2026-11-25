@@ -49,7 +49,7 @@ function isPartialCod(order) {
  * @returns {{eligible:true, refundPaise:number, partialCod:boolean, hasAwb:boolean}
  *          | {eligible:false, reason:string}}
  */
-function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pickupPending = false } = {}) {
+function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pickupPending = false, stockNotice = false } = {}) {
   const no = (reason) => ({ eligible: false, reason });
   if (!order) return no('not_found');
   if (isReplacementOrder(order) || /^IC-R-/i.test(String(order.razorpay_order_id || ''))) return no('replacement');
@@ -59,8 +59,12 @@ function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pi
   // on WhatsApp, COD included (nothing to refund), without the 7-day wait.
   // The courier is still asked live before anything moves (handleOne).
   const pickupWait = pickupPending && !!String(order.tracking_id || '').trim();
+  // Owner, 25 Nov 2026: a customer we told "your book is out of stock, cancel
+  // any time from My Orders" (utils/stock-notice) may cancel at once -- no
+  // 7-day wait, and a booked COD order too (nothing to refund).
+  const noticeCod = stockNotice && !!String(order.tracking_id || '').trim();
   const paid = !!String(order.razorpay_payment_id || '').trim() && amount > 0;
-  if (!paid && !pickupWait) return no('nothing_paid');
+  if (!paid && !pickupWait && !noticeCod) return no('nothing_paid');
   if (order.wrong_cod_paise) return no('wrong_cod');
   if (order.late_cancel_at || order.cancellation_requested_at) return no('already_requested');
   const status = String(order.status || '').toLowerCase();
@@ -71,7 +75,7 @@ function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pi
   // The owner's "cancel until shipped" switch (utils/cancel-window): while it
   // is on, an order with no AWB yet need not wait the 7 days.
   const early = untilShipped && !hasAwbNow && status !== 'shipped';
-  if (!Number.isFinite(created) || (!early && !pickupWait && now - created < UNPICKED_DAYS * 86400e3)) return no('too_soon');
+  if (!Number.isFinite(created) || (!early && !pickupWait && !stockNotice && now - created < UNPICKED_DAYS * 86400e3)) return no('too_soon');
 
   // Moved, delivered, RTO or terminal by what we know: classify() is the Not
   // Picked Up tab's own rule. The courier is asked again before anything moves.
@@ -82,6 +86,7 @@ function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pi
   const q = { eligible: true, refundPaise: paid ? amount : 0, partialCod, hasAwb };
   if (early && now - created < UNPICKED_DAYS * 86400e3) q.early = true;
   if (pickupWait) q.pickupPending = true;
+  if (stockNotice) q.stockNotice = true;
   return q;
 }
 

@@ -41,13 +41,14 @@ const rs = (paise) => `₹${Math.round(Number(paise || 0) / 100).toLocaleString(
 // public/js/auth.js matches the start of this note to show "Cancellation received".
 const NOTE = `Customer cancel: not picked up ${UNPICKED_DAYS}+ days after ordering (full refund).`;
 const EARLY_NOTE = 'Customer cancel: not picked up — before shipping, while the cancellation window was open (full refund).';
+const STOCK_NOTE = 'Customer cancel: not picked up — book out of stock (we sent the stock notice), cancelled from My Orders (full refund).';
 const PICKUP_NOTE = 'Customer cancel: not picked up yet (booked, waiting for pickup) — cancelled on WhatsApp.';
 const cancelWindow = require('./utils/cancel-window');
 const { xbPanelIndex, baseOrderNumber } = require('./utils/booking-guard');
 
-async function alertOwner(order, line, { early = false, pickupPending = false } = {}) {
+async function alertOwner(order, line, { early = false, pickupPending = false, stockNotice = false } = {}) {
   const id = order.razorpay_order_id || order.id;
-  const why = pickupPending ? 'booked, pickup not done yet' : early ? 'before shipping, cancellation window open' : `not picked up in ${UNPICKED_DAYS}+ days`;
+  const why = stockNotice ? 'book out of stock, stock notice sent' : pickupPending ? 'booked, pickup not done yet' : early ? 'before shipping, cancellation window open' : `not picked up in ${UNPICKED_DAYS}+ days`;
   const text = `⏳ ${id}: customer cancelled (${why})\n${line}\n`
     + `${order.customer_name || ''} ${order.customer_phone || ''}\n`
     + `${order.tracking_id ? `AWB ${order.courier_name || ''} ${order.tracking_id}\n` : ''}`
@@ -83,7 +84,11 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   let untilShipped = false;
   if (deps.untilShipped !== undefined) untilShipped = !!deps.untilShipped;
   else { try { untilShipped = await cancelWindow.untilShippedOpen(); } catch { untilShipped = false; } }
-  const q = quoteUnpickedCancel(order, Date.now(), { untilShipped, pickupPending: !!deps.pickupPending });
+  // Told "out of stock, cancel any time" (utils/stock-notice): no waiting.
+  let stockNotice = false;
+  if (deps.stockNotice !== undefined) stockNotice = !!deps.stockNotice;
+  else { const sn = require('./utils/stock-notice'); stockNotice = sn.told(await sn.ledgerOrEmpty(), order); }
+  const q = quoteUnpickedCancel(order, Date.now(), { untilShipped, pickupPending: !!deps.pickupPending, stockNotice });
   if (!q.eligible) {
     return out(422, { error: q.reason === 'already_requested'
       ? 'We already have a cancellation for this order and are working on it.'
@@ -96,7 +101,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   // woo-channel cancels that AWB at once. Panel unreadable: the order still
   // carries its feed stamp, so handleOne leaves it to the owner.
   let target = order;
-  if (q.early && order.xpressbees_feed_at) {
+  if ((q.early || (q.stockNotice && !String(order.tracking_id || '').trim())) && order.xpressbees_feed_at) {
     try {
       const row = (await (deps.xbPanelIndex || xbPanelIndex)()).get(baseOrderNumber(order.razorpay_order_id || order.id));
       if (row && row.state === 'booked') {
@@ -114,7 +119,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   // Claim: one cancel per order, whatever happens next.
   const at = new Date().toISOString();
   const { data: claimed, error: claimErr } = await supabase.from('orders')
-    .update({ cancellation_requested_at: at, cancellation_request_note: q.pickupPending ? PICKUP_NOTE : q.early ? EARLY_NOTE : NOTE })
+    .update({ cancellation_requested_at: at, cancellation_request_note: q.pickupPending ? PICKUP_NOTE : q.stockNotice ? STOCK_NOTE : q.early ? EARLY_NOTE : NOTE })
     .eq('id', order.id).is('cancellation_requested_at', null).select('id');
   if (claimErr) {
     console.error('[cancel-unpicked-order] claim:', claimErr.message);
@@ -154,7 +159,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   }
 
   // Could not stop the parcel on our own: the owner finishes it.
-  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`, { early: !!q.early, pickupPending: !!q.pickupPending });
+  await (deps.alertOwner || alertOwner)(order, `${r.outcome}: ${r.reason || 'no reason given'}`, { early: !!q.early, pickupPending: !!q.pickupPending, stockNotice: !!q.stockNotice });
   return out(202, {
     success: true, outcome: 'requested',
     message: q.refundPaise > 0

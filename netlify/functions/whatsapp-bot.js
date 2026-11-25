@@ -780,6 +780,16 @@ async function refreshNoReturnMap() {
 let _untilShipped = false;
 async function refreshCancelWindow() {
   try { _untilShipped = await require('./utils/cancel-window').untilShippedOpen(); } catch { _untilShipped = false; }
+  _stockLedger = await require('./utils/stock-notice').ledgerOrEmpty();
+}
+// Orders told "your book is out of stock, expected on <date>" (utils/stock-notice).
+let _stockLedger = {};
+function stockNoticeLine(order) {
+  const sn = require('./utils/stock-notice');
+  const told = _stockLedger[sn.orderId(order)];
+  if (!told) return '';
+  return `\nStock notice SENT (${String(told.at || '').slice(0, 10)}): "${told.title || 'a book'}" is out of stock with us; we are arranging it from the publisher; expected arrival ${sn.etaWords(told.eta) || told.eta}. `
+    + 'Apologise for the delay and give that date. If they want to cancel: they can do it themselves any time from My Orders on the website (https://inkandchai.in/?orders=1, sign in with the email they ordered with) and the refund (if anything was paid) is automatic.';
 }
 function earlyCancelLine(order) {
   if (!_untilShipped || !botMayCancelOrRefund()) return '';
@@ -840,7 +850,7 @@ function formatOrderContext(order, displayId, hold) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}${payLaterLine(order)}${earlyCancelLine(order)}${pickupWaitLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}${payLaterLine(order)}${earlyCancelLine(order)}${pickupWaitLine(order)}${stockNoticeLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**

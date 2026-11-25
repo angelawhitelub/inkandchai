@@ -51,7 +51,7 @@ window.IACClaimEvidence = {
     currentUser = session?.user || null;
     if (currentUser) await fetchProfile();
     updateNav();
-    openOrdersFromEmailLink();
+    openOrdersFromEmailLink({ signedOut: !currentUser && !/access_token=|[?&]code=/.test(location.href) });
 
     sb.auth.onAuthStateChange(async (_event, session) => {
       currentUser = session?.user || null;
@@ -121,10 +121,14 @@ window.IACClaimEvidence = {
     });
   }
 
-  function openOrdersFromEmailLink() {
-    if (!currentUser) return;
+  function openOrdersFromEmailLink({ signedOut = false } = {}) {
     const params = new URLSearchParams(window.location.search);
     if (params.get('orders') !== '1') return;
+    if (!currentUser) {
+      // From a WhatsApp/email "My Orders" link while signed out: the email sign-in (magic link).
+      if (signedOut) setTimeout(() => openGuestOrdersModal(), 400);
+      return;
+    }
     params.delete('orders');
     const next = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}${window.location.hash}`;
     window.history.replaceState({}, '', next);
@@ -2177,10 +2181,14 @@ window.IACClaimEvidence = {
     const uc = order.unpicked_cancel;
     if (!uc) return '';
     const what = uc.partial_cod ? 'your advance of' : 'a full refund of';
+    // Stock notice (utils/stock-notice): a booked COD order may be cancelled too, nothing to refund.
+    const gets = Number(uc.refund_paise) > 0
+      ? `You can cancel it and get ${what} ${inrPaise(uc.refund_paise)} back.`
+      : 'You can cancel it any time. Cash on Delivery, so there is nothing to pay or refund.';
     return row(`
         <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
-          ${uc.early ? 'Not shipped yet.' : 'Sorry — the courier still hasn\'t collected this order.'}
-          <span style="display:block;margin-top:0.2rem;color:#e8a030;">You can cancel it and get ${what} ${inrPaise(uc.refund_paise)} back.</span>
+          ${uc.stock_notice ? 'Sorry — a book in this order is out of stock and on its way to us from the publisher.' : uc.early ? 'Not shipped yet.' : 'Sorry — the courier still hasn\'t collected this order.'}
+          <span style="display:block;margin-top:0.2rem;color:#e8a030;">${gets}</span>
         </div>
         <button onclick="iacUnpickedCancel('${escJs(order.id)}')"
           id="unpicked-cancel-btn-${escJs(order.id)}"
@@ -2196,7 +2204,9 @@ window.IACClaimEvidence = {
     const btn = document.getElementById(`unpicked-cancel-btn-${orderId}`);
     const refund = Number(btn?.dataset.refund || 0);
     const early = btn?.dataset.early === '1';
-    if (!confirm(`Cancel this order?\n\n${early ? "It hasn't been shipped yet" : "The courier hasn't picked it up yet"}, so you'll get ${inrPaise(refund)} back in full to your original payment method. This cannot be undone.`)) return;
+    if (!confirm(refund > 0
+      ? `Cancel this order?\n\n${early ? "It hasn't been shipped yet" : "The courier hasn't picked it up yet"}, so you'll get ${inrPaise(refund)} back in full to your original payment method. This cannot be undone.`
+      : 'Cancel this order?\n\nIt is Cash on Delivery, so there is nothing to pay or refund. This cannot be undone.')) return;
     if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
     try {
       const sb = getSB();

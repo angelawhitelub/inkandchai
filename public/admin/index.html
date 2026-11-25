@@ -2862,6 +2862,7 @@ select,input,textarea{font-size:1rem;}
         <button class="btn-outline" onclick="exportNotPickedPdf()" title="Selected rows, or every row shown — opens a print sheet; choose Save as PDF">⬇ PDF</button>
         <button class="btn-outline" onclick="sendNotPickedReport(this)" title="The daily 10 AM report, now: a PDF of everything not picked up for the chosen number of days, oldest first, by email and WhatsApp to the report recipients">📨 Send report now</button>
         <button class="btn-outline" onclick="sendStockDelayNotices(this)" title="Customers whose booked order the courier has not picked up 3+ days after ordering, and the courier confirms is still waiting: email + WhatsApp that a book is out of stock with us and our supplier, with a link to request cancelling the order or removing the book. Shows the list first; sends nothing until you confirm. Each order is told once.">📣 Out-of-stock notices</button>
+        <button class="btn-outline" onclick="stockNoticeOpen()" title="Pick a book that is out of stock with us and the date the publisher's stock should arrive. Every customer whose order holds that book and is not picked up yet is told: we know it is N days late, we are arranging the stock, expected on <day, date>, and they can cancel any time from My Orders with the refund automatic (their My Orders cancel opens at once). Preview first; sends nothing until you tick and confirm.">📦 Book delayed notice</button>
       </div>
     </div>
     <div id="npuAutoCard" style="margin-bottom:.8rem;padding:.7rem .9rem;border:1px solid var(--border);border-radius:8px;background:var(--bg2);font-size:.72rem;line-height:1.6;">
@@ -4524,6 +4525,96 @@ async function sendNotPickedReport(btn) {
     btn.disabled = false;
     btn.innerHTML = original;
   }
+}
+
+// 📦 Book delayed notice (admin-stock-notice, utils/stock-notice): one book,
+// its expected arrival date, every not-picked-up order holding it. Preview,
+// tick, send. Told orders can be cancelled from My Orders at once.
+async function stockNoticeCall(body) {
+  const res = await adminFetch('/.netlify/functions/admin-stock-notice', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+async function stockNoticeOpen() {
+  document.getElementById('stockNoticeModal')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'stockNoticeModal';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+  const todayIst = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+  wrap.innerHTML = '<div style="background:var(--bg2,#1d1a16);color:var(--cream,#eee);border:1px solid var(--border,#444);border-radius:10px;max-width:860px;width:100%;max-height:90vh;overflow:auto;padding:18px 20px;font-family:Manrope,sans-serif;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><div style="font-weight:700;">📦 Book delayed notice</div><button class="btn-outline" data-act="close">✕</button></div>'
+    + '<div class="hint" style="margin:4px 0 12px;">Tells every customer whose order holds this book and has not been picked up: we know it is late, we are arranging the stock from the publisher, the expected arrival date, and that they can cancel any time from My Orders (refund automatic). Couriers are asked live first.</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">'
+    + '<label style="flex:1 1 340px;font-size:.75rem;">Book (from not-picked-up orders)<br><input id="snBook" list="snBooks" placeholder="Loading books…" style="width:100%;margin-top:4px;"/><datalist id="snBooks"></datalist></label>'
+    + '<label style="font-size:.75rem;">Stock expected on<br><input id="snEta" type="date" min="' + todayIst + '" style="margin-top:4px;"/></label>'
+    + '<button class="btn-gold" data-act="preview">Preview</button></div>'
+    + '<div id="snOut" style="margin-top:14px;"></div></div>';
+  document.body.appendChild(wrap);
+  let books = [];
+  let plan = null;
+  const out = wrap.querySelector('#snOut');
+  const pickBook = () => {
+    const v = wrap.querySelector('#snBook').value.trim();
+    const hit = books.find(b => (b.title + ' · ' + b.orders + ' order' + (b.orders === 1 ? '' : 's')) === v || b.title === v);
+    return hit ? { slug: hit.slug, title: hit.title } : (v ? { slug: '', title: v.replace(/ · \d+ orders?$/, '') } : null);
+  };
+  const body = () => ({ book: pickBook(), eta: wrap.querySelector('#snEta').value });
+  stockNoticeCall({ action: 'books' }).then(r => {
+    books = r.books || [];
+    wrap.querySelector('#snBooks').innerHTML = books.map(b => '<option value="' + esc(b.title + ' · ' + b.orders + ' order' + (b.orders === 1 ? '' : 's')) + '"></option>').join('');
+    wrap.querySelector('#snBook').placeholder = books.length + ' books in not-picked-up orders: type to search';
+  }).catch(e => { wrap.querySelector('#snBook').placeholder = 'Could not load books: ' + e.message; });
+
+  const render = () => {
+    const due = plan.due || [];
+    const left = plan.left || [];
+    out.innerHTML = '<div style="font-size:.8rem;margin-bottom:8px;"><b>' + esc(plan.title) + '</b> · arrival <b>' + esc(plan.eta_words || '') + '</b> · '
+      + due.length + ' to tell' + (left.length ? ' · ' + left.length + ' left out' : '') + '</div>'
+      + (due.length ? '<div style="overflow:auto;"><table class="orders-table" style="width:100%;font-size:.72rem;"><thead><tr><th><input type="checkbox" id="snAll" checked/></th><th>Order</th><th>Days</th><th>Customer</th><th>Cancel gives</th><th>Channels</th><th>Told before</th></tr></thead><tbody>'
+        + due.map((d, n) => '<tr><td><input type="checkbox" data-n="' + n + '" checked/></td><td>' + esc(d.id) + (d.awb ? '<div class="hint">' + esc(d.courier) + ' ' + esc(d.awb) + '</div>' : '<div class="hint">not booked</div>') + '</td><td>' + d.days + '</td><td>' + esc(d.customer) + '</td><td>' + esc(d.cancel) + '</td><td>' + (d.email ? '✉ ' : '') + (d.phone ? '📱' : '') + '</td><td>' + (d.told_before ? esc(d.told_before) : '') + '</td></tr>').join('')
+        + '</tbody></table></div>'
+        + '<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:.75rem;">Message the first customer gets</summary><pre style="white-space:pre-wrap;font-size:.72rem;background:rgba(255,255,255,.04);padding:10px;border-radius:6px;">' + esc(due[0].text) + '</pre></details>'
+        + '<div class="hint" style="margin-top:6px;">WhatsApp uses template <code>' + esc(plan.template) + '</code>; until Meta approves it the message goes as plain text, which reaches only customers who wrote to us in the last 24 h. The email always goes.</div>'
+        + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;"><button class="btn-gold" data-act="send">Send to ticked</button></div>'
+        : '<div class="hint">Nobody to tell for this book.</div>')
+      + (left.length ? '<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:.75rem;">Left out (' + left.length + ')</summary><div style="font-size:.72rem;line-height:1.7;">' + left.map(l => esc(l.id) + ' · ' + esc(l.reason)).join('<br>') + '</div></details>' : '');
+    wrap.querySelector('#snAll')?.addEventListener('change', (e) => wrap.querySelectorAll('#snOut input[data-n]').forEach(c => { c.checked = e.target.checked; }));
+  };
+
+  wrap.addEventListener('click', async (e) => {
+    const act = e.target?.dataset?.act;
+    if (e.target === wrap || act === 'close') { wrap.remove(); return; }
+    if (act === 'preview') {
+      const b = body();
+      if (!b.book) { alert('Pick a book.'); return; }
+      if (!b.eta) { alert('Pick the date the stock is expected.'); return; }
+      e.target.disabled = true; out.innerHTML = '<div class="hint">Finding orders and asking couriers…</div>';
+      try { plan = await stockNoticeCall({ action: 'preview', ...b }); plan._req = b; render(); }
+      catch (err) { out.innerHTML = '<div style="color:#e87070;">' + esc(err.message) + '</div>'; }
+      finally { e.target.disabled = false; }
+    }
+    if (act === 'send') {
+      const ids = [...wrap.querySelectorAll('#snOut input[data-n]:checked')].map(c => plan.due[Number(c.dataset.n)].id);
+      if (!ids.length) { alert('Tick at least one order.'); return; }
+      if (!confirm('Send the delayed-stock notice for "' + plan.title + '" (arrival ' + plan.eta_words + ') to ' + ids.length + ' customer(s) by email + WhatsApp?\n\nTheir My Orders will let them cancel at once with an automatic refund.')) return;
+      e.target.disabled = true; e.target.textContent = 'Sending…';
+      try {
+        const r = await stockNoticeCall({ action: 'send', ...plan._req, order_ids: ids, expect: ids.length });
+        const failed = (r.results || []).filter(x => !x.ok).map(x => x.order);
+        const viaText = (r.results || []).filter(x => /^text/.test(x.whatsapp || '')).length;
+        const waFail = (r.results || []).filter(x => x.whatsapp === 'failed').length;
+        alert('Told ' + r.sent + ' of ' + r.of + '.'
+          + (viaText ? '\n' + viaText + ' WhatsApp(s) went as plain text (template not approved yet).' : '')
+          + (waFail ? '\n' + waFail + ' WhatsApp(s) did not go (template not approved and outside 24 h); their email went.' : '')
+          + (failed.length ? '\nNot delivered at all: ' + failed.join(', ') : ''));
+        plan = await stockNoticeCall({ action: 'preview', ...plan._req }).then(p => ({ ...p, _req: plan._req }));
+        render();
+      } catch (err) { alert('Send failed: ' + err.message); e.target.disabled = false; e.target.textContent = 'Send to ticked'; }
+    }
+  });
 }
 
 // "A book in your order is out of stock" to customers (stock-delay-notify-scheduled).

@@ -168,6 +168,8 @@ exports.handler = async (event) => {
       // The owner's "cancel until shipped" switch (utils/cancel-window).
       let untilShipped = false;
       try { untilShipped = await require('./utils/cancel-window').untilShippedOpen(); } catch { untilShipped = false; }
+      // Told "out of stock, cancel any time" (utils/stock-notice).
+      const stockLedger = await require('./utils/stock-notice').ledgerOrEmpty();
       let noRetMap = null;
       try { noRetMap = await noReturns.noReturnMap(); } catch { noRetMap = null; }
       orders.forEach(o => {
@@ -193,9 +195,10 @@ exports.handler = async (event) => {
         // Paid, and the courier has not picked it up 7+ days after ordering:
         // full refund (utils/unpicked-cancel). Offered instead of the late
         // cancel, which would keep shipping back.
-        const uc = quoteUnpickedCancel(o, Date.now(), { untilShipped });
+        const stockNotice = require('./utils/stock-notice').told(stockLedger, o);
+        const uc = quoteUnpickedCancel(o, Date.now(), { untilShipped, stockNotice });
         if (uc.eligible) {
-          o.unpicked_cancel = { refund_paise: uc.refundPaise, partial_cod: uc.partialCod, early: !!uc.early };
+          o.unpicked_cancel = { refund_paise: uc.refundPaise, partial_cod: uc.partialCod, early: !!uc.early, stock_notice: !!uc.stockNotice };
         }
         const lc = quoteLateCancel(o);
         if (!uc.eligible && lc.eligible && 'late_cancel_at' in o) {
