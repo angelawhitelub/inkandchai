@@ -87,7 +87,7 @@ test('[ESCALATE] alerts the owner, hands the chat to a person, and is not shown 
   const alerts = []; const taken = []; const sent = [];
   await W.handleDm({ sender: '777', text: 'I want a refund', attachments: [] }, {
     bot, botOn: async () => true, username: async () => '@angry', send: async (to, t) => { sent.push(t); return { ok: true }; },
-    alertOwner: async (m) => alerts.push(m), takeover: async (k) => taken.push(k),
+    alertOwner: async (m) => alerts.push(m), takeover: async (k) => taken.push(k), queue: async () => {},
   });
   assert.equal(alerts.length, 1);
   assert.deepEqual(taken, ['ig:777']);

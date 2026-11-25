@@ -13,6 +13,13 @@
  * POST {action:"send",     phone, text} — admin sends a WhatsApp message
  * POST {action:"mark_read",phone}       — clear unread count
  * POST {action:"summarise",phone}       — generate an internal summary on demand
+ * POST {action:"agent_open",phone}      — the owner OPENED a queued chat: tell the
+ *                                         customer "Agent Anil is now available…"
+ *                                         once (utils/agent-queue)
+ *
+ * Agent queue (utils/agent-queue): list rows carry `agent_queue` ({ since,
+ * reason, joined_at }) for chats waiting for a person; Close chat and Hand to
+ * bot take a chat out of it.
  */
 
 const { threadPage, customerDetails, enrichNames } = require('./utils/inbox-history');
@@ -21,6 +28,7 @@ const { summariseConversation } = require('./utils/inbox-summary');
 const { createClient } = require('@supabase/supabase-js');
 const { normalizePhone } = require('./utils/whatsapp');
 const { requireAdmin } = require('./utils/admin-auth');
+const agentQueue = require('./utils/agent-queue');
 
 const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '1188708014316574';
 const API_VER  = 'v20.0';
@@ -84,7 +92,23 @@ exports.handler = async (event) => {
           .order('last_message_at', { ascending: false })
           .limit(200);
         if (error) throw error;
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ conversations: await categorizeConversations(db, await enrichNames(db, data || [])) }) };
+        // Queued chats are listed even when older than the newest 200.
+        let queue = [];
+        try { queue = await agentQueue.list(); } catch (e) { console.warn('[bot-inbox] agent queue unreadable:', e.message); }
+        const rows = data || [];
+        const have = new Set(rows.map((r) => r.customer_phone));
+        const missing = queue.map((q) => q.chat).filter((k) => !have.has(k));
+        if (missing.length) {
+          const { data: more } = await db.from('bot_conversations').select('*').in('customer_phone', missing.slice(0, 200));
+          rows.push(...(more || []));
+        }
+        const conversations = await categorizeConversations(db, await enrichNames(db, rows));
+        const byChat = new Map(queue.map((q) => [q.chat, q]));
+        for (const c of conversations) {
+          const q = byChat.get(agentQueue.keyOf(c.customer_phone));
+          if (q) c.agent_queue = { since: q.since, reason: q.reason, last_text: q.last_text, joined_at: q.joined_at, joined_by: q.joined_by };
+        }
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ conversations, agent_name: agentQueue.AGENT_NAME() }) };
       }
 
       if ((q.action === 'thread' || q.action === 'customer') && q.phone) {
@@ -127,6 +151,7 @@ exports.handler = async (event) => {
         await db.from('bot_conversations')
           .update({ human_takeover: false })
           .eq('customer_phone', phone);
+        await agentQueue.remove(phone);
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
       }
 
@@ -140,7 +165,33 @@ exports.handler = async (event) => {
           .update({ status: 'resolved', human_takeover: false, unread_count: 0 })
           .eq('customer_phone', phone);
         if(error)throw error;
+        await agentQueue.remove(phone);
         return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true }) };
+      }
+
+      // The owner opened a queued chat (a click in Bot Inbox, never a poll):
+      // the customer hears once that an agent has joined. Only inside the
+      // 24-hour window -- outside it WhatsApp drops the message without a word.
+      if (action === 'agent_open') {
+        const entry = await agentQueue.get(phone);
+        if (!entry) return { statusCode: 200, headers: CORS, body: JSON.stringify({ queued: false }) };
+        if (entry.joined_at) return { statusCode: 200, headers: CORS, body: JSON.stringify({ queued: true, joined: true, already: true }) };
+        const { data: lastUser } = await db.from('bot_messages').select('created_at')
+          .eq('customer_phone', phone).in('role', ['user', 'customer'])
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (!agentQueue.inWindow(lastUser?.created_at)) {
+          return { statusCode: 200, headers: CORS, body: JSON.stringify({ queued: true, joined: false, window_closed: true, last_user_at: lastUser?.created_at || null }) };
+        }
+        // Claim first so two open tabs send it once; undone if the send fails.
+        await agentQueue.markJoined(phone);
+        const joinText = agentQueue.joinText();
+        const sent = await exports.handler({ ...event, body: JSON.stringify({ action: 'send', phone, text: joinText }) });
+        if (sent.statusCode !== 200) {
+          await agentQueue.put(entry).catch(() => {});   // back to waiting
+          let why = {}; try { why = JSON.parse(sent.body); } catch { /* keep empty */ }
+          return { statusCode: 200, headers: CORS, body: JSON.stringify({ queued: true, joined: false, error: why.detail || why.error || 'send failed' }) };
+        }
+        return { statusCode: 200, headers: CORS, body: JSON.stringify({ queued: true, joined: true, sent: true, text: joinText }) };
       }
 
       if (action === 'mark_read') {

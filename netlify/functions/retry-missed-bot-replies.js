@@ -92,7 +92,10 @@ async function recoverOne(db, candidate) {
     const orderContext = await bot.buildOrderContext(candidate.phone, combined);
     let reply = await bot.askOpenAI(candidate.phone, combined, orderContext);
     const escalated = reply.includes('[ESCALATE]');
-    reply = reply.replace('[ESCALATE]', '').trim();
+    reply = reply.replace(/\[ESCALATE\]/g, '').trim();
+    // Same hand-over as a live reply: the customer waits here for an agent.
+    const agentQueue = require('./utils/agent-queue');
+    if (escalated && !/next available agent/i.test(reply)) reply = `${reply}\n\n${agentQueue.WAIT_TEXT}`.trim();
     if (!reply) throw new Error('AI returned an empty reply');
 
     // Recheck after generation too: a human or live webhook may have replied
@@ -107,6 +110,7 @@ async function recoverOne(db, candidate) {
       unread_count: 0,
       human_takeover: escalated,
     }).eq('customer_phone', candidate.phone);
+    if (escalated) await agentQueue.add(candidate.phone, { reason: 'Bot handed over', text: combined }).catch(() => {});
     return { phone: candidate.phone, status: 'sent' };
   } catch (error) {
     console.error(`Missed reply recovery failed for ${candidate.phone}:`, error.message);

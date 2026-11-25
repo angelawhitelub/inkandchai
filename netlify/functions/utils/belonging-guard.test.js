@@ -42,7 +42,8 @@ test('scrub removes the number and link in every spelling and says the team repl
     const out = g.scrub(`I understand your concern. ${r}`);
     assert.doesNotMatch(out, /9217|92171|75546|wa\.me/, out);
     assert.match(out, /I understand your concern\./);
-    assert.match(out, /right here in this chat/);
+    assert.match(out, /next available agent will take up your issue and talk to you here/);
+    assert.match(out, /\[ESCALATE\]$/, 'a removed number means a person must reply: queued');
   }
 });
 

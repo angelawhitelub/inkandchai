@@ -121,7 +121,7 @@ const CHANNEL_NOTE = [
   '- To buy a book, look it up with find_book and send the inkandchai.in link with the price; ordering happens on the website.',
   '- For an existing order, ask for the order ID (the last 5 letters, e.g. AB3CD, are enough) and answer from the order details you are given.',
   '- Keep replies short and friendly for Instagram: a few lines, no long lists, plain text (no markdown).',
-  '- Anything you cannot do here (returns, refunds, address changes, complaints): say our team will reply in this chat, and end with [ESCALATE].',
+  '- Anything you cannot do here (returns, refunds, address changes, complaints, or they want a person): say "The next available agent will take up your issue and talk to you here. 🙏" and end with [ESCALATE]. Never give any phone number or wa.me link.',
 ].join('\n');
 
 module.exports = {

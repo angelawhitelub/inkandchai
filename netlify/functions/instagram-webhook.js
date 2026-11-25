@@ -16,6 +16,7 @@
  */
 const IG = require('./utils/instagram');
 const { requireAdmin } = require('./utils/admin-auth');
+const agentQueue = require('./utils/agent-queue');
 
 const text = (statusCode, body) => ({ statusCode, headers: { 'Content-Type': 'text/plain' }, body: String(body) });
 const json = (statusCode, body) => ({ statusCode, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body) });
@@ -76,6 +77,8 @@ async function handleDm(dm, deps = {}) {
   let reply = await bot.askOpenAI(key, dm.text, extra, null, { channel: 'instagram' });
   if (reply.includes('[ESCALATE]')) {
     reply = reply.replace(/\[ESCALATE\]/g, '').trim();
+    if (!/next available agent/i.test(reply)) reply = `${reply}\n\n${agentQueue.WAIT_TEXT}`.trim();
+    await (deps.queue || agentQueue.add)(key, { reason: 'Bot handed over (Instagram)', text: dm.text });
     await (deps.alertOwner || alertOwner)(`⚠️ Instagram DM needs a person\nFrom: ${name || key}\nMessage: "${dm.text.slice(0, 200)}"\n\nAdmin → Bot Inbox to reply (chat key ${key}).`);
     await (deps.takeover || takeover)(key);
   }
@@ -135,7 +138,8 @@ async function handle(event = {}, deps = {}) {
       const r = await handleDm(dm, deps);
       console.log('[instagram]', IG.igKey(dm.sender), r.replied ? 'replied' : `not replied (${r.why || 'send failed'})`);
     } catch (e) {
-      console.error('[instagram] DM failed', e.message);   // always 200, so Meta does not resend the whole batch
+      console.error('[instagram] DM failed', e.message);
+      if (e.code === 'openai_quota') await agentQueue.add(IG.igKey(dm.sender), { reason: 'Bot out of OpenAI credits', text: dm.text }).catch(() => {});   // always 200, so Meta does not resend the whole batch
     }
   }
   return text(200, 'EVENT_RECEIVED');

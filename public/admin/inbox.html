@@ -103,6 +103,8 @@ main{flex:1;min-height:0;display:flex}
 .badge{display:inline-block;font-size:.68rem;font-weight:700;padding:.12rem .45rem;border-radius:5px;flex:0 0 auto}
 .b-unread{background:var(--red);color:#fff}
 .b-human{background:#e7f0fb;color:#12539b}
+.b-queue{background:#fdecc8;color:#8a4b00}.b-joined{background:#e3f4ea;color:#1d6b3c}
+.agent-note{margin:0 .8rem .4rem;padding:.55rem .8rem;border-radius:8px;background:#fff4dc;color:#7a4a00;font-size:.86rem;line-height:1.45;border:1px solid #f0d49a}
 .b-resolved{background:#eaf7ee;color:var(--green)}
 .b-critical{background:var(--red);color:#fff}
 .b-high{background:#fdecea;color:var(--red)}
@@ -213,6 +215,7 @@ main{flex:1;min-height:0;display:flex}
   <a class="logo" href="/admin/">Ink &amp; Chai<span>Bot Inbox</span></a>
   <div class="viewtabs">
     <button class="viewtab active" id="tabInboxBtn" onclick="showView('inbox')">💬 Conversations</button>
+    <button class="viewtab" id="tabQueueBtn" onclick="showQueue()" title="Chats the bot handed to a person, longest waiting first. Opening one tells the customer the agent is available.">🙋 Agent queue <span class="count" id="queueCount" style="display:none">0</span></button>
     <button class="viewtab" id="tabTriageBtn" onclick="showView('triage')">🚨 Needs attention <span class="count" id="triageCount" style="display:none">0</span></button>
   </div>
   <div class="nav-right">
@@ -254,6 +257,7 @@ main{flex:1;min-height:0;display:flex}
         <div class="filters">
           <button class="fbtn active" onclick="setFilter('all',this)">All</button>
           <button class="fbtn" onclick="setFilter('unread',this)">Unread</button>
+          <button class="fbtn" id="queueChip" onclick="setFilter('queue',this)">🙋 Agent queue</button>
           <button class="fbtn" onclick="setFilter('top',this)">🔴 Top priority</button>
           <button class="fbtn" onclick="setFilter('low',this)">Low priority</button>
           <button class="fbtn" onclick="setFilter('attention',this)">Needs attention</button>
@@ -283,6 +287,7 @@ main{flex:1;min-height:0;display:flex}
         <div class="history-status"><span id="historyStatus" role="status"></span> <button class="btn" id="historyRetry" onclick="loadMessages(true)" hidden>Retry history</button></div>
         <div class="msgs" id="msgs"></div>
         <div class="inbox-resize inbox-resize-row" id="inboxReplyGrip" role="separator" tabindex="0" aria-label="Resize reply box" aria-orientation="horizontal" aria-controls="reply" title="Drag up to enlarge the reply box · Double-click to reset"></div>
+        <div id="agentNote" class="agent-note" hidden></div>
         <div class="composer">
           <textarea id="reply" rows="2" placeholder="Type a message — Enter sends, Shift+Enter for a new line"></textarea>
           <button class="btn gold" id="sendBtn" onclick="send()">Send</button>
@@ -383,6 +388,7 @@ let conversations = [];
 let flaggedPhones = new Map();   // phone -> {severity, score}
 let activePhone   = null;
 let filter        = 'all';
+let agentName     = 'Anil';
 let search        = '';
 let renderedIds   = new Set();   // message ids already in the DOM
 let lastSeenCount = 0;
@@ -393,6 +399,8 @@ let allHistoryLoaded = false;
 const chatSummaries = new Map();
 
 function showView(v) {
+  document.getElementById('tabQueueBtn')?.classList.remove('active');
+  if (v === 'inbox' && filter === 'queue') { filter = 'all'; document.querySelectorAll('.fbtn').forEach(b => b.classList.toggle('active', b.textContent.trim() === 'All')); renderList(); }
   document.getElementById('view-inbox').classList.toggle('active', v === 'inbox');
   document.getElementById('view-triage').classList.toggle('active', v === 'triage');
   document.getElementById('tabInboxBtn').classList.toggle('active', v === 'inbox');
@@ -400,6 +408,51 @@ function showView(v) {
   location.hash = v;
   if (v === 'triage' && !flaggedPhones.size) loadTriage();
 }
+function showQueue() {
+  showView('inbox');
+  document.getElementById('tabInboxBtn').classList.remove('active');
+  document.getElementById('tabQueueBtn').classList.add('active');
+  setFilter('queue', document.getElementById('queueChip'));
+}
+
+// Opening a queued chat (this click only — polling never does it) tells the
+// customer the agent is here, once (bot-inbox agent_open, utils/agent-queue).
+async function agentJoin(phone, conv, version) {
+  const note = document.getElementById('agentNote');
+  note.dataset.kind = '';
+  windowNote();
+  if (!conv.agent_queue || conv.agent_queue.joined_at) return;
+  try {
+    const res = await api('/.netlify/functions/bot-inbox', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'agent_open', phone }),
+    });
+    const d = await res.json();
+    if (version !== threadVersion) return;
+    if (d.sent) { await loadMessages(true); loadConversations().catch(() => {}); return; }
+    if (d.window_closed) {
+      note.hidden = false; note.dataset.kind = 'agent';
+      note.textContent = 'This customer is waiting for an agent, but their last message was more than 24 hours ago, so WhatsApp will not deliver "Agent ' + agentName + ' is now available" or any typed reply. Call them, or wait for them to write again (the message goes when you next open the chat).';
+      return;
+    }
+    if (d.error) { note.hidden = false; note.dataset.kind = 'agent'; note.textContent = 'Could not tell the customer an agent joined: ' + d.error; }
+  } catch (e) {
+    if (version === threadVersion) { note.hidden = false; note.dataset.kind = 'agent'; note.textContent = 'Could not tell the customer an agent joined: ' + e.message; }
+  }
+}
+
+// WhatsApp delivers a typed reply only within 24 h of the customer's last message.
+function windowNote() {
+  const note = document.getElementById('agentNote');
+  const last = [...document.querySelectorAll('#msgs .msg.m-user[data-ts]')].map(el => Date.parse(el.dataset.ts)).filter(Number.isFinite).sort((a, b) => b - a)[0];
+  if (last && Date.now() - last > 24 * 3600e3) {
+    note.hidden = false; note.dataset.kind = 'window';
+    note.textContent = 'Last customer message was ' + ago(new Date(last).toISOString()) + ' ago. WhatsApp only delivers typed replies within 24 hours of their last message, so a reply sent now will look sent but will not reach them.';
+  } else {
+    note.hidden = true; note.textContent = ''; note.dataset.kind = '';
+  }
+}
+
 function setSearch(v) { search = String(v || '').toLowerCase().trim(); renderList(); }
 function setFilter(f, btn) {
   filter = f;
@@ -416,6 +469,11 @@ async function loadConversations() {
     const res = await api('/.netlify/functions/bot-inbox?action=list');
     const data = await res.json();
     conversations = data.conversations || [];
+    if (data.agent_name) agentName = data.agent_name;
+    const waiting = conversations.filter(c => c.agent_queue && !c.agent_queue.joined_at).length;
+    const qc = document.getElementById('queueCount');
+    qc.textContent = waiting; qc.style.display = waiting ? 'inline-block' : 'none';
+    document.getElementById('queueChip').textContent = '🙋 Agent queue' + (conversations.some(c => c.agent_queue) ? ' (' + conversations.filter(c => c.agent_queue).length + ')' : '');
     renderList();
   } catch (e) {
     // Never leave "Loading…" on screen — a silent failure looks identical to a
@@ -433,6 +491,7 @@ function visibleConversations() {
   return conversations.filter(c => {
     if (filter === 'unread'   && !(c.unread_count > 0)) return false;
     if (filter === 'takeover' && !c.human_takeover)     return false;
+    if (filter === 'queue'    && !c.agent_queue)        return false;
     if (['top','low','attention','closed'].includes(filter) && c.category !== filter) return false;
     if (filter === 'flagged'  && !flaggedPhones.has(c.customer_phone)) return false;
     if (search) {
@@ -440,7 +499,10 @@ function visibleConversations() {
       if (!hay.includes(search)) return false;
     }
     return true;
-  }).sort((a,b)=>({top:0,attention:1,low:2,closed:3}[a.category]??1)-({top:0,attention:1,low:2,closed:3}[b.category]??1));
+  }).sort((a,b)=> filter === 'queue'
+    // Agent queue: still waiting first, then longest waiting.
+    ? (!!a.agent_queue.joined_at - !!b.agent_queue.joined_at) || (Date.parse(a.agent_queue.since) - Date.parse(b.agent_queue.since))
+    : ({top:0,attention:1,low:2,closed:3}[a.category]??1)-({top:0,attention:1,low:2,closed:3}[b.category]??1));
 }
 
 function renderList() {
@@ -461,6 +523,7 @@ function renderList() {
         <span class="category-label cat-${esc(c.category||'attention')}" title="${esc(c.category_reason||'')}">${esc(({top:'Top priority',low:'Low priority',attention:'Needs attention',closed:'Closed'})[c.category]||'Needs attention')}</span>
         <span class="prev">
           ${flag ? `<span class="badge b-${flag.severity}">${flag.severity === 'critical' ? '🚨' : '⚠'} ${flag.score}</span>` : ''}
+          ${c.agent_queue ? (c.agent_queue.joined_at ? `<span class="badge b-joined" title="Agent joined ${esc(new Date(c.agent_queue.joined_at).toLocaleString('en-IN'))}">🙋 WITH ${esc(String(c.agent_queue.joined_by || agentName).toUpperCase())}</span>` : `<span class="badge b-queue" title="${esc(c.agent_queue.reason || '')}">🙋 WAITING ${ago(c.agent_queue.since)}</span>`) : ''}
           ${c.human_takeover ? '<span class="badge b-human">HUMAN</span>' : ''}
           ${c.status === 'resolved' ? '<span class="badge b-resolved">CLOSED</span>' : ''}
           <span class="prevtext">${esc((c.last_message || '').slice(0, 90))}</span>
@@ -511,7 +574,9 @@ async function openThread(phone) {
   renderActions(phone, conv);
   renderList();
   loadCustomer(phone, threadVersion);
+  const opened = threadVersion;
   await loadMessages(true);
+  if (opened === threadVersion) agentJoin(phone, conv, opened);
   api('/.netlify/functions/bot-inbox', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'mark_read', phone }),
@@ -563,7 +628,7 @@ async function loadMessages(fullHistory) {
     }while(offset!==null);
     if(!fullHistory)status.textContent=renderedIds.size+' saved messages loaded';
   }catch(e){if(version===threadVersion){status.textContent=e.message+' — history may be incomplete.';retry.hidden=false;}}
-  finally{if(version===threadVersion){historyBusy=false;summaryFreshness();}}
+  finally{if(version===threadVersion){historyBusy=false;summaryFreshness();if(document.getElementById('agentNote').dataset.kind!=='agent')windowNote();}}
 }
 
 function renderActions(phone, conv) {

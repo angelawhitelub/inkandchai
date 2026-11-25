@@ -16,7 +16,9 @@ const D = '[\\s-]*';
 const NUMBER_RE = new RegExp(`(?:\\+?${D}9${D}1${D})?${'9217175546'.split('').join(D)}`);
 const LINK_RE = /(?:https?:\/\/)?(?:api\.)?wa\.me\/\S*/i;
 
-const IN_CHAT = 'Our team will reply to you right here in this chat 🙏';
+// Owner, 25 Nov 2026: the number is never given to ANY customer; a person
+// replies in this chat instead (utils/agent-queue).
+const IN_CHAT = require('./agent-queue').WAIT_TEXT;
 
 const PROMPT = `
 
@@ -97,8 +99,9 @@ function scrub(reply) {
     return kept.length ? kept.join(' ') : null;
   }).filter((l) => l !== null);
   let out = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  if (dropped && !/this chat|right here/i.test(out)) out = `${out}\n\n${IN_CHAT}`.trim();
-  return escalate ? `${out} [ESCALATE]` : out;
+  if (dropped && !/this chat|right here|talk to you here|next available agent/i.test(out)) out = `${out}\n\n${IN_CHAT}`.trim();
+  // A reply that tried to send them to the team number needs a person: queue it.
+  return escalate || dropped ? `${out} [ESCALATE]` : out;
 }
 
 module.exports = { PROMPT, IN_CHAT, mentionsBook, orderHasBook, hasOrderedBook, applies, scrub, NUMBER_RE, LINK_RE };

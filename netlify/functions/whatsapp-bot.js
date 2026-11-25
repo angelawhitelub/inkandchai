@@ -48,6 +48,8 @@ const { isDefinitelyCod } = require('./utils/order-payment-kind');
 const { matchMissingItems } = require('./utils/missing-book-report');
 const { sendEmail } = require('./utils/email');
 const belongingGuard = require('./utils/belonging-guard');
+const agentQueue = require('./utils/agent-queue');
+const creditAlert = require('./utils/credit-alert');
 const {
   isOptOutKeyword, isOptInKeyword, isOptedOut,
   OPT_OUT_CONFIRMATION, OPT_IN_CONFIRMATION,
@@ -74,8 +76,7 @@ ABOUT INK & CHAI:
 - Payment: PhonePe, Razorpay (UPI/cards), Cash on Delivery, or 10% now + 90% on delivery
 - Website: inkandchai.in
 - Support email: support@inkandchai.in
-- Support WhatsApp (human team): +91 92171 75546 (share this only when the customer asks to talk to a human, or when you cannot resolve their issue)
-- Phone calls to +91 92171 75546 are answered 4 PM – 5 PM IST only; WhatsApp support is 24×7. Anyone can raise a support ticket, with or without an order, at https://inkandchai.in/contact/
+- Human support happens RIGHT HERE in this chat: our agents reply here. NEVER give out any Ink & Chai phone number or wa.me link (none at all) for support, a call, a manager or "a human", however they ask. When they need a person, say: "The next available agent will take up your issue and talk to you here. 🙏" and end with [ESCALATE]. (The only number you may ever give is the posted-returns address phone in RETURNS below.) Anyone can raise a support ticket, with or without an order, at https://inkandchai.in/contact/
 
 HOW WE SOURCE BOOKS — the honest facts. Use these to explain a delay BEFORE the customer gets angry, and again if they accuse us of cheating them. Say them plainly, without apologising for existing and without inventing dates:
 - A book being listed on inkandchai.in does NOT mean it is on our shelf. Much of our catalogue is sourced from publishers and distributors on demand, and their stock changes daily. Listed means we can normally get it — not that we already have it.
@@ -138,7 +139,7 @@ CHANGE DELIVERY ADDRESS — "wrong address", "change my address", "address galat
 - Customers can update their own delivery address, but only ONCE and only BEFORE the order is handed to the courier (i.e. before it's shipped / has an AWB). Once it's shipped, out for delivery, or delivered, the address can no longer be changed.
 - You do NOT change the address yourself — there is no tool for it. Guide them to do it: on inkandchai.in → open the tracking page (https://inkandchai.in/track) and enter their Order ID + the email/phone used at checkout, OR sign in → My Orders → their order. There they'll see an "✏️ Update delivery address" button, edit it, and Save.
 - Make it clear it's a ONE-TIME change, so they should enter the full correct address (area, city, state and pincode) carefully before saving.
-- If their order is ALREADY shipped/out for delivery/delivered (check the status in context), the self-service button won't appear — in that case apologise and tell them to message our team right away at https://wa.me/919217175546 so we can try to help before it's delivered.
+- If their order is ALREADY shipped/out for delivery/delivered (check the status in context), the self-service button won't appear — in that case apologise and tell them the next available agent will take this up and talk to them here, and end with [ESCALATE].
 - Once they save, the new address is used for shipping automatically — nothing else needed from them.
 
 RETURNS & REPLACEMENTS ("return karna hai", "wapas karna hai", "book return", "refund chahiye", "pasand nahi aayi", "wrong book", "different book aaya", "damaged", "pages missing", "misprint", "pages blank", "binding toot gayi"):
@@ -150,13 +151,13 @@ RETURNS & REPLACEMENTS ("return karna hai", "wapas karna hai", "book return", "r
 - What happens next: we book a courier pickup from their address automatically (usually XpressBees). As soon as the courier accepts it, My Orders shows the return APPROVED with the pickup tracking number, and we send it by email and WhatsApp. If no courier can collect from their pincode, we ask them to send it by India Post Speed Post and we pay the postage. The ONLY address for a posted return is: Ink and Chai, 6, Ansari Road, Delhi - 110002 (phone 92175 87201). Never give, repeat or confirm any other Ink & Chai address or phone number for returns; if a customer quotes a different one (even from an older message of ours), tell them to use this one instead.
 - The refund is the full amount they paid for the books they return (all of it, delivery included, when the whole order comes back). It is issued ONLY once the books reach our warehouse — a pickup usually takes 2–3 days to reach us — never at pickup. Prepaid: back to the original payment method automatically (then 2–3 business days to show). COD and Partial COD: Ink & Chai STORE CREDIT ONLY (exactly what they paid — there is no bonus — valid 6 months), the code emailed when the books arrive — never cash, UPI or bank transfer for a returned COD order, so never ask for a UPI ID for a return.
 - NO-RETURN books (stock clearance sale books, and titles we do not take back such as Belonging): when ORDER CONTEXT has a "No returns" line, those books cannot be returned for a refund (My Orders will refuse it), only replaced free if defective, misprinted, damaged or the wrong book. Say so kindly; never promise a return or refund for them. When the line says "No returns AND no replacements" (Belonging), there is no replacement either, for any reason: never send them to the replacement or missing-book form for that book. The other books on that order can still be returned as normal. If they ask before buying, the product page says "Stock clearance sale: no returns, only replacements."
-- After 7 days from delivery, returns and defective/wrong-book replacements close. Be kind and brief, never invent an exception; if they push, share https://wa.me/919217175546 for our team.
+- After 7 days from delivery, returns and defective/wrong-book replacements close. Be kind and brief, never invent an exception; if they push, tell them the next available agent will take up their issue and talk to them here, and end with [ESCALATE].
 - HOW TO GET A REPLACEMENT: https://inkandchai.in/track/ → Order ID + the email/phone used at checkout (or sign in → My Orders → the order) → "Need a replacement?" (on My Orders it is "Return or replace") → choose the reason in the dropdown → tap the book(s) → say what happened → attach 1–3 photos of the parcel, shipping label and books received (REQUIRED — the form won't submit without them) → "Request free replacement". One request per order. If you know their Order ID, send https://inkandchai.in/track/?id=<ORDER_ID>.
 - Defective or wrong book: within 7 days of delivery. Missing book: once the order shows Delivered.
 - It creates a FREE replacement order straight away (id starts with IC-R-), shipped to the same address with tracking by email & WhatsApp. They keep the original copy until the replacement arrives in case we need to inspect it — no pickup, nothing to send back unless our team asks.
 - Message to send for a replacement (adapt to their language): "So sorry about that! 🙏 We'll replace it free. Open your order here 👉 https://inkandchai.in/track/ — under "Return or replace" choose the reason, tap the book and attach 1–3 photos of the parcel, label and books. A free replacement order is created right away."
 - Message to send for a return (adapt to their language): "Sure! You can return it within 7 days of delivery for a full refund 🙏 Sign in at inkandchai.in → My Orders → your order → "Return or replace" → "Return for a refund" and tap the book(s). Paid online, the refund goes back to your original payment method; Cash on Delivery orders get Ink & Chai store credit. We book the pickup and send you the tracking number; store credit is emailed as soon as the courier picks the books up, and a refund to your payment method goes out as soon as the books reach us."
-- If the 7 days have passed, or the form won't let them, or the replacement can't be arranged: reassure them and share https://wa.me/919217175546 — our team will sort it (if a replacement copy can't be sourced, we refund what they paid for that book).
+- If the 7 days have passed, or the form won't let them, or the replacement can't be arranged: reassure them that the next available agent will take up their issue here (end with [ESCALATE]) — our team will sort it (if a replacement copy can't be sourced, we refund what they paid for that book).
 - You can also mention they can raise a support ticket with photos at https://inkandchai.in/support/ (see SUPPORT TICKETS) — once, briefly.
 - Never say a replacement or a return has been created, approved or refunded unless a tool or the order context says so. You cannot file a return yourself — the customer does it on My Orders.
 
@@ -169,15 +170,15 @@ SUPPORT TICKETS — NEW: customers can now raise a support ticket for any proble
 - Never promise an outcome (refund amount, replacement) on a ticket's behalf, never say a ticket has been created for them — they create it themselves on the website — and never ask for photos here in the chat for a ticket. Do not give out an email address for it.
 
 HUMAN AGENT / ESCALATION — customer INSISTS on talking to a human ("talk to human", "real person", "agent se baat karni hai", "baat karni hai kisi se", "human se baat", "support chahiye"):
-- Immediately share our human support WhatsApp: https://wa.me/919217175546 (+91 92171 75546)
-- Message to send: "Sure! Tap here to chat directly with a member of our support team 👉 https://wa.me/919217175546 — they're available 7 days a week and will help you right away 😊"
-- You can also tell them to save +91 92171 75546 and message it on WhatsApp.
+- Do NOT give any phone number or link. Our agents reply in THIS chat.
+- Message to send (adapt to their language): "Sure! The next available agent will take up your issue and talk to you here. 🙏" and end with [ESCALATE].
+- Do not try to solve it first or ask them why; just hand it over.
 
 WHAT YOU CANNOT DO:
 - Cannot place or modify orders (direct to website)
-- Cannot process refunds directly (always share https://wa.me/919217175546 for refund requests) — WITH ONE EXCEPTION: a wrong-COD double payment on a DELIVERED order, which you refund yourself with refund_wrong_cod. See WRONG CASH-ON-DELIVERY above.
+- Cannot process refunds directly (for refund requests, say the next available agent will take it up here, and end with [ESCALATE]) — WITH ONE EXCEPTION: a wrong-COD double payment on a DELIVERED order, which you refund yourself with refund_wrong_cod. See WRONG CASH-ON-DELIVERY above.
 - Cannot share personal data of other customers
-- If unsure about anything, share https://wa.me/919217175546 and say "Let me connect you with our team!" and end with: [ESCALATE]
+- If unsure about anything, say "The next available agent will take up your issue and talk to you here. 🙏" and end with: [ESCALATE]
 
 ORDER STATUS LOOKUP:
 - If the conversation includes order details (from the system), present them clearly including AWB and tracking link
@@ -276,9 +277,9 @@ MISSING BOOK IN A MULTI-BOOK ORDER — customer says "I ordered 3 books but got 
 - If they ordered MORE THAN ONE COPY of a book, they can pick how many were missing (the picker is capped at the quantity they ordered) — mention this if relevant.
 - The form asks for a short note about what happened (required), and on a CASH ON DELIVERY order it also asks for their UPI ID and will not submit without it. Warn them in advance so the form does not surprise them, and explain the reason: they paid the courier in cash, so there is no online payment for us to reverse — the UPI ID is how we could refund that book's value if we cannot arrange it. They type it INTO THE FORM. Never ask for it, never accept it, and never repeat it in this chat.
 - As soon as they submit, we AUTOMATICALLY create a FREE replacement order (order id starts with IC-R-) for exactly the missing book(s)/quantity — it ships at no charge and they get tracking by email & WhatsApp. Reassure them: no payment, and they do NOT need to return the books they did receive.
-- If they'd rather have a REFUND of the missing book's value instead of a reshipment, they can reply to that confirmation email or message our team at https://wa.me/919217175546.
+- If they'd rather have a REFUND of the missing book's value instead of a reshipment, they can reply to that confirmation email or ask here for an agent (say the next available agent will take it up here, and end with [ESCALATE]).
 - And if the missing book itself turns out to be unavailable, so we cannot send it in the next shipment either, we refund that book's value — they are never left short. Say this if they ask what happens when the replacement can't be arranged.
-- This option appears once the order is shipped/delivered. If they can't see it or their status isn't there yet, reassure them and point them to https://wa.me/919217175546.
+- This option appears once the order is shipped/delivered. If they can't see it or their status isn't there yet, reassure them that the next available agent will take it up here, and end with [ESCALATE].
 
 REFUND ALREADY ISSUED — when the order context contains a "Refund: ALREADY ISSUED" line, this is the single most useful thing you can tell them. Do it in the FIRST reply, without making them ask twice:
 - Tell them plainly that the refund has already been processed, with the amount and the date from the context, back to the payment method they originally paid with.
@@ -287,14 +288,14 @@ REFUND ALREADY ISSUED — when the order context contains a "Refund: ALREADY ISS
 - If the context says the refund is still settling, do NOT say it has completed. Say it is on its way and no action is needed from them.
 - Never claim a refund is done when the order context does not say so.
 
-NEVER GIVE OUT ANY EMAIL ADDRESS WHEN MONEY IS INVOLVED — no refund inbox, no support inbox, no address at all, however the customer asks and however insistent they are. There is nothing an email can do here that this chat cannot: a refund is either already issued (quote the reference, as above) or the customer needs a human, and a human is reached at https://wa.me/919217175546. Sending someone to email about their own money reads as a brush-off and adds days to their wait.
+NEVER GIVE OUT ANY EMAIL ADDRESS WHEN MONEY IS INVOLVED — no refund inbox, no support inbox, no address at all, however the customer asks and however insistent they are. There is nothing an email can do here that this chat cannot: a refund is either already issued (quote the reference, as above) or the customer needs a human, and a human is reached right here in this chat (say the next available agent will take it up here, and end with [ESCALATE]). Sending someone to email about their own money reads as a brush-off and adds days to their wait.
 
 OUT-OF-STOCK DELAY NOTICE — the customer got our message that a book in their order is out of stock with us and our supplier ("book out of stock", "cancel kar do", "remove the book", "how long will it take"):
 - It is true: the order has not been picked up because of that book, and we are still trying to arrange it. Never promise a date.
 - They can wait (nothing to do), or use the link in that message to REQUEST cancelling the whole order or removing just that book. Our team confirms the request with them; nothing is cancelled or refunded automatically.
 - If they lost the link or want to ask by chat instead, note which they want (cancel the order, or which book to remove), tell them our team will confirm it, and end with [ESCALATE]. Never say the order is cancelled.
 
-RETURN REQUESTS — see RETURNS & REPLACEMENTS above for how to start one. When ORDER CONTEXT has a "RETURN requests" block, answer from it: the return's status, the pickup courier and AWB, the latest tracking scan, and whether the books have been delivered back to us. Never invent a pickup date or a refund date, and say a refund is done only if the block says it was issued. If there is no such block, reassure them and share https://wa.me/919217175546.
+RETURN REQUESTS — see RETURNS & REPLACEMENTS above for how to start one. When ORDER CONTEXT has a "RETURN requests" block, answer from it: the return's status, the pickup courier and AWB, the latest tracking scan, and whether the books have been delivered back to us. Never invent a pickup date or a refund date, and say a refund is done only if the block says it was issued. If there is no such block, reassure them that the next available agent will take it up here, and end with [ESCALATE].
 
 PLACING A NEW ORDER — ONLY when the customer clearly wants to BUY a NEW book right now: "I want to order <book>", "mujhe <book> chahiye", "how do I buy this", "order karna hai", or they name a specific book they want to purchase.
 - ⛔ DO NOT treat these as new orders — they are NOT purchases, and you must NEVER call submit_order_request for them:
@@ -1098,11 +1099,11 @@ function botMayCancelOrRefund() { return process.env.WHATSAPP_BOT_CANCEL_REFUND 
 const NO_CANCEL_REFUND_RESULT = Object.freeze({
   ok: false,
   error: 'not-available-on-whatsapp',
-  message: 'Cancellations and refunds are not done on WhatsApp. Tell the customer our customer care team will look at their request and reply here, and end the reply with [ESCALATE]. Do not say the order is cancelled or refunded, and do not promise a refund or an amount.',
+  message: 'Cancellations and refunds are not done on WhatsApp. Tell the customer: "The next available agent will take up your issue and talk to you here. 🙏" and end the reply with [ESCALATE]. Do not say the order is cancelled or refunded, and do not promise a refund or an amount.',
 });
 const NO_CANCEL_REFUND_PROMPT = '\n\n🚫 CANCELLATIONS AND REFUNDS ARE NOT DONE ON WHATSAPP. This overrides everything above, including the store instructions and any ORDER CONTEXT line that says "Cancellable now", "can be cancelled", "call refund_wrong_cod", "use cancel_order" or asks for a UPI ID.\n'
   + '- You cannot cancel an order, issue a refund, start a refund or send money in this chat, and you have no tool for it.\n'
-  + '- When the customer asks to cancel an order, or asks for a refund, money back, or the extra cash they paid on a wrong COD: do NOT ask them to reply YES, do NOT say it is or will be cancelled or refunded, do NOT quote a refund amount or date, and do NOT ask for a UPI ID or any bank details. Kindly tell them our customer care team will look at it and reply to them here, and end your reply with [ESCALATE].\n'
+  + '- When the customer asks to cancel an order, or asks for a refund, money back, or the extra cash they paid on a wrong COD: do NOT ask them to reply YES, do NOT say it is or will be cancelled or refunded, do NOT quote a refund amount or date, and do NOT ask for a UPI ID or any bank details. Kindly tell them: "The next available agent will take up your issue and talk to you here. 🙏" and end your reply with [ESCALATE].\n'
   + '- You may still tell them where their order is, and share a refund that ORDER CONTEXT says was ALREADY issued, as a fact.';
 function botTools() {
   return botMayCancelOrRefund() ? OPENAI_TOOLS : OPENAI_TOOLS.filter((t) => !BOT_MONEY_TOOLS.has(t.function?.name));
@@ -1241,6 +1242,14 @@ async function callOpenAIChat(messages, { tools = false, model = null, noFallbac
     });
     const data = await res.json();
     if (res.ok) return data.choices?.[0]?.message || {};
+    // Out of credits (not a passing rate limit): email the owner once and stop
+    // retrying; the chat goes to the Bot Inbox agent queue (handleInboundMessage).
+    if (creditAlert.isOpenAIQuota(res.status, data)) {
+      await creditAlert.notifyOutOfCredits('OpenAI', data.error?.message || '').catch(() => {});
+      const err = new Error(`OpenAI out of credits: ${data.error?.message || res.status}`);
+      err.code = 'openai_quota';
+      throw err;
+    }
     if (res.status === 429 && attempt === 0) {
       const retryMs = Math.min(Math.max(openAIRetryDelayMs(res, data), 1000), 15000);
       console.warn(`OpenAI rate limit reached; retrying once in ${retryMs}ms`);
@@ -1365,8 +1374,10 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
   const systemContent = buildSystemContent(extraInstructions, known, extraContext)
     + (belonging ? belongingGuard.PROMPT : '');
   const finish = (text) => {
-    const reply = belonging ? belongingGuard.scrub(text) : text;
-    if (belonging && reply !== text) console.log(`[BELONGING] ${phone} — team number removed from reply`);
+    // Owner, 25 Nov 2026: no customer is ever given the team number or a
+    // wa.me link; scrub() swaps it for "the next available agent…" + [ESCALATE].
+    const reply = belongingGuard.scrub(text);
+    if (reply !== text) console.log(`[NO-NUMBER] ${phone} — team number removed from reply`);
     appendHistory(phone, 'assistant', reply);
     return reply;
   };
@@ -1887,7 +1898,7 @@ async function cancelOrderViaBot(phone, args = {}) {
       }
       if (!xbStop.ok) {
         console.error(`[WHATSAPP-CANCEL] XpressBees stop failed for ${target.tracking_id}: ${xbStop.result.message || xbStop.result.action}`);
-        return { ok: false, error: 'courier-unreachable', message: 'Sorry, I couldn\'t reach the courier to stop your parcel just now, so the order is NOT cancelled yet. Please message our team here 👉 https://wa.me/919217175546 with your Order ID and we\'ll cancel it right away.' };
+        return { ok: false, error: 'courier-unreachable', message: 'Sorry, I couldn\'t reach the courier to stop your parcel just now, so the order is NOT cancelled yet. ' + 'The next available agent will take up your issue and talk to you here. 🙏 [ESCALATE]' };
       }
       await recordCourierCancel(supabase, target.id, xbStop.result);
     }
@@ -1944,7 +1955,7 @@ async function cancelOrderViaBot(phone, args = {}) {
     };
   } catch (e) {
     console.error('cancelOrderViaBot:', e.message);
-    return { ok: false, error: e.message, message: 'Sorry, I hit a snag cancelling your order. Please message our team here 👉 https://wa.me/919217175546 with your Order ID and we\'ll cancel it right away.' };
+    return { ok: false, error: e.message, message: 'Sorry, I hit a snag cancelling your order. ' + 'The next available agent will take up your issue and talk to you here. 🙏 [ESCALATE]' };
   }
 }
 
@@ -2437,7 +2448,11 @@ async function handleInboundMessage(msg, value) {
 
     // If AI flagged escalation, notify owner and switch to human takeover
     if (reply.includes('[ESCALATE]')) {
-      reply = reply.replace('[ESCALATE]', '').trim();
+      reply = reply.replace(/\[ESCALATE\]/g, '').trim();
+      // The customer waits for a person in this chat (Bot Inbox → Agent queue).
+      if (!/next available agent|agent .{0,40}(talk|reply)/i.test(reply)) reply = `${reply}\n\n${agentQueue.WAIT_TEXT}`.trim();
+      try { await agentQueue.add(from, { reason: 'Bot handed over', text: userText }); }
+      catch (e) { console.error('[agent-queue] add failed:', e.message); }
       const ownerPhone = process.env.STORE_OWNER_PHONE;
       if (ownerPhone) {
         // Owner escalation always through the env-configured bot number.
@@ -2465,6 +2480,11 @@ async function handleInboundMessage(msg, value) {
 
   } catch (err) {
     console.error(`whatsapp-bot message error (${msg?.id || 'no id'}):`, err.message);
+    // No OpenAI credits: the bot cannot answer, so a person must (owner emailed
+    // by callOpenAIChat). The customer hears nothing from us until then.
+    if (err && err.code === 'openai_quota' && msg?.from) {
+      await agentQueue.add(msg.from, { reason: 'Bot out of OpenAI credits', text: msg?.text?.body || '' }).catch(() => {});
+    }
     // Swallowed per message so the rest of a batched delivery still runs.
   }
 }
