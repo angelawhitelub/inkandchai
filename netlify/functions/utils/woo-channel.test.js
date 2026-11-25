@@ -691,3 +691,14 @@ test('a second XpressBees key pair authenticates as xpressbees, alongside the fi
     }
   }
 });
+
+test('a released pre-order enters the feed on its release day, not its order day', () => {
+  const { releasedAt, enteredAt, feedOrder } = require('../woo-channel').__test;
+  const now = Date.parse('2026-11-26T06:00:00Z');
+  const pre = { id: 'p', created_at: '2026-11-16T14:47:14Z', cart_items: JSON.stringify([{ title: 'A' }, { title: 'B', _release: '2026-11-24' }]) };
+  const fresh = { id: 'f', created_at: '2026-11-23T10:00:00Z', cart_items: '[]' };
+  assert.equal(releasedAt(pre, now), Date.parse('2026-11-23T18:30:00Z'));
+  assert.equal(releasedAt({ ...pre, cart_items: [{ _release: '2026-12-05' }] }, now), 0, 'not out yet');
+  assert.equal(enteredAt(pre, now), Date.parse('2026-11-23T18:30:00Z'));
+  assert.deepEqual(feedOrder([fresh, pre]).map((r) => r.id), ['p', 'f'], 'listed with the new orders');
+});

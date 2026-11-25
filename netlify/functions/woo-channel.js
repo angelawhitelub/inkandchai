@@ -100,6 +100,8 @@ const UNSHIPPED_STATUSES = [
 // backlog -- 110 open COD orders reach back to 19 June -- and an unbounded
 // feed would hand every one of them to XpressBees on the first sync.
 const DEFAULT_SINCE = '2026-09-15';
+// How far back a pre-order may have been placed and still enter the feed on release.
+const PREORDER_LOOKBACK_DAYS = 120;
 
 // An order whose payment never completed must not be shipped. `pending_phonepe`
 // is the one that matters (IC-20260909-Q5GPA sat in it for days); the prefix
@@ -478,8 +480,31 @@ function prepaidPolicy(raw = process.env.WOO_FEED_PREPAID) {
  * after 1 a.m.) never reached it however often Refresh was pressed. Newest
  * first, the orders it already has are the ones that fall off the page.
  */
+/**
+ * Pre-orders (owner, 26 Nov 2026): one is held out of the feed until its book's
+ * publish date, and by then it can be days old -- IC-CW-20261116-5F3MC, placed
+ * 16 Nov, released 24 Nov, never reached the panel. So a released pre-order
+ * enters the feed AS OF its release day (start of the day, IST): it is listed
+ * with the new orders and counts as new for the importer's `after`.
+ * Latest `_release` stamped on the order's lines, if that day has come; else 0.
+ */
+function releasedAt(order, now = Date.now()) {
+  let best = 0;
+  for (const i of parseCartItems(order && order.cart_items)) {
+    const iso = String((i && i._release) || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+    const t = Date.parse(`${iso}T00:00:00+05:30`);
+    if (Number.isFinite(t) && t <= now && t > best) best = t;
+  }
+  return best;
+}
+
+/** The moment an order entered the feed: placed, re-offered from admin, or its pre-order released. */
+const enteredAt = (r, now = Date.now()) => Math.max(
+  Date.parse(r.created_at) || 0, Date.parse(r.xpressbees_feed_at) || 0, releasedAt(r, now));
+
 function feedOrder(rows, order) {
-  const at = (r) => Math.max(Date.parse(r.created_at) || 0, Date.parse(r.xpressbees_feed_at) || 0);
+  const at = (r) => enteredAt(r);
   const dir = String(order || '').toLowerCase() === 'asc' ? 1 : -1;
   return rows.slice().sort((a, b) => dir * (at(a) - at(b)));
 }
@@ -529,6 +554,21 @@ async function loadOrders(supabase) {
   }
 
   if (error) throw new Error(`orders query failed: ${error.message}`);
+
+  // Pre-orders placed before the date bound whose book has since come out
+  // (see releasedAt). Still-upcoming ones are held by the handler as before.
+  try {
+    const floor = new Date(Date.now() - PREORDER_LOOKBACK_DAYS * 86400e3).toISOString();
+    const { data: older, error: e2 } = await base().lt('created_at', since).gte('created_at', floor);
+    if (e2) throw new Error(e2.message);
+    const have = new Set((data || []).map((o) => o.id));
+    for (const o of older || []) {
+      if (!have.has(o.id) && releasedAt(o) > Date.parse(since)) data.push(o);
+    }
+  } catch (e) {
+    console.warn('[woo-channel] released pre-orders not read, feed is date-bounded only:', e.message);
+  }
+
   // Belt and braces: the status filter above already excludes these, but the
   // cost of one more test is nothing against shipping an unpaid order.
   return (data || []).filter((o) => !isPaymentPending(o.status));
@@ -763,7 +803,7 @@ exports.feedAdmits = feedAdmits;
 exports.toWooOrder = toWooOrder;
 exports.isPaymentPending = isPaymentPending;
 exports.UNSHIPPED_STATUSES = UNSHIPPED_STATUSES;
-exports.__test = { feedOrder, toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, applyBooking, bookingFromPush, dtdcAwb, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
+exports.__test = { feedOrder, releasedAt, enteredAt, toWooOrder, isCollectOnDelivery, feedRole, feedAdmits, prepaidPolicy, prepaidGateway, numericId, safeEqual, readCredentials, authorize, isPaymentPending, applyPushBack, applyBooking, bookingFromPush, dtdcAwb, metaValue, PUSH_BOOKED, UNSHIPPED_STATUSES, COD_TITLE, PREPAID_TITLE };
 
 exports.handler = async (event) => {
   const path = String(event.path || '').replace(/\/+$/, '') || '/wp-json';
@@ -995,6 +1035,7 @@ exports.handler = async (event) => {
   // An order that cannot be shipped (no pincode, no phone) is skipped rather
   // than failing the whole page: one unmappable row must not stop the other 96.
   const built = [];
+  const entered = new Map();
   const skipped = [];
   const withheld = [];
   const policy = prepaidPolicy();
@@ -1002,7 +1043,7 @@ exports.handler = async (event) => {
   for (const row of feedOrder(rows, q.order)) {
     // COD-only channel, unless WOO_FEED_PREPAID admits this order. See feedAdmits.
     if (!feedAdmits(row, policy)) { withheld.push(row.razorpay_order_id || row.id); continue; }
-    try { built.push(await toWooOrder(row)); }
+    try { const w = await toWooOrder(row); entered.set(w, enteredAt(row)); built.push(w); }
     catch (e) { skipped.push({ order: row.razorpay_order_id || row.id, reason: e.message }); }
   }
   if (skipped.length) console.warn('[woo-channel] skipped', JSON.stringify(skipped));
@@ -1034,7 +1075,8 @@ exports.handler = async (event) => {
   }
   if (q.after) {
     const t = Date.parse(q.after);
-    if (!Number.isNaN(t)) filtered = filtered.filter((o) => Date.parse(o.date_created_gmt + 'Z') > t);
+    // A released pre-order or a re-offered order counts from when it entered the feed.
+    if (!Number.isNaN(t)) filtered = filtered.filter((o) => Math.max(Date.parse(o.date_created_gmt + 'Z') || 0, entered.get(o) || 0) > t);
   }
   if (q.before) {
     const t = Date.parse(q.before);
