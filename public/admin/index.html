@@ -7980,7 +7980,8 @@ function applyFilters() {
   let cancHidden = 0;
   filtered = allOrders.filter(o => {
     // All leaves cancelled orders out (owner, 25 Nov 2026); the Cancelled tab has them.
-    if (!currentFilter && isCancelledOrder(o)) {
+    // A search always finds them, so a looked-up order never seems missing.
+    if (!currentFilter && !q && isCancelledOrder(o)) {
       if ((!match || match(o)) && (!dateFrom || new Date(o.created_at) >= new Date(dateFrom)) && (!dateTo || new Date(o.created_at) <= new Date(dateTo + 'T23:59:59'))) cancHidden++;
       return false;
     }
