@@ -19,6 +19,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { requireAdmin } = require('./utils/admin-auth');
 const { isbnToGtin } = require('./utils/gtin');
 const { LISTS } = require('./utils/bestseller-agent');
+const { READY_SCORE } = require('./utils/title-scout');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -86,9 +87,17 @@ exports.handler = async (event) => {
 
   if (event.httpMethod === 'GET') {
     const status = STATUSES.includes((event.queryStringParameters || {}).status) ? event.queryStringParameters.status : 'pending';
-    const order = status === 'pending' ? 'best_rank' : 'updated_at';
-    const { data, error } = await supabase.from('bestseller_candidates').select('*')
-      .eq('status', status).order(order, { ascending: status === 'pending', nullsFirst: false }).limit(300);
+    // Pending: the title scout's score first (utils/title-scout), then Amazon rank.
+    // Before sql/bestseller_candidates_scout.sql is run there is no score column.
+    const query = (byScore) => {
+      let q = supabase.from('bestseller_candidates').select('*').eq('status', status);
+      if (status !== 'pending') q = q.order('updated_at', { ascending: false, nullsFirst: false });
+      else if (byScore) q = q.order('score', { ascending: false, nullsFirst: false }).order('best_rank', { ascending: true, nullsFirst: false });
+      else q = q.order('best_rank', { ascending: true, nullsFirst: false });
+      return q.limit(500);
+    };
+    let { data, error } = await query(true);
+    if (error && /score/.test(error.message || '')) ({ data, error } = await query(false));
     if (error) {
       const missing = /bestseller_candidates/.test(error.message) && /exist|find/i.test(error.message);
       return json(missing ? 503 : 500, { error: missing ? 'The bestseller_candidates table does not exist yet. Run sql/bestseller_candidates.sql in Supabase.' : error.message });
@@ -98,16 +107,20 @@ exports.handler = async (event) => {
       const { count } = await supabase.from('bestseller_candidates').select('id', { count: 'exact', head: true }).eq('status', s);
       counts[s] = count || 0;
     }
-    const { data: runs } = await supabase.from('bestseller_agent_runs').select('trigger, started_at, finished_at, summary').order('id', { ascending: false }).limit(1);
-    const last = runs && runs[0];
-    const lastRun = last ? {
-      trigger: last.trigger, started_at: last.started_at, finished_at: last.finished_at,
-      drafted: last.summary?.drafted, in_catalogue: last.summary?.in_catalogue, skipped: last.summary?.skipped,
-      failed: last.summary?.failed, remaining: last.summary?.remaining, errors: (last.summary?.errors || []).slice(0, 5),
-    } : null;
+    const { data: runs } = await supabase.from('bestseller_agent_runs').select('trigger, started_at, finished_at, summary').order('id', { ascending: false }).limit(30);
+    const view = (r) => (r ? {
+      trigger: r.trigger, started_at: r.started_at, finished_at: r.finished_at,
+      drafted: r.summary?.drafted, in_catalogue: r.summary?.in_catalogue, skipped: r.summary?.skipped,
+      failed: r.summary?.failed, remaining: r.summary?.remaining, errors: (r.summary?.errors || []).slice(0, 5),
+      scout: r.summary?.scout || null, digest: r.summary?.digest || null,
+    } : null);
+    // The bestseller lists and the title scout log to the same table; show each one's latest.
+    const isScout = (r) => /^scout/.test(String(r.trigger || ''));
+    const lastRun = view((runs || []).find((r) => !isScout(r)));
+    const lastScout = view((runs || []).find(isScout));
     // The genre menu for the tab: every list the agent can read, nightly or not.
     const genres = LISTS.map((l) => ({ id: l.id, name: l.name, nightly: !!l.nightly }));
-    return json(200, { candidates: data || [], counts, last_run: lastRun, genres });
+    return json(200, { candidates: data || [], counts, last_run: lastRun, last_scout: lastScout, genres, ready_score: READY_SCORE });
   }
 
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
@@ -156,6 +169,18 @@ exports.handler = async (event) => {
         const { data: same } = await supabase.from('custom_products').select('slug, title').eq('isbn', isbn).limit(1);
         if (same && same.length) {
           return json(409, { error: `Already listed with this ISBN: "${same[0].title}" (/product/${same[0].slug}/).`, existing: same[0] });
+        }
+      }
+
+      // ...or listed it under another ISBN or none (the baked catalogue has no
+      // ISBNs at all): the same title match the agent drafts with.
+      if (!body.force) {
+        const agent = require('./utils/bestseller-agent');
+        const { loadCatalogue } = require('./bestseller-agent-scheduled');
+        const hit = agent.matchCatalogue(agent.buildCatalogueIndex(await loadCatalogue(supabase)),
+          { title: row.amazon_title || draft.title, author: draft.author, isbn13: draft.isbn13 });
+        if (hit.kind === 'exact') {
+          return json(409, { error: `Already listed: "${hit.match.title}" (/product/${hit.match.slug}/). Reject this draft, or edit that listing.`, existing: { slug: hit.match.slug, title: hit.match.title } });
         }
       }
 

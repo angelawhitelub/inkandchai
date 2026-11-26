@@ -44,7 +44,7 @@ async function loadCatalogue(supabase) {
       .range(from, from + 999);
     if (error) throw new Error(`custom_products: ${error.message}`);
     for (const p of data || []) {
-      entries.push({ title: p.title, author: p.author, slug: p.slug, isbn: p.isbn, source: 'custom', weak: p.is_active === false || /preloved/i.test(`${p.title} ${p.slug}`) });
+      entries.push({ title: p.title, author: p.author, slug: p.slug, isbn: p.isbn, source: 'custom', inactive: p.is_active === false, weak: p.is_active === false || /preloved/i.test(`${p.title} ${p.slug}`) });
     }
     if (!data || data.length < 1000) break;
   }
@@ -69,6 +69,11 @@ exports.handler = async (event = {}) => {
   const limit = fromCron ? agent.DEFAULT_LIMIT : Math.max(0, Math.min(HTTP_LIMIT, Number(body.limit ?? HTTP_LIMIT) || 0));
   const dryRun = !fromCron && !!body.dry_run;
 
+  // Logged at the START (26 Nov 2026): the nightly run stopped on 8 Nov without a
+  // trace, because a run killed mid-way never reached the insert at the end.
+  // A row with no finished_at now shows in admin as "started, never finished".
+  const runId = dryRun ? null : await startRun(supabase, fromCron ? 'cron' : 'admin');
+
   try {
     const catalogue = await loadCatalogue(supabase);
     const summary = await agent.runAgent({
@@ -79,21 +84,40 @@ exports.handler = async (event = {}) => {
     }, { limit, dryRun, lists: Array.isArray(body.lists) ? body.lists.map(String) : null, pages: fromCron ? 1 : body.pages });
 
     if (!dryRun) {
-      const { error } = await supabase.from('bestseller_agent_runs').insert({
-        trigger: fromCron ? 'cron' : 'admin',
-        started_at: summary.started_at,
-        finished_at: summary.finished_at,
-        summary: { ...summary, drafts: summary.drafts.slice(0, 50), skips: summary.skips.slice(0, 50) },
-      });
-      if (error) console.warn('[bestseller-agent] run log:', error.message);
+      await finishRun(supabase, runId, fromCron ? 'cron' : 'admin',
+        { ...summary, drafts: summary.drafts.slice(0, 50), skips: summary.skips.slice(0, 50) });
     }
     console.log(`[bestseller-agent] ${fromCron ? 'cron' : 'admin'} drafted=${summary.drafted} in_catalogue=${summary.in_catalogue} skipped=${summary.skipped} failed=${summary.failed} remaining=${summary.remaining}`);
     return json(200, { ok: true, catalogue_titles: catalogue.length, ...summary });
   } catch (e) {
     console.error('[bestseller-agent]', e);
+    if (!dryRun) await finishRun(supabase, runId, fromCron ? 'cron' : 'admin', { error: e.message, errors: [e.message] });
     return json(500, { error: e.message });
   }
 };
 
-// Also used by admin-amazon-listing for its duplicate check.
+/** A run row written before any work, so a run that dies still leaves a trace. → id or null. */
+async function startRun(supabase, trigger) {
+  try {
+    const { data, error } = await supabase.from('bestseller_agent_runs')
+      .insert({ trigger, started_at: new Date().toISOString(), summary: { running: true } }).select('id').single();
+    if (error) throw error;
+    return data && data.id;
+  } catch (e) {
+    console.warn('[bestseller-agent] run log start:', e.message);
+    return null;
+  }
+}
+
+async function finishRun(supabase, id, trigger, summary) {
+  const row = { finished_at: new Date().toISOString(), summary };
+  const { error } = id
+    ? await supabase.from('bestseller_agent_runs').update(row).eq('id', id)
+    : await supabase.from('bestseller_agent_runs').insert({ trigger, started_at: summary.started_at || row.finished_at, ...row });
+  if (error) console.warn('[bestseller-agent] run log:', error.message);
+}
+
+// Also used by admin-amazon-listing for its duplicate check, and title-scout-scheduled.
 exports.loadCatalogue = loadCatalogue;
+exports.startRun = startRun;
+exports.finishRun = finishRun;

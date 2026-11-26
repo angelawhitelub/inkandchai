@@ -62,6 +62,7 @@ export const ENABLED_JOBS = new Set([
   'delivery-failed-ask-scheduled',
   // catalogue
   'bestseller-agent-scheduled',
+  'title-scout-scheduled',          // nightly: requests / authors / new releases -> review queue, score, owner email
   'ai-related-scheduled',          // nightly AI vectors for "You may also like"; no messages
   'reading-list-agent-scheduled',  // one AI reading list every few days (draft unless auto-publish); no messages
   'lifetime-sales-scheduled',

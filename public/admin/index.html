@@ -3610,8 +3610,8 @@ select,input,textarea{font-size:1rem;}
   <div class="admin-section" id="tab-bestsellers">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;">
       <div style="max-width:720px;">
-        <h2 style="margin:0;font-size:1.1rem;">📈 Bestseller drafts</h2>
-        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;line-height:1.5;">Every night the agent reads the Amazon.in bestseller lists for the ★ genres and drafts the top books we don't sell yet; pick any other genre and press “Find 10 more now” to read its top 100, priced at M.R.P. − 40%. Nothing goes live until you approve it. Check the price and cover, edit anything, then approve. Rejected books are never suggested again.</div>
+        <h2 style="margin:0;font-size:1.1rem;">📈 New title drafts</h2>
+        <div style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-top:0.3rem;line-height:1.5;">Every night the agents draft books we don't sell yet, priced at M.R.P. − 40%: books <strong>customers asked for</strong> (website + WhatsApp), more books by <strong>authors who sell here</strong>, Amazon.in <strong>new releases</strong> and <strong>bestsellers</strong> for the ★ genres. Each draft gets a score: customer demand counts most. Best first; you get an email each morning. Nothing goes live until you approve it. Rejected books are never suggested again.</div>
       </div>
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
         <select id="bsStatus" onchange="loadBestsellers()" style="padding:0.45rem;font-size:0.72rem;">
@@ -3621,17 +3621,28 @@ select,input,textarea{font-size:1rem;}
           <option value="in_catalogue">Already listed</option>
           <option value="skipped">Skipped</option>
         </select>
+        <select id="bsSourceFilter" onchange="renderBestsellers()" title="Where the agent found the book" style="padding:0.45rem;font-size:0.72rem;">
+          <option value="">All sources</option>
+          <option value="customer_request">🙋 Customers asked</option>
+          <option value="author_followup">✍️ Author sells here</option>
+          <option value="amazon_new_release">🆕 Amazon new releases</option>
+          <option value="amazon_bestseller">📈 Amazon bestsellers</option>
+        </select>
         <select id="bsGenreFilter" onchange="bsPickGenre(this.value)" title="Show drafts found on one genre's bestseller list" style="padding:0.45rem;font-size:0.72rem;max-width:15rem;"><option value="">All genres</option></select>
         <button class="btn-outline" onclick="loadBestsellers()">↻ Refresh</button>
         <select id="bsGenreRun" title="Which Amazon.in bestseller list to read. The nightly run reads the starred genres; any genre can be read now (its top 100)." style="padding:0.45rem;font-size:0.72rem;max-width:15rem;"><option value="">★ Nightly genres</option></select>
         <button class="btn-outline" id="bsRunBtn" onclick="runBestsellerAgent()">▶ Find 10 more now</button>
+        <button class="btn-outline" id="bsScoutBtn" onclick="runTitleScout()" title="Match customer requests and authors who sell here to Amazon.in editions now (up to 10 drafts)">🔎 Scout requests now</button>
       </div>
     </div>
     <div id="bsMeta" style="font-size:0.72rem;color:var(--cream-dim,#8a7a62);margin-bottom:0.6rem;"></div>
     <div id="bsBulk" style="display:none;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-bottom:0.7rem;font-size:0.72rem;">
       <label style="display:flex;gap:0.3rem;align-items:center;"><input type="checkbox" id="bsAll" onchange="bsToggleAll(this.checked)"> Select all</label>
-      <button class="btn-green" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsBulk('approve')">✓ Approve selected</button>
-      <button class="btn-outline" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsBulk('reject')">✕ Reject selected</button>
+      <button class="btn-outline bs-pending-only" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsSelectReady()" title="Tick every draft with a cover, an M.R.P. and a price, no possible duplicate, and a score at or above the number">★ Select ready, score ≥</button>
+      <input type="number" id="bsReadyScore" class="bs-pending-only" value="40" min="0" max="100" style="width:3.6rem;padding:0.3rem;font-size:0.72rem;">
+      <button class="btn-green bs-pending-only" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsBulk('approve')">✓ Approve selected</button>
+      <button class="btn-outline bs-pending-only" style="padding:0.4rem 0.9rem;font-size:0.58rem;" onclick="bsBulk('reject')">✕ Reject selected</button>
+      <button class="btn-outline bs-approved-only" style="padding:0.4rem 0.9rem;font-size:0.58rem;display:none;" onclick="bsMetaAds()" title="Builds a Facebook/Instagram campaign for the ticked books, ALL PAUSED. Nothing spends until you activate it in Ads Manager.">📣 Draft Meta ads (paused)</button>
       <span id="bsBulkMsg"></span>
     </div>
     <div id="bsList" style="display:flex;flex-direction:column;gap:0.7rem;">
@@ -5833,11 +5844,96 @@ function bsPickGenre(name) {
 function bsInGenre(b, name) {
   return b.source_list === name || (Array.isArray(b.lists) && b.lists.some((l) => l && l.list === name));
 }
+const BS_SOURCE = {
+  customer_request: ['🙋', 'Customers asked', '#2f7d4f'],
+  author_followup: ['✍️', 'Author sells here', '#6b4fa0'],
+  amazon_new_release: ['🆕', 'Amazon new release', '#a0662f'],
+  amazon_bestseller: ['📈', 'Amazon bestseller', '#8a7a62'],
+};
+// Score, where the book came from, who asked for it, and why it ranks where it does.
+function bsScoreLine(b) {
+  const [icon, label, color] = BS_SOURCE[b.source || 'amazon_bestseller'] || BS_SOURCE.amazon_bestseller;
+  const d = b.demand;
+  const asked = d && d.customers ? ` · <strong style="color:#2f7d4f">${d.customers} customer${d.customers === 1 ? '' : 's'} asked</strong>${(d.asked_as || []).length ? ` as “${bsEsc(d.asked_as[0])}”` : ''}` : '';
+  const score = b.score == null ? '' : `<span title="${bsEsc((b.score_reasons || []).join(' · '))}" style="display:inline-block;min-width:2.2rem;text-align:center;padding:1px 6px;border-radius:9px;font-weight:700;background:${b.score >= 60 ? '#2f7d4f' : b.score >= 40 ? '#a0662f' : '#8a7a6255'};color:#fff;">${b.score}</span> `;
+  const why = (b.score_reasons || []).length ? `<div style="color:var(--cream-dim,#8a7a62);font-size:0.7rem;">${bsEsc(b.score_reasons.join(' · '))}</div>` : '';
+  return `<div style="margin-top:0.3rem;">${score}<span style="color:${color};font-weight:600;">${icon} ${label}</span>${asked}</div>${why}`;
+}
+function bsReady(b) {
+  return !!b.image_url && Number(b.price_inr) > 0 && Number(b.mrp_inr) > 0 && !b.possible_duplicate;
+}
+function bsSelectReady() {
+  const box = document.getElementById('bsReadyScore');
+  if (box) box.dataset.touched = '1';
+  const min = Number(box?.value) || 0;
+  let n = 0;
+  document.querySelectorAll('#bsList .bs-pick').forEach((el) => {
+    const b = bsRows.find((r) => r.id === el.closest('[data-id]').dataset.id);
+    el.checked = !!b && bsReady(b) && (b.score == null ? min <= 0 : b.score >= min);
+    if (el.checked) n += 1;
+  });
+  const out = document.getElementById('bsBulkMsg');
+  if (out) out.textContent = n ? `${n} ready draft${n === 1 ? '' : 's'} ticked. Check them, then “Approve selected”.` : `No draft with a cover and a price scores ${min} or more.`;
+}
+async function runTitleScout() {
+  const btn = document.getElementById('bsScoutBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Scouting… (about a minute)'; }
+  try {
+    const res = await adminFetch('/.netlify/functions/title-scout-scheduled', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 10 }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    const sc = d.scout || {};
+    alert(`Drafted ${d.drafted || 0} book(s).\n\nRequests: ${sc.requests_searched || 0} searched, ${sc.requests_matched || 0} matched to an edition, ${sc.requests_unmatched || 0} not found, ${sc.requests_already_listed || 0} already listed.`
+      + ((d.errors || []).length ? `\n\nProblems: ${d.errors.slice(0, 4).join(' · ')}` : ''));
+    const f = document.getElementById('bsSourceFilter'); if (f) f.value = '';
+    await loadBestsellers();
+  } catch (e) { alert('Scout failed: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🔎 Scout requests now'; } }
+}
+// Meta ads for approved books: preview first, then create — always PAUSED.
+async function bsMetaAds() {
+  const slugs = [...document.querySelectorAll('#bsList .bs-pick:checked')].map((el) => el.dataset.slug).filter(Boolean);
+  const out = document.getElementById('bsBulkMsg');
+  if (!slugs.length) { out.textContent = 'Tick some approved books first.'; return; }
+  if (slugs.length > 10) { out.textContent = 'At most 10 books per ad set.'; return; }
+  const call = async (body) => {
+    const res = await adminFetch('/.netlify/functions/meta-ad-drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    return d;
+  };
+  try {
+    out.textContent = 'Writing the ad copy…';
+    const budgetRaw = prompt(`Daily budget for this ad set, in ₹ (100–5000).\nIt only spends after YOU activate it in Ads Manager.`, '300');
+    if (budgetRaw == null) { out.textContent = ''; return; }
+    const budget = Number(budgetRaw) || 300;
+    const pv = await call({ action: 'preview', slugs, daily_budget_inr: budget });
+    const p = pv.plan;
+    const text = `Campaign: ${p.campaign.name}\nObjective: Traffic (landing-page views) · India 18+ · ₹${p.adset.daily_budget_inr}/day\nEverything is created PAUSED.\n\n`
+      + p.ads.map((a, i) => `${i + 1}. ${a.headline}\n   ${a.primary_text}\n   ${a.description}`).join('\n\n');
+    if (!pv.configured) {
+      alert(text + `\n\n⚠ Meta isn't connected yet, so nothing can be created. Missing: ${(pv.missing || []).join('; ')}.`);
+      out.textContent = 'Preview only: Meta is not connected yet.';
+      return;
+    }
+    if (!confirm(text + '\n\nCreate these in Meta now, PAUSED?')) { out.textContent = ''; return; }
+    out.textContent = 'Creating paused ads in Meta…';
+    const made = await call({ action: 'create', slugs, daily_budget_inr: budget });
+    const bad = (made.ads || []).filter((a) => !a.ok);
+    out.innerHTML = `Created ${(made.ads || []).length - bad.length} paused ad(s). <a href="${bsEsc(made.ads_manager)}" target="_blank" rel="noopener" style="color:var(--gold,#c9a84c);">Open in Ads Manager to review and activate</a>`
+      + (bad.length ? ` · <span style="color:#c93636">${bad.map((a) => bsEsc(a.slug + ': ' + a.error)).join(' · ')}</span>` : '');
+  } catch (e) {
+    out.innerHTML = `<span style="color:#c93636">${bsEsc(e.message)}</span>`;
+  }
+}
 function renderBestsellers() {
   const list = document.getElementById('bsList');
   const status = document.getElementById('bsStatus')?.value || 'pending';
   const genre = document.getElementById('bsGenreFilter')?.value || '';
-  const rows = genre ? bsRows.filter((b) => bsInGenre(b, genre)) : bsRows;
+  const source = document.getElementById('bsSourceFilter')?.value || '';
+  const rows = bsRows.filter((b) => (!genre || bsInGenre(b, genre)) && (!source || (b.source || 'amazon_bestseller') === source));
   const allBox = document.getElementById('bsAll'); if (allBox) allBox.checked = false;
   if (!rows.length) {
     list.innerHTML = `<div style="color:var(--cream-dim,#8a7a62);font-size:0.8rem;padding:1rem 0;">${status === 'pending' ? 'No drafts waiting' + (genre ? ' from ' + bsEsc(genre) + '. Press “Find 10 more now” to read its top 100 — books already on the site are skipped' : '') + '.' : 'Nothing here.'}</div>`;
@@ -5962,12 +6058,28 @@ async function loadBestsellers() {
     const c = data.counts || {};
     const badge = document.getElementById('bestsellersBadge');
     if (badge) { badge.textContent = c.pending || ''; badge.style.display = c.pending ? '' : 'none'; }
-    const r = data.last_run;
     const when = (iso) => iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    // A run row is written at the start; one with no finish an hour later died mid-way.
+    const runLine = (label, r, never) => {
+      if (!r) return `<br>${label}: ${never}`;
+      if (!r.finished_at) {
+        const stale = Date.now() - Date.parse(r.started_at) > 3600e3;
+        return `<br>${label}: ${stale ? `<span style="color:#c93636">started ${bsEsc(when(r.started_at))} and never finished</span>` : `running since ${bsEsc(when(r.started_at))}…`}`;
+      }
+      const sc = r.scout;
+      return `<br>${label} ${bsEsc(when(r.finished_at))}: ${r.drafted || 0} drafted`
+        + (sc ? ` (${sc.requests_matched || 0} of ${sc.requests_searched || 0} requests matched to an edition, ${sc.seeds || 0} from requests + authors)` : '')
+        + `, ${r.in_catalogue || 0} already listed, ${r.skipped || 0} skipped${r.failed ? `, <span style="color:#c93636">${r.failed} failed</span>` : ''}${r.remaining ? `, ${r.remaining} more to draft` : ''}.`
+        + ((r.errors || []).length ? ` <span style="color:#c93636">${bsEsc(r.errors.join(' · '))}</span>` : '');
+    };
     meta.innerHTML = `${c.pending || 0} waiting · ${c.approved || 0} approved · ${c.rejected || 0} rejected · ${c.in_catalogue || 0} already listed · ${c.skipped || 0} skipped`
-      + (r ? `<br>Last run ${bsEsc(when(r.finished_at || r.started_at))} (${bsEsc(r.trigger)}): ${r.drafted || 0} drafted, ${r.in_catalogue || 0} already listed, ${r.skipped || 0} skipped${r.failed ? `, <span style="color:#c93636">${r.failed} failed</span>` : ''}${r.remaining ? `, ${r.remaining} more to draft` : ''}.`
-        + ((r.errors || []).length ? ` <span style="color:#c93636">${bsEsc(r.errors.join(' · '))}</span>` : '') : '<br>The agent has not run yet. It runs nightly at 03:30, or press “Find 10 more now”.');
-    document.getElementById('bsBulk').style.display = status === 'pending' && bsRows.length ? 'flex' : 'none';
+      + runLine('Amazon bestsellers', data.last_run, 'not run yet (nightly 02:30, or “Find 10 more now”).')
+      + runLine('Requests, authors &amp; new releases', data.last_scout, 'not run yet (nightly 03:00, or “Scout requests now”).');
+    if (data.ready_score != null) { const rs = document.getElementById('bsReadyScore'); if (rs && !rs.dataset.touched) rs.value = data.ready_score; }
+    const bulkOn = (status === 'pending' || status === 'approved') && bsRows.length;
+    document.getElementById('bsBulk').style.display = bulkOn ? 'flex' : 'none';
+    document.querySelectorAll('#bsBulk .bs-pending-only').forEach((el) => { el.style.display = status === 'pending' ? '' : 'none'; });
+    document.querySelectorAll('#bsBulk .bs-approved-only').forEach((el) => { el.style.display = status === 'approved' ? '' : 'none'; });
     renderBestsellers();
   } catch (e) {
     list.innerHTML = '<div style="color:#c93636;font-size:0.8rem;">Could not load: ' + bsEsc(e.message) + '</div>';
@@ -5985,7 +6097,7 @@ function bsCard(b, status) {
     : '<div style="width:84px;height:120px;border:1px dashed #c93636;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#c93636;text-align:center;">No cover</div>';
   const save = b.mrp_inr && b.price_inr ? Math.round((1 - b.price_inr / b.mrp_inr) * 100) : null;
   return `<div id="bs-${b.id}" data-id="${b.id}" style="border:1px solid var(--border,rgba(201,168,76,0.25));border-radius:12px;padding:0.85rem 1rem;background:var(--bg2,#1a1613);display:flex;gap:0.9rem;align-items:flex-start;">
-    ${pending ? `<input type="checkbox" class="bs-pick" style="margin-top:0.3rem;">` : ''}
+    ${pending || (status === 'approved' && b.product_slug) ? `<input type="checkbox" class="bs-pick" data-slug="${bsEsc(b.product_slug || '')}" style="margin-top:0.3rem;">` : ''}
     <div style="flex:none;">${cover}</div>
     <div style="flex:1;min-width:0;font-size:0.78rem;line-height:1.55;">
       ${pending
@@ -5997,6 +6109,7 @@ function bsCard(b, status) {
              ${save != null ? `<span style="color:var(--cream-dim,#8a7a62)">(${save}% off)</span>` : ''}
            </div>`
         : `<strong style="color:var(--gold,#c9a84c);font-size:0.9rem;">${bsEsc(b.title)}</strong><div>${bsEsc(b.author || '')}${b.price_inr ? ` · ₹${bsEsc(b.price_inr)} (M.R.P. ₹${bsEsc(b.mrp_inr || '?')})` : ''}</div>`}
+      ${bsScoreLine(b)}
       <div style="color:var(--cream-dim,#8a7a62);margin-top:0.3rem;">📈 ${bsEsc(lists || b.source_list || '')}${b.isbn13 ? ` · ISBN ${bsEsc(b.isbn13)}` : ''}${b.publisher ? ` · ${bsEsc(b.publisher)}` : ''}${b.language ? ` · ${bsEsc(b.language)}` : ''}${b.format ? ` · ${bsEsc(b.format)}` : ''}${b.pages ? ` · ${b.pages} pages` : ''}
         · <a href="https://www.amazon.in/dp/${bsEsc(b.asin)}" target="_blank" rel="noopener" style="color:var(--gold,#c9a84c);">Amazon</a>
         ${b.product_slug ? ` · <a href="/product/${bsEsc(b.product_slug)}/" target="_blank" style="color:#5d9b55;">View listing</a>` : ''}</div>

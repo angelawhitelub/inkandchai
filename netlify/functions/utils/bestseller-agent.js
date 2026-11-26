@@ -495,9 +495,15 @@ async function fetchText(url, { fetchImpl = fetch, accept = 'text/html', timeout
   }
 }
 
-async function fetchList(list, { fetchImpl, page = 1 } = {}) {
+/**
+ * kind 'bestsellers' (default) or 'new-releases': Amazon's "Hot New Releases"
+ * pages share the bestseller grid, so parseListPage reads both (checked 26 Nov
+ * 2026; "Movers & Shakers" does not, and is not used).
+ */
+async function fetchList(list, { fetchImpl, page = 1, kind = 'bestsellers' } = {}) {
   const path = list.id === 'all' ? '' : list.id;
-  const url = `https://www.amazon.in/gp/bestsellers/books/${path}${page > 1 ? `?pg=${page}` : ''}`;
+  const base = kind === 'new-releases' ? 'new-releases' : 'bestsellers';
+  const url = `https://www.amazon.in/gp/${base}/books/${path}${page > 1 ? `?pg=${page}` : ''}`;
   const { status, body } = await fetchText(url, { fetchImpl });
   if (status !== 200) throw new Error(`HTTP ${status}`);
   const entries = parseListPage(body);
@@ -652,8 +658,10 @@ async function runAgent(deps, opts = {}) {
   const dryRun = !!opts.dryRun;
   const pauseMs = deps.pauseMs ?? 700;
   const log = opts.log || (() => {});
-  const lists = opts.lists && opts.lists.length ? LISTS.filter((l) => opts.lists.includes(l.id)) : NIGHTLY_LISTS;
+  const lists = opts.lists && opts.lists.length ? LISTS.filter((l) => opts.lists.includes(l.id)) : (opts.noLists ? [] : NIGHTLY_LISTS);
   const pages = Math.max(1, Math.min(2, Number(opts.pages) || 1));
+  const kind = opts.kind === 'new-releases' ? 'new-releases' : 'bestsellers';
+  const listSource = kind === 'new-releases' ? 'amazon_new_release' : 'amazon_bestseller';
 
   const summary = {
     started_at: new Date().toISOString(), dry_run: dryRun, lists: [], ranked: 0,
@@ -665,11 +673,11 @@ async function runAgent(deps, opts = {}) {
   const perList = [];
   for (const list of lists) {
     try {
-      const entries = await fetchList(list, { fetchImpl });
+      const entries = await fetchList(list, { fetchImpl, kind });
       for (let page = 2; page <= pages; page++) {
         await sleep(pauseMs);
         // Page 2 is ranks 51-100. Losing it still leaves the top 50.
-        try { entries.push(...await fetchList(list, { fetchImpl, page })); } catch (e) { summary.errors.push(`${list.name} page ${page}: ${e.message}`); }
+        try { entries.push(...await fetchList(list, { fetchImpl, page, kind })); } catch (e) { summary.errors.push(`${list.name} page ${page}: ${e.message}`); }
       }
       perList.push({ list, entries });
       summary.lists.push({ list: list.name, titles: entries.length });
@@ -679,7 +687,15 @@ async function runAgent(deps, opts = {}) {
     }
     await sleep(pauseMs);
   }
-  const ranked = mergeLists(perList);
+  // Seeds (utils/title-scout: customer requests, authors who sell for us) come
+  // first: a book someone asked for outranks one that is merely popular.
+  const ranked = [];
+  const seenAsin = new Set();
+  for (const r of [...(opts.seeds || []), ...mergeLists(perList).map((r) => ({ ...r, source: listSource }))]) {
+    if (!r || !r.asin || seenAsin.has(r.asin)) continue;
+    seenAsin.add(r.asin);
+    ranked.push(r);
+  }
   summary.ranked = ranked.length;
   if (!ranked.length) { summary.finished_at = new Date().toISOString(); return summary; }
 
@@ -701,12 +717,16 @@ async function runAgent(deps, opts = {}) {
     if (row) {
       summary.already_known += 1;
       // Keep a pending draft's rank current, so the queue sorts by today's list.
-      if (!dryRun && row.status === 'pending') {
-        const { error } = await supabase.from('bestseller_candidates').update({
-          best_rank: r.bestRank, source_list: r.list.name, lists: r.lists,
-          times_seen: (row.times_seen || 1) + 1, last_seen_at: nowIso, updated_at: nowIso,
-        }).eq('id', row.id);
-        if (!error) summary.refreshed += 1;
+      // A seed (a customer request) only adds its demand; it has no list rank.
+      // opts.refreshKnown false (the title scout's new-release pass): a book already
+      // queued keeps the bestseller rank it was drafted with, and costs no write.
+      if (!dryRun && row.status === 'pending' && (r.seed || opts.refreshKnown !== false)) {
+        const patch = r.seed
+          ? { demand: r.demand || null, last_seen_at: nowIso, updated_at: nowIso }
+          : { best_rank: r.bestRank, source_list: r.list.name, lists: r.lists,
+            times_seen: (row.times_seen || 1) + 1, last_seen_at: nowIso, updated_at: nowIso };
+        const res = await writeTolerant(supabase, 'update', patch, row.id);
+        if (!res.error) summary.refreshed += 1;
       }
       continue;
     }
@@ -789,6 +809,8 @@ async function runAgent(deps, opts = {}) {
         source_list: r.list.name,
         best_rank: r.bestRank,
         lists: r.lists,
+        source: r.source || listSource,
+        demand: r.demand || null,
         mrp_inr: money.mrp,
         mrp_source: money.source,
         crossword_mrp_inr: crossword ? crossword.mrp : null,
@@ -806,9 +828,9 @@ async function runAgent(deps, opts = {}) {
         status: 'pending',
       };
       summary.drafted += 1;
-      summary.drafts.push({ asin: r.asin, title: draft.title, author: draft.author, list: r.list.name, rank: r.bestRank, mrp: draft.mrp_inr, price: draft.price_inr, cover: draft.image_source, warnings, possible_duplicate: draft.possible_duplicate });
+      summary.drafts.push({ asin: r.asin, title: draft.title, author: draft.author, list: r.list.name, rank: r.bestRank, source: draft.source, mrp: draft.mrp_inr, price: draft.price_inr, cover: draft.image_source, warnings, possible_duplicate: draft.possible_duplicate });
       if (!dryRun) {
-        const { error } = await supabase.from('bestseller_candidates').insert(draft);
+        const { error } = await writeTolerant(supabase, 'insert', draft);
         if (error) throw new Error(`insert: ${error.message}`);
       }
       log(`drafted ${r.asin} ${draft.title}`);
@@ -821,6 +843,24 @@ async function runAgent(deps, opts = {}) {
 
   summary.finished_at = new Date().toISOString();
   return summary;
+}
+
+// Added 26 Nov 2026 (sql/bestseller_candidates_scout.sql). Until the owner runs
+// that migration, writes drop them and carry on rather than fail every draft.
+const SCOUT_COLUMNS = ['source', 'demand', 'score', 'score_reasons', 'scored_at'];
+
+/** insert / update a candidate row, retrying without the scout columns if they do not exist yet. */
+async function writeTolerant(supabase, op, fields, id) {
+  const run = (f) => (op === 'insert'
+    ? supabase.from('bestseller_candidates').insert(f)
+    : supabase.from('bestseller_candidates').update(f).eq('id', id));
+  let res = await run(fields);
+  if (res.error && SCOUT_COLUMNS.some((c) => String(res.error.message || '').includes(c))) {
+    const slim = { ...fields };
+    for (const c of SCOUT_COLUMNS) delete slim[c];
+    res = Object.keys(slim).length ? await run(slim) : { error: null };
+  }
+  return res;
 }
 
 /** Remember an ASIN we decided not to draft, so it is not fetched again. */
@@ -863,6 +903,12 @@ module.exports = {
   findCover,
   draftCopy,
   fetchText,
+  fetchList,
   runAgent,
+  writeTolerant,
+  SCOUT_COLUMNS,
   isbn13Valid,
+  text,
+  tokens,
+  surname,
 };

@@ -485,11 +485,19 @@
 [functions."xpressbees-status-sync-scheduled"]
   schedule = "*/15 * * * *"
 
-# Bestseller agent: once a day at 22:00 UTC (03:30 IST), read the Amazon.in
+# Bestseller agent: once a day at 21:00 UTC (02:30 IST), read the Amazon.in
 # bestseller lists and draft up to 30 books we do not sell into the admin
 # "Bestsellers" review queue. Publishes nothing; every draft needs approval.
+# Its own slot since 26 Nov 2026: sharing 22:00 with ai-related-scheduled, it
+# stopped running on 9 Nov without leaving a run row.
 [functions."bestseller-agent-scheduled"]
-  schedule = "0 22 * * *"
+  schedule = "0 21 * * *"
+
+# Title scout: 21:30 UTC (03:00 IST). Customer requests we do not list, more books
+# by authors who sell here, Amazon.in new releases -> the same review queue; then
+# re-scores the queue and emails the owner the best drafts. Publishes nothing.
+[functions."title-scout-scheduled"]
+  schedule = "30 21 * * *"
 
 # Nightly 03:30 IST: AI similarity vectors for "You may also like" (utils/ai-related.js).
 # Embeds only new or changed books; no messages, no product changes.
