@@ -229,3 +229,35 @@ html body main.wrap > section:not(.cover) > .ic-copyright{ border-radius:10px !i
   html body main.wrap > section:not(.cover) > .trust .tt b{ font-size:13px !important; line-height:1.3 !important; }
   html body main.wrap > section:not(.cover) > .trust .tt i{ font-size:12px !important; line-height:1.35 !important; }
 }
+
+/* ── Wide screens (≥1440px): cover · reading column · buy box ─────────────
+   The page stayed 1260px wide, leaving big empty margins on large monitors
+   (owner, 26 Nov 2026). The info section becomes a grid: title + author across
+   the top, the buy controls stacked in a right rail, and "About this book"
+   beside them. The description spans every rail row down to a final 1fr row,
+   so a long description never stretches the gaps between the buy controls.
+   Everything after the description (author bio, details, copyright) runs
+   full width underneath. */
+@media (min-width:1440px){
+  html body main.wrap{ max-width:1680px !important; grid-template-columns:minmax(380px,30%) minmax(0,1fr) !important; column-gap:56px !important; }
+  html body > :is(.iac-aplus,.iac-fbt:not(.iac-fbt--inline),.reviews){ max-width:1680px !important; }
+  html body > .iacr{ max-width:1648px !important; }
+  html body > section > .iac-reels-sec{ max-width:1680px !important; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)){
+    display:grid !important; grid-template-columns:minmax(0,1fr) 360px !important; column-gap:44px !important; row-gap:0 !important;
+    grid-template-rows:repeat(3,auto) repeat(24,auto) 1fr !important; align-items:start !important; align-content:start !important;
+  }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > *{ grid-column:2; min-width:0; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .crumb{ grid-column:1 / -1; grid-row:1; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > h1{ grid-column:1 / -1; grid-row:2; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .author{ grid-column:1 / -1; grid-row:3; margin-bottom:6px !important; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .desc:not(.desc ~ .desc){ grid-column:1; grid-row:4 / -1; margin-top:14px !important; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > :is(.desc ~ *,.iac-fbt--inline){ grid-column:1 / -1; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > :is(.stock,.bsr-badge,.sold-count,.prod-scarcity){ justify-self:start; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .trust{ grid-template-columns:1fr !important; }
+  html body main.wrap > section:not(.cover) .eta-pin-row{ max-width:none; }
+  /* Buy box is narrower: quantity + Add to Cart on one line, Buy Now under them. */
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .actions.has-qty{ grid-template-columns:auto minmax(0,1fr) !important; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .actions.has-qty > button.primary,
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .actions > :not(.pdp-qty,button){ grid-column:1 / -1; }
+}
