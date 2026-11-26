@@ -177,26 +177,28 @@ html body main.wrap > section:not(.cover) > :is(.desc,.details) > .label{
 }
 /* Description text: normal weight, readable size. Admin-added book pages
    (product-page.js) inherit body font-weight:300 and the theme sets 15.5px. */
-html body main.wrap > section:not(.cover) > .desc,
-html body main.wrap > section:not(.cover) > .desc :is(p,li,ul,ol,span,div:not(.label)){
+html body main.wrap > section:not(.cover) > .desc, html body main.wrap > section:not(.cover) > .pdp-read > .desc,
+html body main.wrap > section:not(.cover) > .desc :is(p, li, ul, ol, span, div:not(.label)), html body main.wrap > section:not(.cover) > .pdp-read > .desc :is(p, li, ul, ol, span, div:not(.label)){
   font-weight:400 !important; font-size:16.5px !important; line-height:1.75 !important; color:var(--t-ink-2) !important;
 }
-html body main.wrap > section:not(.cover) > .desc :is(h3,h4){ font-size:17px !important; font-weight:700 !important; color:var(--t-ink) !important; margin:18px 0 8px !important; }
-html body main.wrap > section:not(.cover) > .desc :is(h3,h4):first-of-type{ margin-top:0 !important; }
-html body main.wrap > section:not(.cover) > .desc :is(strong,b){ font-weight:700 !important; color:var(--t-ink) !important; }
+html body main.wrap > section:not(.cover) > .desc :is(h3, h4), html body main.wrap > section:not(.cover) > .pdp-read > .desc :is(h3, h4){ font-size:17px !important; font-weight:700 !important; color:var(--t-ink) !important; margin:18px 0 8px !important; }
+html body main.wrap > section:not(.cover) > .desc :is(h3, h4):first-of-type, html body main.wrap > section:not(.cover) > .pdp-read > .desc :is(h3, h4):first-of-type{ margin-top:0 !important; }
+html body main.wrap > section:not(.cover) > .desc :is(strong, b), html body main.wrap > section:not(.cover) > .pdp-read > .desc :is(strong, b){ font-weight:700 !important; color:var(--t-ink) !important; }
 @media (max-width:760px){
-  html body main.wrap > section:not(.cover) > .desc,
-  html body main.wrap > section:not(.cover) > .desc :is(p,li,ul,ol,span,div:not(.label)){ font-size:16px !important; }
+  html body main.wrap > section:not(.cover) > .desc, html body main.wrap > section:not(.cover) > .pdp-read > .desc,
+  html body main.wrap > section:not(.cover) > .desc :is(p, li, ul, ol, span, div:not(.label)), html body main.wrap > section:not(.cover) > .pdp-read > .desc :is(p, li, ul, ol, span, div:not(.label)){ font-size:16px !important; }
 }
-html body main.wrap > section:not(.cover) > .details dl{
+html body main.wrap > section:not(.cover) > .details dl, html body main.wrap > section:not(.cover) > .pdp-read > .details dl{
   display:grid !important; grid-template-columns:minmax(120px,170px) 1fr !important; gap:0 !important; margin:0 !important;
 }
-html body main.wrap > section:not(.cover) > .details :is(dt,dd){
+html body main.wrap > section:not(.cover) > .details :is(dt, dd), html body main.wrap > section:not(.cover) > .pdp-read > .details :is(dt, dd){
   padding:9px 0 !important; border-bottom:1px solid var(--t-line) !important; font-size:14px !important; line-height:1.5 !important; margin:0 !important;
 }
-html body main.wrap > section:not(.cover) > .details dt{ color:var(--t-muted) !important; font-weight:500 !important; }
-html body main.wrap > section:not(.cover) > .details dd{ color:var(--t-ink) !important; font-weight:500 !important; }
-html body main.wrap > section:not(.cover) > .ic-copyright{ border-radius:10px !important; }
+html body main.wrap > section:not(.cover) > .details dt, html body main.wrap > section:not(.cover) > .pdp-read > .details dt{ color:var(--t-muted) !important; font-weight:500 !important; }
+html body main.wrap > section:not(.cover) > .details dd, html body main.wrap > section:not(.cover) > .pdp-read > .details dd{ color:var(--t-ink) !important; font-weight:500 !important; }
+html body main.wrap > section:not(.cover) > .ic-copyright, html body main.wrap > section:not(.cover) > .pdp-read > .ic-copyright{ border-radius:10px !important; }
+
+html body main.wrap > section:not(.cover) > .pdp-read{ display:contents; }
 
 /* ── Desktop: buy controls first ────────────────────────────────────────── */
 @media (min-width:761px){
@@ -210,6 +212,7 @@ html body main.wrap > section:not(.cover) > .ic-copyright{ border-radius:10px !i
   html body main.wrap > section:not(.cover) > :is(#shipBy,#staticShipBy) ~ *{ order:2; }
   html body main.wrap > section:not(.cover) > :is(#shipBy,#staticShipBy) ~ :is(.ic-qty-limit,.actions,.fmt-panel,.eb-buy){ order:0; }
   html body main.wrap > section:not(.cover) > :is(#shipBy,#staticShipBy) ~ :is(div:has(> .pol-trigger),#addedBanner){ order:1; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .pdp-read > *{ order:2; flex:0 0 100%; min-width:0; }
   html body main.wrap > section:not(.cover) > .actions{ margin:18px 0 4px !important; gap:10px !important; }
   html body main.wrap > section:not(.cover) > .ic-qty-limit{ margin:14px 0 0 !important; }
   html body main.wrap > section:not(.cover) > .ic-qty-limit + .actions{ margin-top:8px !important; }
@@ -251,8 +254,12 @@ html body main.wrap > section:not(.cover) > .ic-copyright{ border-radius:10px !i
   html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .crumb{ grid-column:1 / -1; grid-row:1; }
   html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > h1{ grid-column:1 / -1; grid-row:2; }
   html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .author{ grid-column:1 / -1; grid-row:3; margin-bottom:6px !important; }
-  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .desc:not(.desc ~ .desc){ grid-column:1; grid-row:4 / -1; margin-top:14px !important; }
-  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > :is(.desc ~ *,.iac-fbt--inline){ grid-column:1 / -1; }
+  /* "About this book" and everything after it (details, author, reviews, copyright)
+     are one wrapper (Worker withShippingCopy), stacked in the middle column beside
+     the buy box. Without the wrapper they fall back to full width underneath. */
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .pdp-read{ display:block !important; grid-column:1; grid-row:4 / -1; margin-top:14px; min-width:0; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .pdp-read > :first-child{ margin-top:0 !important; }
+  html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > :is(.desc,.desc ~ *,.iac-fbt--inline):not(.pdp-read){ grid-column:1 / -1; }
   html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > :is(.stock,.bsr-badge,.sold-count,.prod-scarcity){ justify-self:start; }
   html body main.wrap > section:not(.cover):has(> :is(#shipBy,#staticShipBy)) > .trust{ grid-template-columns:1fr !important; }
   html body main.wrap > section:not(.cover) .eta-pin-row{ max-width:none; }

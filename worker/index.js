@@ -679,10 +679,16 @@ const OLD_FAQ_SHIPPING = 'Free shipping applies on orders above ₹499.';
 // line. product-page.js and ship-holidays.js no longer write it at all.
 const OLD_HANDLING_SUB = "'Allow ' + handling + ' extra ' + (handling === 1 ? 'day' : 'days') + ' before dispatch'";
 // Product page structure and polish (public/css/pdp.css), after the site theme.
-const PDP_CSS_TAG = '<link rel="stylesheet" href="/css/pdp.css?v=20261126">';
+const PDP_CSS_TAG = '<link rel="stylesheet" href="/css/pdp.css?v=20261127">';
 const NEW_FAQ_SHIPPING = 'Free shipping applies on prepaid orders above ₹399 and on cash-on-delivery orders of ₹499 or more.';
 function withShippingCopy(response) {
   let noted = false;
+  // Wide screens (pdp.css ≥1440px): everything from "About this book" to the end
+  // of the info section goes in one wrapper, so it stacks in the middle column
+  // beside the buy box instead of waiting below it. Elsewhere it is
+  // display:contents and the page lays out as before.
+  let infoOpen = false;
+  let readOpen = false;
   let ldBuf = '';
   let jsBuf = '';
   const out = new HTMLRewriter()
@@ -698,6 +704,19 @@ function withShippingCopy(response) {
     })
     .on('div.promo', { element(el) { el.setInnerContent(PROMO_HTML, { html: true }); } })
     .on('div.trust', { element(el) { if (!noted) { el.after(SHIP_NOTE_HTML, { html: true }); noted = true; } } })
+    .on('main.wrap > section:not(.cover)', {
+      element(el) {
+        if (infoOpen || readOpen) return;
+        infoOpen = true;
+        el.onEndTag((end) => {
+          if (readOpen) { end.before('</div>', { html: true }); readOpen = false; }
+          infoOpen = false;
+        });
+      },
+    })
+    .on('main.wrap > section:not(.cover) > div.desc', {
+      element(el) { if (infoOpen && !readOpen) { readOpen = true; el.before('<div class="pdp-read">', { html: true }); } },
+    })
     .on('script[type="application/ld+json"]', {
       text(chunk) {
         ldBuf += chunk.text;
