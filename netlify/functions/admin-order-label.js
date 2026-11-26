@@ -8,6 +8,15 @@
  *       -> application/pdf (attachment), the single label page
  *       -> 404 { not_found: true } when neither panel has a label for that AWB
  *
+ *   POST { orders: [{ awb, order, courier }, …] }   (up to 200; Not Picked Up → 🏷️ Labels)
+ *       -> application/pdf: pick list, then every label found sorted by quantity
+ *          and stamped like the bulk XpressBees button (utils/label-sort), then
+ *          NimbusPost picture-only labels unstamped at the end. X-Label-Summary
+ *          (URI-encoded JSON) lists the AWBs no courier had a label for.
+ *       XpressBees AWBs go 50 at a time to the panel; whatever it does not have
+ *       is asked of NimbusPost one by one. Does NOT mark anything downloaded
+ *       (the "Latest dispatched" button's memory is left alone).
+ *
  *   XpressBees  POST {UCP}/ship/assets/label { awbs: "<awb>" }   (panel API, any AWB on the account)
  *   NimbusPost  Partner API: GET /v2/orders?awb= -> order_id, then
  *               POST /v2/shipments/labels { order_ids: [id] }   (utils/nimbuspost-v2.js)
@@ -21,14 +30,14 @@
  */
 
 const { requireAdmin } = require('./utils/admin-auth');
-const { readPage } = require('./utils/label-sort');
+const { readPage, buildSortedLabels } = require('./utils/label-sort');
 const xbLabels = require('./admin-xpressbees-labels');
 const npV2 = require('./utils/nimbuspost-v2');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key, X-Admin-Token',
-  'Access-Control-Expose-Headers': 'Content-Disposition, X-Label-Source',
+  'Access-Control-Expose-Headers': 'Content-Disposition, X-Label-Source, X-Label-Summary',
 };
 const json = (statusCode, body) => ({
   statusCode, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body),
@@ -166,11 +175,130 @@ async function findLabel(awb, courier, deps = {}) {
   return { tried };
 }
 
+const BULK_MAX = 200;
+const XB_BATCH = 50;
+
+/** Which of `awbs` some page of `bytes` shows. */
+async function shownAwbs(bytes, awbs) {
+  const { PDFDocument } = require('pdf-lib');
+  const want = new Set(awbs);
+  const seen = new Set();
+  try {
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    for (const p of doc.getPages()) for (const t of readPage(p).texts) { const a = cleanAwb(t.t); if (want.has(a)) seen.add(a); }
+  } catch { /* unreadable: nothing shown */ }
+  return seen;
+}
+
+/** One sorted, stamped PDF for many orders' labels. Read-only at both couriers. */
+async function bulkLabels(list, deps = {}) {
+  const fetchImpl = deps.fetch || fetch;
+  const sources = [];
+  const images = [];
+  const missing = [];
+  const rest = [];
+  const xb = [];
+  for (const x of list) (/xpress\s*bees/i.test(x.courier) ? xb : rest).push(x);
+
+  if (xb.length) {
+    const call = xbLabels.lib.makeCaller(deps.xpressbees || {});
+    for (let i = 0; i < xb.length; i += XB_BATCH) {
+      const chunk = xb.slice(i, i + XB_BATCH);
+      const awbs = chunk.map((x) => x.awb);
+      let bytes = null;
+      try {
+        bytes = await xbLabels.lib.labelPdf(call, awbs, fetchImpl, { returnShort: true, ...(deps.xbWaits ? { waits: deps.xbWaits } : {}) });
+      } catch (e) {
+        if (/refused the API login/.test(String(e.message))) throw e;
+        console.warn('[order-label bulk] XpressBees batch', e.message);
+      }
+      const shown = bytes ? await shownAwbs(bytes, awbs) : new Set();
+      const got = awbs.filter((a) => shown.has(a));
+      if (got.length) sources.push({ bytes, awbs: got, sheets: true });
+      for (const x of chunk) if (!shown.has(x.awb)) rest.push(x);   // NimbusPost books XpressBees too
+    }
+  }
+
+  const npReady = !!deps.v2Fetch || npV2.configured();
+  const npCall = npReady ? npV2.makeV2Caller(deps.nimbuspost || deps) : null;
+  for (const x of rest) {
+    if (!npCall) { missing.push({ awb: x.awb, order: x.order, reason: 'not in XpressBees; NimbusPost API key not set' }); continue; }
+    try {
+      const found = await npV2.findByAwb(npCall, x.awb);
+      if (!found) { missing.push({ awb: x.awb, order: x.order, reason: 'not found in XpressBees or NimbusPost' }); continue; }
+      const bytes = await npV2.labelPdf(npCall, [found.id], fetchImpl);
+      const page = await pickLabelPage(bytes, x.awb).catch(() => null);
+      if (page) sources.push({ bytes: page, awbs: [x.awb] });
+      else if (await isSingleImagePage(bytes)) images.push({ ...x, bytes });
+      else missing.push({ awb: x.awb, order: x.order, reason: 'NimbusPost label does not show this AWB' });
+    } catch (e) {
+      missing.push({ awb: x.awb, order: x.order, reason: String(e.message || e).slice(0, 160) });
+    }
+  }
+
+  if (!sources.length && !images.length) return { missing };
+  const { PDFDocument } = require('pdf-lib');
+  let out;
+  let summary = { labels: 0, units: 0, unread: [], unstamped: [] };
+  if (sources.length) {
+    const built = await buildSortedLabels(sources, { blank: false });
+    out = await PDFDocument.load(built.pdf, { updateMetadata: false });
+    summary = built.summary;
+  } else {
+    out = await PDFDocument.create();
+  }
+  for (const img of images) {
+    const fitted = await fitToThermal(img.bytes).catch(() => img.bytes);
+    const doc = await PDFDocument.load(fitted, { updateMetadata: false });
+    const [pg] = await out.copyPages(doc, [0]);
+    out.addPage(pg);
+  }
+  return {
+    pdf: await out.save(),
+    summary: { ...summary, image_only: images.map((x) => x.order || x.awb), missing },
+  };
+}
+
+async function handleBulk(event) {
+  let body;
+  try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid JSON' }); }
+  const seen = new Set();
+  const list = [];
+  for (const o of Array.isArray(body.orders) ? body.orders : []) {
+    const awb = cleanAwb(o && o.awb);
+    if (!AWB_RE.test(awb) || seen.has(awb)) continue;
+    seen.add(awb);
+    list.push({ awb, order: String(o.order || '').replace(/[^\w-]/g, '').slice(0, 40), courier: String(o.courier || '').slice(0, 60) });
+  }
+  if (!list.length) return json(400, { error: 'No order with an AWB was selected' });
+  if (list.length > BULK_MAX) return json(400, { error: `At most ${BULK_MAX} labels at a time (${list.length} selected)` });
+  try {
+    const got = await bulkLabels(list);
+    if (!got.pdf) return json(404, { not_found: true, missing: got.missing, error: 'No courier had a label for any selected order.' });
+    const day = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit' }).format(new Date()).replace('/', '');
+    console.log(`[order-label bulk] asked=${list.length} labels=${got.summary.labels} images=${got.summary.image_only.length} missing=${got.summary.missing.length}`);
+    return new Response(got.pdf, {
+      status: 200,
+      headers: {
+        ...CORS,
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="labels_not_picked_${list.length}_${day}.pdf"`,
+        'Cache-Control': 'no-store, private',
+        'X-Label-Summary': encodeURIComponent(JSON.stringify({ asked: list.length, ...got.summary })),
+      },
+    });
+  } catch (e) {
+    console.error('[order-label bulk]', e);
+    return json(502, { error: e.message });
+  }
+}
+
 exports.handler = async (event = {}) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   const block = requireAdmin(event, CORS);
   if (block) return block;
-  if (event.httpMethod !== 'GET') return json(405, { error: 'GET only' });
+  if (event.httpMethod === 'POST') return handleBulk(event);
+  if (event.httpMethod !== 'GET') return json(405, { error: 'GET or POST only' });
 
   const q = event.queryStringParameters || {};
   const awb = cleanAwb(q.awb);
@@ -200,4 +328,4 @@ exports.handler = async (event = {}) => {
   }
 };
 
-exports._test = { fitToThermal, isSingleImagePage, pickLabelPage, xpressBeesLabel, nimbusPostLabel, findLabel, sourceOrder, cleanAwb };
+exports._test = { bulkLabels, handleBulk, shownAwbs, fitToThermal, isSingleImagePage, pickLabelPage, xpressBeesLabel, nimbusPostLabel, findLabel, sourceOrder, cleanAwb };

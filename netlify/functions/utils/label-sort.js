@@ -466,7 +466,7 @@ function splitSheets(pages, awbs) {
   return out;
 }
 
-async function buildSortedLabels(sources, { date = new Date() } = {}) {
+async function buildSortedLabels(sources, { date = new Date(), blank = true } = {}) {
   const out = await PDFDocument.create();
   const fonts = { bold: await out.embedFont(StandardFonts.HelveticaBold), regular: await out.embedFont(StandardFonts.Helvetica) };
   const labels = [];
@@ -474,7 +474,7 @@ async function buildSortedLabels(sources, { date = new Date() } = {}) {
   for (const src of sources) {
     const doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
     const pages = doc.getPages();
-    if (pages.length < src.awbs.length && pages.length && pages[0].getSize().width > 500) {
+    if (pages.length && pages[0].getSize().width > 500 && (pages.length < src.awbs.length || src.sheets)) {
       // A4 sheets, several labels each: copy the sheet once per label and
       // crop each copy to that label's frame.
       const cuts = splitSheets(pages, src.awbs);
@@ -523,7 +523,7 @@ async function buildSortedLabels(sources, { date = new Date() } = {}) {
     const r = stamp(l.page, l, labels.length, fonts);
     if (!r.stamped) unstamped.push(`${l.awb}: ${r.reason}`);
   }
-  out.addPage([width, height]);   // blank last page
+  if (blank) out.addPage([width, height]);   // blank last page
   const pdf = await out.save();
   return {
     pdf,

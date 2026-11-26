@@ -2875,6 +2875,7 @@ select,input,textarea{font-size:1rem;}
     <div id="npuBulkBar" style="display:none;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;padding:.55rem .8rem;border:1px solid rgba(224,96,96,.35);border-radius:8px;background:rgba(224,96,96,.06);font-size:.72rem;">
       <strong id="npuSelCount">0 selected</strong>
       <button class="btn-outline" style="border-color:#e06060;color:#e06060;" onclick="cancelNotPickedSelected(this)" title="Asks each courier first; only parcels still waiting for pickup are cancelled. Prepaid money goes back automatically; COD missing-book replacements get a UPI request by email and WhatsApp.">✕ Cancel &amp; refund selected</button>
+      <button class="btn-outline" onclick="downloadNpuLabels(this)" title="One PDF with the shipping label of every selected order that has an AWB: pick list first, then labels sorted by quantity and stamped with the book. XpressBees and NimbusPost; read-only at the couriers">🏷️ Download labels</button>
       <button class="btn-outline" onclick="amazonForNpuSelected(this)" title="Every book in the selected orders, searched on amazon.in and added to your Amazon cart by the helper on your Mac">🛒 Amazon cart</button>
       <button class="btn-outline" onclick="exportNotPickedCsv()">⬇ CSV</button>
       <button class="btn-outline" onclick="exportNotPickedPdf()">⬇ PDF</button>
@@ -7542,6 +7543,55 @@ function amazonForNpuRow(id, btn) {
   const r = (npuData?.orders || []).find(x => String(x.id) === String(id));
   if (r) amazonForOrder(amzNpuOrder(r), btn, 'Not Picked Up');
 }
+// Not Picked Up → 🏷️ Download labels: every selected order with an AWB, one
+// sorted + stamped PDF (admin-order-label POST). Nothing is booked or changed.
+async function downloadNpuLabels(btn) {
+  const rows = npuVisibleRows().filter(r => npuSel.has(r.id));
+  const withAwb = rows.filter(r => String(r.tracking_id || '').trim() && !r.courier_cancelled);
+  const skipped = rows.length - withAwb.length;
+  if (!withAwb.length) { alert('None of the selected orders has a live AWB, so there is no label to download.'); return; }
+  if (withAwb.length > 200) { alert('At most 200 labels at a time — ' + withAwb.length + ' selected.'); return; }
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Fetching ' + withAwb.length + ' label' + (withAwb.length === 1 ? '' : 's') + '…';
+  try {
+    const res = await adminFetch('/.netlify/functions/admin-order-label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orders: withAwb.map(r => ({ awb: String(r.tracking_id).trim(), order: r.order_id || r.id, courier: r.courier || '' })) }),
+    });
+    if (res.ok && (res.headers.get('Content-Type') || '').includes('pdf')) {
+      let sum = {};
+      try { sum = JSON.parse(decodeURIComponent(res.headers.get('X-Label-Summary') || '%7B%7D')); } catch {}
+      const blob = await res.blob();
+      const name = ((res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'labels_not_picked.pdf';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      const notes = [];
+      const got = (sum.labels || 0) + ((sum.image_only || []).length);
+      notes.push(got + ' of ' + withAwb.length + ' labels downloaded' + (sum.units ? ' (' + sum.units + ' books)' : '') + '.');
+      if ((sum.image_only || []).length) notes.push((sum.image_only || []).length + ' NimbusPost picture labels are at the end, without the book stamp.');
+      if ((sum.missing || []).length) notes.push('No label found for:\n' + sum.missing.map(m => '• ' + (m.order || '') + ' ' + m.awb + ' — ' + m.reason).join('\n') + '\n(DTDC or Delhivery bookings made directly on their portals are not in XpressBees or NimbusPost.)');
+      if (skipped) notes.push(skipped + ' selected order' + (skipped === 1 ? ' has' : 's have') + ' no live AWB and ' + (skipped === 1 ? 'was' : 'were') + ' skipped.');
+      if ((sum.missing || []).length || skipped || (sum.image_only || []).length) alert(notes.join('\n\n'));
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (data.missing && data.missing.length) throw new Error((data.error || 'No labels found.') + '\n\n' + data.missing.map(m => '• ' + (m.order || '') + ' ' + m.awb + ' — ' + m.reason).join('\n'));
+    throw new Error(data.error || ('HTTP ' + res.status));
+  } catch (err) {
+    alert('Label download failed:\n\n' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
 function amazonForNpuSelected(btn) {
   const rows = npuVisibleRows().filter(r => npuSel.has(r.id));
   amazonForOrders(rows.map(amzNpuOrder), 'Not Picked Up', btn);
