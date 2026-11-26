@@ -33,6 +33,7 @@ const { preorderChecker } = require('./utils/preorder-hold');
 const { assertBookable } = require('./utils/booking-guard');
 const { ensureOrderAddress } = require('./utils/address-fixer');
 const { isReplacementOrder } = require('./utils/replacement-order');
+const { sendShippedNotification } = require('./utils/shipped-notification');
 
 const NP_BASE = 'https://api.nimbuspost.com/v1';
 
@@ -405,8 +406,37 @@ async function shipOrder(supabase, token, warehouseId, order, forceCourierId, gu
 
   if (updErr) console.warn('Supabase update warning:', updErr.message);
 
-  return { order_id: orderId, awb, courier_name: courier_name || courierName, tracking_url: trackingUrl,
+  // Every booking path tells the customer (owner rule). This one used to stay
+  // silent, and NimbusPost's later pickup scan is skipped as shipped→shipped,
+  // so nobody heard a thing. Same fire-once claim as xpressbees-ship.
+  const notified = updErr ? { skipped: 'order not updated' } : await notifyShipped(supabase, {
+    ...order, status: 'shipped', tracking_id: awb, tracking_url: trackingUrl,
+    courier_name: courier_name || courierName || 'NimbusPost',
+  });
+
+  return { order_id: orderId, awb, courier_name: courier_name || courierName, tracking_url: trackingUrl, notified,
     ...(addressFix.status === 'fixed' ? { corrected_address: order.customer_address, address_fix_reason: addressFix.reason } : {}) };
+}
+
+async function notifyShipped(supabase, order) {
+  try {
+    const claim = await supabase.from('orders')
+      .update({ shipped_notified_at: new Date().toISOString() })
+      .eq('id', order.id).is('shipped_notified_at', null).select('id');
+    if (!claim.error && !(claim.data && claim.data.length)) return { skipped: 'already notified' };
+    const sent = await sendShippedNotification(order, {
+      awb: order.tracking_id, courier: order.courier_name, trackingUrl: order.tracking_url,
+    }).catch((e) => ({ error: e.message }));
+    // Nothing reached the customer: release the claim so admin-resend-shipped can retry.
+    if (!claim.error && !(sent.whatsapp?.ok || sent.email?.ok)) {
+      await supabase.from('orders').update({ shipped_notified_at: null }).eq('id', order.id);
+    }
+    return { whatsapp: !!sent.whatsapp?.ok, email: !!sent.email?.ok, ...(sent.error ? { error: sent.error } : {}) };
+  } catch (e) {
+    // A notice problem must never turn a booked shipment into a "failed" one.
+    console.error('[nimbuspost-ship] shipped notice:', e.message);
+    return { error: e.message };
+  }
 }
 
 // ── CORS / auth helpers ───────────────────────────────────────────────────
