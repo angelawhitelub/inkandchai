@@ -679,6 +679,8 @@ const OLD_FAQ_SHIPPING = 'Free shipping applies on orders above ₹499.';
 // line. product-page.js and ship-holidays.js no longer write it at all.
 const OLD_HANDLING_SUB = "'Allow ' + handling + ' extra ' + (handling === 1 ? 'day' : 'days') + ' before dispatch'";
 // Product page structure and polish (public/css/pdp.css), after the site theme.
+// Product folders whose name is not all lowercase (see the redirect in fetch()).
+const UPPERCASE_PRODUCT_SLUGS = { '5-hindi-bestsellers-combo-set-of-5-books-mbo-5': '5-hindi-bestsellers-combo-set-of-5-books-MBO-5' };
 const PDP_CSS_TAG = '<link rel="stylesheet" href="/css/pdp.css?v=20261127">';
 const NEW_FAQ_SHIPPING = 'Free shipping applies on prepaid orders above ₹399 and on cash-on-delivery orders of ₹499 or more.';
 function withShippingCopy(response) {
@@ -1355,6 +1357,16 @@ export default {
       return new Response(JSON.stringify({ items: await catalogContent(env) }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' },
       });
+    }
+
+    // The one product page whose folder keeps an uppercase suffix (generate_site.py
+    // make_slug override). Cloudflare serves assets case-sensitively, and the
+    // catalogue index, search and admin links spell it in lowercase, which 404'd
+    // (owner, 26 Nov 2026). Exact string compare, so the real page never loops.
+    {
+      const m = url.pathname.match(/^\/product\/([^/]+)(\/.*)?$/);
+      const fixed = m && UPPERCASE_PRODUCT_SLUGS[m[1].toLowerCase()];
+      if (fixed && fixed !== m[1]) return Response.redirect(`${url.origin}/product/${fixed}${m[2] || '/'}${url.search}`, 301);
     }
 
     if (url.pathname === '/feed.xml') return soldOutFeed(request, env, ctx, url.origin);
