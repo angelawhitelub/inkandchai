@@ -38,6 +38,49 @@ async function ownerAlert(text) {
   if (phone) { try { await sendText(phone, text); } catch (_) {} }
 }
 
+/**
+ * Mint the store credit for a held wallet return (refund_status 'refunding',
+ * claimed by the caller) and email it. `atPickup` only changes the wording.
+ * Used by the courier scans above and by the owner's "Received — issue store
+ * credit" button for India Post returns that have no tracking (process-return).
+ */
+async function issueReturnWallet(supabase, ret, order, { atPickup = false } = {}) {
+  const oid = ret.order_display_id || ret.order_id;
+  const amountPaise = Number(ret.refund_amount_paise) || Number(order?.amount_paise) || 0;
+  const amountRs = Math.round(amountPaise / 100);
+  const bonus = walletBonusRupees(ret.created_at);
+  try {
+    const minted = await mintWalletCredit(supabase, { order: order || ret, valuePaise: amountPaise + bonus * 100 });
+    const creditRs = Math.round(minted.value_paise / 100);
+    await supabase.from('return_requests').update({
+      refund_status: 'wallet_issued', wallet_code: minted.code, refunded_at: new Date().toISOString(),
+    }).eq('id', ret.id);
+    if (ret.customer_email) {
+      await sendEmail({
+        to: ret.customer_email,
+        subject: `Your ₹${creditRs} store credit is ready (${oid})`,
+        html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
+          <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;">${atPickup ? 'Return picked up ✅' : 'Return received ✅'}</h2>
+          <p>Hi ${String(ret.customer_name||'there').split(' ')[0]}, ${atPickup ? 'the courier has picked up your returned books' : 'your returned books have reached us'}. Here is your Ink &amp; Chai store credit:</p>
+          <div style="margin:16px 0;padding:16px;background:#f4ecd9;border:1px dashed #c9a84c;text-align:center;">
+            <div style="font-family:monospace;font-size:22px;color:#8a3a1f;margin:4px 0;">${minted.code}</div>
+            <div style="font-size:20px;color:#4a9d4a;font-weight:600;">₹${creditRs.toLocaleString('en-IN')}</div>
+            <div style="font-size:12px;color:#8a7a62;">${bonus ? `(₹${amountRs} refund + ₹${bonus} bonus) · ` : ''}valid 6 months</div>
+          </div>
+          <p style="font-size:13px;">Enter the code in the coupon box at checkout on your next order.</p>
+          <p style="font-size:12px;color:#8a7a62;margin-top:20px;">Ink &amp; Chai · inkandchai.in</p>
+        </div>`,
+      }).catch(() => {});
+    }
+    await ownerAlert(`✅ Return ${atPickup ? 'picked up' : 'received'} → store credit issued\nOrder: ${oid}\n${minted.code} worth ₹${creditRs} emailed to the customer.`);
+    return { matched: true, refunded: true, provider: 'wallet', code: minted.code, value_paise: minted.value_paise };
+  } catch (e) {
+    await supabase.from('return_requests').update({ refund_status: 'awaiting_return_delivery' }).eq('id', ret.id);
+    await ownerAlert(`⚠️ Store credit FAILED for return ${oid}: ${e.message}\nReturn is ${atPickup ? 'picked up' : 'received'} — issue ₹${amountRs + bonus} credit by hand.`);
+    return { matched: true, refunded: false, error: e.message };
+  }
+}
+
 async function handleReturnAwbDelivered(supabase, awb, { on = 'delivered' } = {}) {
   const atPickup = on === 'picked_up';
   const tracking = String(awb || '').trim();
@@ -78,39 +121,7 @@ async function handleReturnAwbDelivered(supabase, awb, { on = 'delivered' } = {}
   const amountPaise = Number(ret.refund_amount_paise) || Number(order?.amount_paise) || 0;
   const amountRs = Math.round(amountPaise / 100);
 
-  if (wallet) {
-    const bonus = walletBonusRupees(ret.created_at);
-    try {
-      const minted = await mintWalletCredit(supabase, { order: order || ret, valuePaise: amountPaise + bonus * 100 });
-      const creditRs = Math.round(minted.value_paise / 100);
-      await supabase.from('return_requests').update({
-        refund_status: 'wallet_issued', wallet_code: minted.code, refunded_at: new Date().toISOString(),
-      }).eq('id', ret.id);
-      if (ret.customer_email) {
-        await sendEmail({
-          to: ret.customer_email,
-          subject: `Your ₹${creditRs} store credit is ready (${oid})`,
-          html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#2a2018;background:#faf7f2;">
-            <h2 style="font-family:Georgia,serif;font-weight:400;color:#8a6a1f;">${atPickup ? 'Return picked up ✅' : 'Return received ✅'}</h2>
-            <p>Hi ${String(ret.customer_name||'there').split(' ')[0]}, ${atPickup ? 'the courier has picked up your returned books' : 'your returned books have reached us'}. Here is your Ink &amp; Chai store credit:</p>
-            <div style="margin:16px 0;padding:16px;background:#f4ecd9;border:1px dashed #c9a84c;text-align:center;">
-              <div style="font-family:monospace;font-size:22px;color:#8a3a1f;margin:4px 0;">${minted.code}</div>
-              <div style="font-size:20px;color:#4a9d4a;font-weight:600;">₹${creditRs.toLocaleString('en-IN')}</div>
-              <div style="font-size:12px;color:#8a7a62;">${bonus ? `(₹${amountRs} refund + ₹${bonus} bonus) · ` : ''}valid 6 months</div>
-            </div>
-            <p style="font-size:13px;">Enter the code in the coupon box at checkout on your next order.</p>
-            <p style="font-size:12px;color:#8a7a62;margin-top:20px;">Ink &amp; Chai · inkandchai.in</p>
-          </div>`,
-        }).catch(() => {});
-      }
-      await ownerAlert(`✅ Return ${atPickup ? 'picked up' : 'received'} → store credit issued\nOrder: ${oid}\n${minted.code} worth ₹${creditRs} emailed to the customer.`);
-      return { matched: true, refunded: true, provider: 'wallet', code: minted.code };
-    } catch (e) {
-      await supabase.from('return_requests').update({ refund_status: 'awaiting_return_delivery' }).eq('id', ret.id);
-      await ownerAlert(`⚠️ Store credit FAILED for return ${oid}: ${e.message}\nReturn is ${atPickup ? 'picked up' : 'received'} — issue ₹${amountRs + bonus} credit by hand.`);
-      return { matched: true, refunded: false, error: e.message };
-    }
-  }
+  if (wallet) return issueReturnWallet(supabase, ret, order, { atPickup });
 
   // Razorpay → auto-refund via API.
   if (paymentId.startsWith('pay_')) {
@@ -352,4 +363,4 @@ async function syncReturnRefunds(supabase, deps = {}) {
   return out;
 }
 
-module.exports = { handleReturnAwbDelivered, payReturnByPhonePe, settleReturnRefundEvent, syncReturnRefunds, returnRefundCompleted };
+module.exports = { handleReturnAwbDelivered, issueReturnWallet, payReturnByPhonePe, settleReturnRefundEvent, syncReturnRefunds, returnRefundCompleted };

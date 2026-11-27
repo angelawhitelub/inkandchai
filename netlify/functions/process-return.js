@@ -416,6 +416,33 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, refund_status: 'refunded', refund_ref: out.refundRef, state: out.state }) };
     }
 
+    // Owner confirms a store-credit return has reached us and issues the credit.
+    // For returns with no courier tracking (India Post, customer posts), where
+    // the hourly scan job can never fire. Same minting + email as the scans
+    // (utils/return-auto-refund issueReturnWallet). Owner, 27 Nov 2026.
+    if (action === 'issue_wallet') {
+      if (ret.refund_method !== 'wallet') {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'This return is not refunded as store credit.' }) };
+      }
+      if (['rejected', 'cancelled'].includes(String(ret.status || '').toLowerCase())) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `This return is ${ret.status}; no credit is due.` }) };
+      }
+      if (ret.refund_status !== 'awaiting_return_delivery') {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Refund is "${ret.refund_status || 'not set'}", not waiting for the return.` }) };
+      }
+      const claim = await supabase.from('return_requests').update({ refund_status: 'refunding' })
+        .eq('id', ret.id).eq('refund_status', 'awaiting_return_delivery').select('id');
+      if (claim.error || !claim.data || !claim.data.length) {
+        return { statusCode: 409, headers: CORS, body: JSON.stringify({ error: 'This return is already being credited.' }) };
+      }
+      const { data: order } = await supabase.from('orders').select('*').eq('id', ret.order_id).maybeSingle();
+      const { issueReturnWallet } = require('./utils/return-auto-refund');
+      const out = await issueReturnWallet(supabase, ret, order, { atPickup: false });
+      console.log(`[process-return] issue_wallet ${ret.order_display_id || ret.id}: ${out.refunded ? out.code : 'failed: ' + out.error}`);
+      if (!out.refunded) return { statusCode: 502, headers: CORS, body: JSON.stringify({ error: out.error || 'Store credit failed' }) };
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, refund_status: 'wallet_issued', wallet_code: out.code, value_paise: out.value_paise }) };
+    }
+
     // Manually attach a tracking ID + courier (when you ship the return yourself,
     // outside NimbusPost) and notify the customer to hand over the books.
     if (action === 'add_tracking') {

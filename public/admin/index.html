@@ -22697,6 +22697,7 @@ function returnRefundInfo(r) {
     Refund: ${method} ${rupees ? '· ' + rupees : ''} · <span style="color:${stranded ? '#e05050' : stColor};">${stranded ? 'STRANDED — no auto-refund runs for a manual payout' : st}</span>
     ${refundOrder && refundOrder.refund_utr ? ` · UTR <b style="color:var(--gold);user-select:all;" title="Bank reference for this refund: the customer can quote it to their bank">${esc(refundOrder.refund_utr)}</b>` : ''}
     ${r.refund_status === 'manual_refund_pending' && r.refund_method === 'original' && r.payment_type === 'prepaid' && r.return_delivered_at && !orderAlreadyRefunded ? `<button onclick="refundReturnPhonePe('${r.id}',${Number(r.refund_amount_paise) || 0},'${esc(r.order_display_id || '')}',this)" title="Send this refund back to the customer's PhonePe payment now" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(232,160,48,0.14);border:1px solid rgba(232,160,48,0.6);color:#e8a030;cursor:pointer;border-radius:4px;">💸 Refund ${rupees || ''} via PhonePe</button>` : ''}
+    ${r.refund_method === 'wallet' && r.refund_status === 'awaiting_return_delivery' && !['rejected','cancelled'].includes(String(r.status || '').toLowerCase()) ? `<button onclick="issueReturnCredit('${r.id}',${Number(r.refund_amount_paise) || 0},'${esc(r.order_display_id || '')}',this)" title="The returned book has reached you: create the store credit and email the code to the customer. For returns with no courier tracking (India Post); courier returns get it automatically at pickup." style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.5);color:var(--gold);border-radius:4px;cursor:pointer;">🎟️ Received — issue store credit</button>` : ''}
     ${(needsManual || stranded) ? `<button onclick="markReturnRefunded('${r.id}',this)" title="Mark this refund as paid (after you've sent the UPI/manual refund)" style="margin-left:0.4rem;font-size:0.58rem;padding:0.25rem 0.6rem;background:rgba(109,191,109,0.12);border:1px solid rgba(109,191,109,0.5);color:#6dbf6d;cursor:pointer;border-radius:4px;">✓ Mark refund paid</button>` : ''}
   </div>`;
 }
@@ -22713,6 +22714,18 @@ async function refundReturnPhonePe(id, paise, orderId, btn) {
     if (btn) btn.textContent = label;
   }
   if (typeof fetchReturnRequests === 'function') fetchReturnRequests();
+}
+
+async function issueReturnCredit(id, paise, orderId, btn) {
+  const rs = '₹' + (paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  if (!confirm('Issue ' + rs + ' store credit for return ' + orderId + '?\n\nDo this only once the returned book has reached you. A code is created and emailed to the customer, and the return is closed.')) return;
+  try {
+    const data = await _returnCall({ return_request_id: id, action: 'issue_wallet' }, btn);
+    alert('✅ Store credit ' + data.wallet_code + ' worth ₹' + Math.round((data.value_paise || paise) / 100) + ' issued and emailed.');
+    if (typeof fetchReturnRequests === 'function') fetchReturnRequests(); else location.reload();
+  } catch (e) {
+    alert('Could not issue the credit: ' + e.message);
+  }
 }
 
 async function markReturnRefunded(id, btn) {
