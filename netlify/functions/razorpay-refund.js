@@ -22,6 +22,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { issueRazorpayRefund } = require('./utils/razorpay-refund');
 const { sendRefundInitiated, cleanRefundItems, rupees } = require('./utils/refund-notifications');
 const { requireAdmin } = require('./utils/admin-auth');
+const { keepStatusOnPartial } = require('./utils/prior-refund');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -130,7 +131,9 @@ exports.handler = async (event) => {
     }
 
     // 2xx + not-failed ⇒ committed. Mark refunded / partially_refunded.
-    const nextStatus = isFullRefund ? 'refunded' : 'partially_refunded';
+    // A part refund on an order still to ship keeps its status, so the rest of
+    // its books stay in Not Picked Up / labels (utils/prior-refund).
+    const nextStatus = isFullRefund ? 'refunded' : keepStatusOnPartial(order) ? order.status : 'partially_refunded';
     // The bank rail reference. Razorpay usually has none at creation time (the
     // refund is still 'pending' on the rail) and fills acquirer_data in later —
     // so this is best-effort here, and rfnd_… remains the reference until a
@@ -145,6 +148,14 @@ exports.handler = async (event) => {
     };
     if (rzpUtr) refundUpdate.refund_utr = String(rzpUtr);
     if (refundItems.length) refundUpdate.refund_items = refundItems;
+    // Order still shipping: keep a running list (with a line for a typed
+    // amount), so the admin and the cancel paths know how much went back.
+    if (!isFullRefund && keepStatusOnPartial(order)) {
+      const prev = require('./utils/prior-refund').hasPriorRefund(order) && Array.isArray(order.refund_items) ? order.refund_items : [];
+      const ticked = refundItems.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+      const typed = Math.round((amountPaise / 100 - ticked) * 100) / 100;
+      refundUpdate.refund_items = [...prev, ...refundItems, ...(typed >= 0.01 ? [{ title: 'Part refund', qty: 1, amount: typed }] : [])];
+    }
     {
       const { error } = await supabase.from('orders').update(refundUpdate).eq('id', order.id);
       // sql/refund_partial_notifications.sql may not have been run yet — the

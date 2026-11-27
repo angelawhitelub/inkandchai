@@ -293,6 +293,19 @@ async function maybeAutoRefund(order) {
   if (row.late_cancel_at) {
     return { skipped: 'late-cancel-owns-refund' };
   }
+  // Some books were already refunded while the order was still shipping
+  // (utils/prior-refund). Paying the full amount now would pay them twice;
+  // the owner refunds what is left.
+  if (require('./prior-refund').hasPriorRefund(row)) {
+    const displayId = row.razorpay_order_id || row.id;
+    const already = require('./prior-refund').priorRefundRs(row);
+    console.warn(`[AUTO-REFUND] ${displayId} skipped: part refund ${row.refund_id} already sent`);
+    if (process.env.STORE_OWNER_PHONE) {
+      await require('./whatsapp').sendText(process.env.STORE_OWNER_PHONE,
+        `⚠️ Cancelled order needs a refund by hand\nOrder: ${displayId}\nPart of it was already refunded${already ? ` (₹${already})` : ''}, so the automatic full refund was NOT sent. Refund the rest from admin → Orders → 💸 Refund (Partial).`).catch(() => {});
+    }
+    return { skipped: 'prior-partial-refund' };
+  }
   const pid = row.razorpay_payment_id || '';
   if (!pid) return { skipped: 'no-payment-id' };
   const amountPaise = Number(row.amount_paise || 0);

@@ -169,6 +169,10 @@ function refundOnCancel(order, original) {
   const paid = String(order.razorpay_payment_id || '').trim() && Number(order.amount_paise || 0) > 0;
   if (!paid) return { via: 'none', amount_rs: 0, message: 'COD — nothing was charged' };
   if (order.late_cancel_at) return { via: 'manual', amount_rs: rs(order.amount_paise), message: 'late cancel already owns this refund' };
+  if (require('./prior-refund').hasPriorRefund(order)) {
+    const done = require('./prior-refund').priorRefundRs(order);
+    return { via: 'manual', amount_rs: done ? Math.max(0, Math.round((rs(order.amount_paise) - done) * 100) / 100) : rs(order.amount_paise), message: `part refunded already${done ? ' (₹' + done + ')' : ''}; refund the rest by hand` };
+  }
   return { via: 'gateway', amount_rs: rs(order.amount_paise), message: String(order.razorpay_payment_id).startsWith('pay_') ? 'Razorpay' : 'PhonePe' };
 }
 

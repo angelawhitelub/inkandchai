@@ -69,6 +69,8 @@ function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pi
   if (!paid && !pickupWait && !noticeCod && !anyPayment) return no('nothing_paid');
   if (order.wrong_cod_paise) return no('wrong_cod');
   if (order.late_cancel_at || order.cancellation_requested_at) return no('already_requested');
+  // Some books already refunded: the rest is settled by a person (utils/prior-refund).
+  if (paid && require('./prior-refund').hasPriorRefund(order)) return no('prior_refund');
   const status = String(order.status || '').toLowerCase();
   if (!OPEN.includes(status) && !(anyPayment && status === 'cod_pending')) return no('closed');
 

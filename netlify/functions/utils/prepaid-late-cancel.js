@@ -144,6 +144,7 @@ function quoteLateCancel(order, now = Date.now()) {
   if (!order) return no('not_found', 'Order not found.');
   if (!isPurePrepaid(order)) return no('not_prepaid', 'Only fully prepaid orders can be cancelled this way.');
   if (order.late_cancel_at) return no('already_requested', 'This order has already been cancelled.');
+  if (require('./prior-refund').hasPriorRefund(order)) return no('prior_refund', 'Part of this order was already refunded. Please message us and our team will help.');
 
   const status = String(order.status || '').toLowerCase();
   if (!OPEN_STATUSES.includes(status)) {

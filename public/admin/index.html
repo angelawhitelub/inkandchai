@@ -815,12 +815,18 @@ select,input,textarea{font-size:1rem;}
      100% and then jump. Inline style beats the html{font-size:18px} rule. -->
 <script>
 (function () {
-  var KEY = 'iac_admin_font_scale', BASE = 18, MIN = 1, MAX = 1.6, STEP = 0.1;
-  // Readable baseline: older saved 80–90% settings now open at 100%.
+  var KEY = 'iac_admin_font_scale', BASE = 18, MIN = 0.6, MAX = 1.6, STEP = 0.1;
+  // Owner, 28 Nov 2026: 100% was too big on a laptop, so the store got zoomed
+  // out in Chrome instead (Chrome zoom is per site, so the shop shrank too).
+  // Below 100% the whole admin is scaled with CSS zoom — readability.css puts
+  // px floors on most text, so a smaller rem alone would not shrink it. With
+  // nothing saved, a desktop screen opens at 80%.
   function clamp(v) { return Math.min(MAX, Math.max(MIN, Math.round(v * 100) / 100)); }
-  function read() { var v; try { v = parseFloat(localStorage.getItem(KEY)); } catch (e) {} return isFinite(v) ? clamp(v) : 1; }
+  function fallback() { return (window.innerWidth || 0) >= 1100 ? 0.8 : 1; }
+  function read() { var v; try { v = parseFloat(localStorage.getItem(KEY)); } catch (e) {} return isFinite(v) ? clamp(v) : fallback(); }
   function apply(scale) {
-    document.documentElement.style.fontSize = (BASE * scale).toFixed(2) + 'px';
+    document.documentElement.style.fontSize = (BASE * Math.max(1, scale)).toFixed(2) + 'px';
+    document.documentElement.style.zoom = scale < 1 ? String(scale) : '';
     var val = document.getElementById('fzVal');
     if (val) val.textContent = Math.round(scale * 100) + '%';
     var minus = document.getElementById('fzMinus'), plus = document.getElementById('fzPlus');
@@ -834,7 +840,7 @@ select,input,textarea{font-size:1rem;}
     apply(s);
   };
   window.bumpFontScale = function (delta) { window.setFontScale(read() + delta); };
-  window.resetFontScale = function () { window.setFontScale(1); };
+  window.resetFontScale = function () { window.setFontScale(fallback()); };
   apply(read());
   document.addEventListener('DOMContentLoaded', function () { apply(read()); });
   // Ctrl/⌘ + SHIFT + −/+/0. Shift is what keeps this off the browser's own
@@ -865,7 +871,7 @@ select,input,textarea{font-size:1rem;}
     <div class="fontzoom" role="group" aria-label="Text size">
       <button type="button" class="fz-minus" id="fzMinus" aria-label="Decrease text size"
               title="Smaller text (Ctrl/⌘ + Shift + −)" onclick="bumpFontScale(-__fzStep)">A−</button>
-      <button type="button" class="fz-val" id="fzVal" title="Reset text size to 100%"
+      <button type="button" class="fz-val" id="fzVal" title="Reset text size"
               onclick="resetFontScale()">100%</button>
       <button type="button" class="fz-plus" id="fzPlus" aria-label="Increase text size"
               title="Larger text (Ctrl/⌘ + Shift + +)" onclick="bumpFontScale(__fzStep)">A+</button>
@@ -4359,9 +4365,34 @@ function renderNotPicked() {
         + td(esc(r.customer_name) + (r.pincode ? '<div class="hint">' + esc(r.pincode) + '</div>' : ''))
         + td(orderLink(r.order_id, 'Open', 'font-size:.6rem;padding:.3rem .6rem;')
           + '<button class="btn-outline" style="display:block;margin-top:.35rem;font-size:.6rem;padding:.3rem .6rem;white-space:nowrap;" title="Search this order\'s book(s) on amazon.in and add to your Amazon cart" onclick="amazonForNpuRow(\'' + esc(r.id) + '\', this)">🛒 Amazon</button>'
+          + ((r.payment === 'prepaid' || r.payment === 'partial_cod') && r.amount_rs > 0
+            ? '<button class="btn-outline" style="display:block;margin-top:.35rem;font-size:.6rem;padding:.3rem .6rem;border-color:#c98a36;color:#c98a36;white-space:nowrap;" title="Refund the whole order or only some of its books (the rest still ship)" onclick="npuRefund(\'' + esc(r.id) + '\', this)">💸 Refund</button>' : '')
           + (moved ? '' : '<button class="btn-outline" style="display:block;margin-top:.35rem;font-size:.6rem;padding:.3rem .6rem;border-color:#e06060;color:#e06060;white-space:nowrap;" title="Asks the courier first; only a parcel still waiting for pickup is cancelled, then refunded the same way as bulk" onclick="cancelNotPickedOne(\'' + esc(r.id) + '\', this)">✕ Cancel</button>'))
         + '</tr>';
     }).join('') + '</tbody>';
+}
+
+// 💸 Refund from Not Picked Up: the same refund window as Orders, with the
+// order fetched fresh (it may not be in the loaded Orders list). Ticking some
+// books refunds just those; the order keeps its status and the rest ship.
+async function npuRefund(id, btn) {
+  const r = ((npuData && npuData.orders) || []).find(x => String(x.id) === String(id));
+  if (!r) return;
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const res = await fetch('/.netlify/functions/get-orders?' + new URLSearchParams({ q: r.order_id, page: 1, limit: 5 }), { headers: { 'X-Admin-Key': adminKey } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const ord = (data.orders || []).find(o => (o.razorpay_order_id || o.id) === r.order_id);
+    if (!ord) throw new Error('Order ' + r.order_id + ' not found');
+    if (!String(ord.razorpay_payment_id || '').trim() || !(ord.amount_paise > 0)) throw new Error('No online payment on this order to refund.');
+    openRefundModal(r.order_id, ord.amount_paise / 100, ord.customer_name || '', { order: ord, onDone: () => loadNotPicked({ quiet: true }) });
+  } catch (e) {
+    alert('Refund: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = old; }
+  }
 }
 
 function npuToggle(id, on) { if (on) npuSel.add(id); else npuSel.delete(id); renderNotPicked(); }
@@ -15905,13 +15936,15 @@ async function reconcilePhonePe(orderId, btn) {
 // money is successfully returned (missing-book "refund instead of reship" flow).
 // Cleared whenever a plain refund modal is opened so it can never leak across.
 let pendingRefundContext = null;
+let iacRefundOnDone = null;   // e.g. reload Not Picked Up after a refund from there
 
 function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
   opts = opts || {};
   pendingRefundContext = opts.cancelReplacementRowId
     ? { cancelReplacementRowId: opts.cancelReplacementRowId, orderId }
     : null;
-  const ord = allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+  const ord = opts.order || allOrders.find(o => (o.razorpay_order_id || o.id) === orderId);
+  iacRefundOnDone = typeof opts.onDone === 'function' ? opts.onDone : null;
   if (!customerName) customerName = ord?.customer_name || '';
   // Route + label by payment provider. Razorpay ids start with pay_; PhonePe OM/T.
   const isRazorpay = String(ord?.razorpay_payment_id || '').startsWith('pay_');
@@ -15935,7 +15968,7 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
     refundItems.push({ idx: -1, title: 'Shipping / other charges', qty: 1, amount: rest });
   }
   const itemPickerHtml = refundItems.length ? `
-        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.35rem;">Pick what to refund</label>
+        <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.35rem;">Refund only some books? Tick them</label>
         <div style="border:1px solid rgba(201,168,76,0.22);background:#0d0b08;max-height:11rem;overflow-y:auto;margin-bottom:0.85rem;">
           ${refundItems.map(it => `
           <label style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.65rem;font-size:0.74rem;color:${it.amount > 0 ? '#f0e8d8' : '#6d6255'};
@@ -15978,8 +16011,9 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
         </label>
       </div>
 
+      ${refundItems.filter(i => i.idx >= 0).length > 1 ? itemPickerHtml : ''}
       <div id="iacRefundAmountRow" style="display:none;margin-bottom:0.85rem;">
-        ${itemPickerHtml}
+        ${refundItems.filter(i => i.idx >= 0).length > 1 ? '' : itemPickerHtml}
         <label style="display:block;font-size:0.58rem;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:0.35rem;">Refund amount (₹)</label>
         <input id="iacRefundAmount" type="number" min="0.01" max="${fullAmtRupees}" step="0.01"
           placeholder="Up to ${money(fullAmtRupees)}"
@@ -16026,6 +16060,15 @@ function openRefundModal(orderId, fullAmtRupees, customerName, opts) {
       msg.style.color = '#e06060';
       msg.style.display = '';
       msg.dataset.sticky = '1';
+    }
+  }
+  if (ord && ord.refund_id && String(ord.refund_state || '').toUpperCase() !== 'FAILED'
+      && String(ord.refund_state || '').toUpperCase() !== 'COMPLETED' && !opts.contextNote) {
+    const msg = document.getElementById('iacRefundMsg');
+    const done = (Array.isArray(ord.refund_items) ? ord.refund_items : []).reduce((s, i) => s + (Number(i?.amount) || 0), 0);
+    if (msg) {
+      msg.textContent = `⚠️ Part of this order was already refunded${done ? ' (₹' + money(done) + ')' : ''} (${ord.refund_state || 'pending'}). Refund only what is left — a Full refund will be refused.`;
+      msg.style.color = '#e06060'; msg.style.display = ''; msg.dataset.sticky = '1';
     }
   }
   if (opts.contextNote) {
@@ -16685,6 +16728,10 @@ async function submitEditOrder(orderUuid) {
 function iacRefundToggleAmount() {
   const partial = document.querySelector('input[name="iacRefundType"]:checked')?.value === 'partial';
   document.getElementById('iacRefundAmountRow').style.display = partial ? '' : 'none';
+  if (!partial) {   // Full: the ticks no longer mean anything
+    document.querySelectorAll('.iacRefundItem:checked').forEach(b => { b.checked = false; });
+    const amtEl = document.getElementById('iacRefundAmount'); if (amtEl) amtEl.value = '';
+  }
   if (partial) document.getElementById('iacRefundAmount').focus();
 }
 
@@ -16693,6 +16740,11 @@ function iacRefundToggleAmount() {
 function iacRefundItemToggle(box, fullAmtRupees) {
   const amtEl = document.getElementById('iacRefundAmount');
   if (!amtEl) return;
+  const partialRadio = document.querySelector('input[name="iacRefundType"][value="partial"]');
+  if (box.checked && partialRadio && !partialRadio.checked) {
+    partialRadio.checked = true;
+    document.getElementById('iacRefundAmountRow').style.display = '';
+  }
   // Added in whole paise: three ticked lines of ₹76.70 must land on ₹230.10,
   // not ₹230.09999999999997.
   const deltaP = Math.round((Number(box.dataset.amount) || 0) * 100) * (box.checked ? 1 : -1);
@@ -16817,6 +16869,7 @@ async function iacSubmitRefund(orderId, fullAmtRupees, gateway) {
     }
     if (window.updateStats) updateStats();
     if (window.applyFilters) applyFilters();
+    if (iacRefundOnDone) { try { iacRefundOnDone(); } catch (e) {} iacRefundOnDone = null; }
     setTimeout(() => { document.getElementById('iacRefundModal')?.remove(); }, 1600);
   } catch (err) {
     // Name the gateway that actually failed. This line used to say PhonePe

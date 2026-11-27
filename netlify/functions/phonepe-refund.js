@@ -24,6 +24,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { sendRefundInitiated, cleanRefundItems, rupees } = require('./utils/refund-notifications');
 const { refundUtrFrom } = require('./utils/phonepe-core');
 const { requireAdmin } = require('./utils/admin-auth');
+const { keepStatusOnPartial } = require('./utils/prior-refund');
 const { refundIdForAttempt } = require('./utils/refund-id');
 
 const CORS = {
@@ -249,9 +250,10 @@ exports.handler = async (event) => {
         if (statusCheck.ok) {
           const state = String(statusCheck.data?.state || '').toUpperCase();
           if (state && state !== 'FAILED') {
-            const dbStatus = state === 'COMPLETED'
-              ? (isFullRefund ? 'refunded' : 'partially_refunded')
-              : 'refund_pending';
+            const dbStatus = !isFullRefund && keepStatusOnPartial(order) ? order.status
+              : state === 'COMPLETED'
+                ? (isFullRefund ? 'refunded' : 'partially_refunded')
+                : 'refund_pending';
             await supabase
               .from('orders')
               .update({ status: dbStatus, razorpay_payment_id: paymentId })
@@ -324,9 +326,13 @@ exports.handler = async (event) => {
       throw new Error('PhonePe rejected the refund: ' + (refundData.message || JSON.stringify(refundData).slice(0, 200)));
     }
 
-    const nextStatus = refundState === 'COMPLETED'
-      ? (isFullRefund ? 'refunded' : 'partially_refunded')
-      : 'refund_pending';
+    // A part refund on an order still to ship keeps its status, pending or
+    // done, so the rest of its books still ship (utils/prior-refund).
+    const keepOpen = !isFullRefund && keepStatusOnPartial(order);
+    const nextStatus = keepOpen ? order.status
+      : refundState === 'COMPLETED'
+        ? (isFullRefund ? 'refunded' : 'partially_refunded')
+        : 'refund_pending';
     const updatePayload = {
       status: nextStatus, razorpay_payment_id: paymentId,
       // Persist the refund id + state so the scheduled retry job can re-check
@@ -348,6 +354,14 @@ exports.handler = async (event) => {
     // has no access to this request — without storing it, that notification
     // could only quote an amount.
     if (refundItems.length) updatePayload.refund_items = refundItems;
+    // Order still shipping: keep a running list (with a line for a typed
+    // amount), so the admin and the cancel paths know how much went back.
+    if (!isFullRefund && keepStatusOnPartial(order)) {
+      const prev = require('./utils/prior-refund').hasPriorRefund(order) && Array.isArray(order.refund_items) ? order.refund_items : [];
+      const ticked = refundItems.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+      const typed = Math.round((amountPaise / 100 - ticked) * 100) / 100;
+      updatePayload.refund_items = [...prev, ...refundItems, ...(typed >= 0.01 ? [{ title: 'Part refund', qty: 1, amount: typed }] : [])];
+    }
 
     // Resilience: two of these columns come from migrations that may not have
     // been run on this database yet. Drop whichever one Postgres complains about
