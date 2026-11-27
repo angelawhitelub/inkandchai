@@ -49,7 +49,7 @@ function isPartialCod(order) {
  * @returns {{eligible:true, refundPaise:number, partialCod:boolean, hasAwb:boolean}
  *          | {eligible:false, reason:string}}
  */
-function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pickupPending = false, stockNotice = false } = {}) {
+function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pickupPending = false, stockNotice = false, anyPayment = false } = {}) {
   const no = (reason) => ({ eligible: false, reason });
   if (!order) return no('not_found');
   if (isReplacementOrder(order) || /^IC-R-/i.test(String(order.razorpay_order_id || ''))) return no('replacement');
@@ -64,11 +64,13 @@ function quoteUnpickedCancel(order, now = Date.now(), { untilShipped = false, pi
   // 7-day wait, and a booked COD order too (nothing to refund).
   const noticeCod = stockNotice && !!String(order.tracking_id || '').trim();
   const paid = !!String(order.razorpay_payment_id || '').trim() && amount > 0;
-  if (!paid && !pickupWait && !noticeCod) return no('nothing_paid');
+  // Owner, 28 Nov 2026 (WhatsApp bot): 7 days not picked up = cancellable
+  // whatever the payment; COD simply has nothing to refund.
+  if (!paid && !pickupWait && !noticeCod && !anyPayment) return no('nothing_paid');
   if (order.wrong_cod_paise) return no('wrong_cod');
   if (order.late_cancel_at || order.cancellation_requested_at) return no('already_requested');
   const status = String(order.status || '').toLowerCase();
-  if (!OPEN.includes(status)) return no('closed');
+  if (!OPEN.includes(status) && !(anyPayment && status === 'cod_pending')) return no('closed');
 
   const created = Date.parse(order.created_at || '');
   const hasAwbNow = !!String(order.tracking_id || '').trim();

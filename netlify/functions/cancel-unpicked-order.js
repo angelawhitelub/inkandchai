@@ -88,7 +88,7 @@ async function cancelUnpickedOrder(supabase, order, deps = {}) {
   let stockNotice = false;
   if (deps.stockNotice !== undefined) stockNotice = !!deps.stockNotice;
   else { const sn = require('./utils/stock-notice'); stockNotice = sn.told(await sn.ledgerOrEmpty(), order); }
-  const q = quoteUnpickedCancel(order, Date.now(), { untilShipped, pickupPending: !!deps.pickupPending, stockNotice });
+  const q = quoteUnpickedCancel(order, Date.now(), { untilShipped, pickupPending: !!deps.pickupPending, stockNotice, anyPayment: !!deps.anyPayment });
   if (!q.eligible) {
     return out(422, { error: q.reason === 'already_requested'
       ? 'We already have a cancellation for this order and are working on it.'
@@ -197,7 +197,8 @@ exports.handler = async (event = {}, context, deps = {}) => {
     return json(403, { error: 'You do not have permission to cancel this order' });
   }
 
-  const out = await cancelUnpickedOrder(supabase, order, deps);
+  // anyPayment: a booked COD order not picked up 7+ days is cancellable too (28 Nov 2026).
+  const out = await cancelUnpickedOrder(supabase, order, { anyPayment: true, ...deps });
   return json(out.status, out.body);
 };
 

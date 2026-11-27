@@ -2184,7 +2184,7 @@ window.IACClaimEvidence = {
     // Stock notice (utils/stock-notice): a booked COD order may be cancelled too, nothing to refund.
     const gets = Number(uc.refund_paise) > 0
       ? `You can cancel it and get ${what} ${inrPaise(uc.refund_paise)} back.`
-      : 'You can cancel it any time. Cash on Delivery, so there is nothing to pay or refund.';
+      : `You can cancel it${uc.stock_notice ? ' any time' : ''}. Cash on Delivery, so there is nothing to pay or refund.`;
     return row(`
         <div style="font-size:0.6rem;color:#a09080;line-height:1.5;">
           ${uc.stock_notice ? 'Sorry — a book in this order is out of stock and on its way to us from the publisher.' : uc.early ? 'Not shipped yet.' : 'Sorry — the courier still hasn\'t collected this order.'}
@@ -2196,7 +2196,7 @@ window.IACClaimEvidence = {
           style="font-family:'Montserrat',sans-serif;font-size:0.56rem;letter-spacing:0.16em;text-transform:uppercase;
                  padding:0.65rem 1rem;background:transparent;border:1px solid rgba(232,112,112,0.4);
                  color:#e87070;cursor:pointer;transition:all 0.2s;">
-          Cancel &amp; Refund
+          ${Number(uc.refund_paise) > 0 ? 'Cancel &amp; Refund' : 'Cancel order'}
         </button>`);
   }
 

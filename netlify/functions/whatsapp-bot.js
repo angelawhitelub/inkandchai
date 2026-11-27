@@ -800,6 +800,16 @@ function earlyCancelLine(order) {
   return '\nCancellable now: YES. It has not been shipped and our cancellation window is open, so if they want to cancel it they get a FULL refund of everything they paid (no deduction). Use cancel_order after they confirm. This overrides the 30-minute and 7-day limits for this order.';
 }
 
+// Not picked up 7+ days after ordering (owner, 28 Nov 2026): the bot may cancel.
+function unpicked7Line(order) {
+  if (botMayCancelOrRefund()) return '';
+  const q = unpicked7Quote(order);
+  if (!q) return '';
+  return '\nNOT PICKED UP FOR 7+ DAYS — cancellable on WhatsApp: YES. '
+    + (q.refundPaise > 0 ? `If they cancel, they get a FULL refund of ₹${q.refundPaise / 100} to their original payment method.` : 'Cash on Delivery: nothing to refund.')
+    + ' Only if they want to cancel: ask them to reply YES, then use cancel_order.';
+}
+
 // Booked, courier has not collected it yet: the bot may cancel it, and while
 // the Diwali notice (utils/pickup-delay) is in force it says why first.
 function pickupWaitLine(order) {
@@ -851,7 +861,7 @@ function formatOrderContext(order, displayId, hold) {
     : '—';
   const track = order.tracking_id ? `${order.courier_name || 'Courier'} AWB: ${order.tracking_id}` : 'Not yet shipped';
   const trackUrl = order.tracking_url || `https://inkandchai.in/track/?id=${encodeURIComponent(id)}`;
-  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}${payLaterLine(order)}${earlyCancelLine(order)}${pickupWaitLine(order)}${stockNoticeLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
+  return `Order ID: ${id}\nCustomer: ${order.customer_name}\nAmount: ${amt}\nDate: ${date}\nStatus: ${order.status}\nBooks: ${orderBooksLine(order)}\nTracking: ${track}${dispatchHoldLine(order, hold)}${noReturnLine(order)}${payLaterLine(order)}${earlyCancelLine(order)}${pickupWaitLine(order)}${unpicked7Line(order)}${stockNoticeLine(order)}\nTrack URL: ${trackUrl}${formatRefundContext(order)}${wrongCodBotContext(order)}`;
 }
 
 /**
@@ -1094,19 +1104,33 @@ async function handleBotOrderConfirm(from, decision, senderPhoneId) {
 // automatic refund), refund_wrong_cod and record_wrong_cod_upi are hidden from
 // the model, refused if called anyway, and the request goes to the customer
 // care team ([ESCALATE]). WHATSAPP_BOT_CANCEL_REFUND=1 restores the old tools.
+//
+// Exception (owner, 28 Nov 2026): an order the courier has not picked up 7+
+// days after it was placed may be cancelled here -- prepaid / partial COD with
+// a full refund, COD with nothing to refund. cancel_order stays available for
+// that and refuses everything else (unpicked7ViaBot).
 const BOT_MONEY_TOOLS = new Set(['cancel_order', 'refund_wrong_cod', 'record_wrong_cod_upi']);
+const BOT_UNPICKED_TOOLS = new Set(['cancel_order']);
 function botMayCancelOrRefund() { return process.env.WHATSAPP_BOT_CANCEL_REFUND === '1'; }
+/** Not picked up 7+ days after ordering: the one cancel the bot always may do. */
+function unpicked7Quote(order, now = Date.now()) {
+  let q;
+  try { q = quoteUnpickedCancel(order, now, { anyPayment: true }); } catch { return null; }
+  return q && q.eligible ? q : null;
+}
 const NO_CANCEL_REFUND_RESULT = Object.freeze({
   ok: false,
   error: 'not-available-on-whatsapp',
   message: 'Cancellations and refunds are not done on WhatsApp. Tell the customer: "The next available agent will take up your issue and talk to you here. 🙏" and end the reply with [ESCALATE]. Do not say the order is cancelled or refunded, and do not promise a refund or an amount.',
 });
-const NO_CANCEL_REFUND_PROMPT = '\n\n🚫 CANCELLATIONS AND REFUNDS ARE NOT DONE ON WHATSAPP. This overrides everything above, including the store instructions and any ORDER CONTEXT line that says "Cancellable now", "can be cancelled", "call refund_wrong_cod", "use cancel_order" or asks for a UPI ID.\n'
+const NO_CANCEL_REFUND_PROMPT = '\n\n🚫 CANCELLATIONS AND REFUNDS ARE NOT DONE ON WHATSAPP, with ONE exception below. This overrides everything above, including the store instructions and any ORDER CONTEXT line that says "Cancellable now", "can be cancelled", "call refund_wrong_cod", "use cancel_order" or asks for a UPI ID.\n'
+  + '- THE ONE EXCEPTION: an order whose ORDER CONTEXT has the line "NOT PICKED UP FOR 7+ DAYS — cancellable on WhatsApp: YES". If the customer wants to cancel THAT order, tell them it has not been picked up by the courier for over 7 days, so they can cancel it here (and the refund amount that line gives, or that it is Cash on Delivery with nothing to refund), and ask them to reply YES to confirm. After their YES, call cancel_order with that order_id and relay the tool\'s message as it is. Never promise the cancel or the refund before the tool says it is done. If the tool refuses, relay its message.\n'
   + '- You cannot cancel an order, issue a refund, start a refund or send money in this chat, and you have no tool for it.\n'
   + '- When the customer asks to cancel an order, or asks for a refund, money back, or the extra cash they paid on a wrong COD: do NOT ask them to reply YES, do NOT say it is or will be cancelled or refunded, do NOT quote a refund amount or date, and do NOT ask for a UPI ID or any bank details. Kindly tell them: "The next available agent will take up your issue and talk to you here. 🙏" and end your reply with [ESCALATE].\n'
   + '- You may still tell them where their order is, and share a refund that ORDER CONTEXT says was ALREADY issued, as a fact.';
 function botTools() {
-  return botMayCancelOrRefund() ? OPENAI_TOOLS : OPENAI_TOOLS.filter((t) => !BOT_MONEY_TOOLS.has(t.function?.name));
+  return botMayCancelOrRefund() ? OPENAI_TOOLS
+    : OPENAI_TOOLS.filter((t) => !BOT_MONEY_TOOLS.has(t.function?.name) || BOT_UNPICKED_TOOLS.has(t.function?.name));
 }
 
 // ── OpenAI tool: take a book order over WhatsApp → admin panel ────────────────
@@ -1404,7 +1428,7 @@ async function askOpenAI(phone, userMessage, extraContext = '', senderPhoneId = 
       } else if (instagram) {
         console.warn(`[INSTAGRAM] ${phone} model called ${call.function?.name}; refused`);
         result = { ok: false, error: 'Not possible in an Instagram DM. Send them to inkandchai.in or say our team will reply here.' };
-      } else if (BOT_MONEY_TOOLS.has(call.function?.name) && !botMayCancelOrRefund()) {
+      } else if (BOT_MONEY_TOOLS.has(call.function?.name) && !BOT_UNPICKED_TOOLS.has(call.function?.name) && !botMayCancelOrRefund()) {
         console.warn(`[BOT-NO-CANCEL-REFUND] ${phone} model called ${call.function.name}; refused`);
         result = NO_CANCEL_REFUND_RESULT;
       } else if (call.function?.name === 'submit_order_request') {
@@ -1738,7 +1762,6 @@ async function customerAskedToCancel(supabase, phone) {
 }
 
 async function cancelOrderViaBot(phone, args = {}) {
-  if (!botMayCancelOrRefund()) return NO_CANCEL_REFUND_RESULT;
   const CUSTOMER_CANCEL_WINDOW_MS = 30 * 60 * 1000;
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -1783,6 +1806,9 @@ async function cancelOrderViaBot(phone, args = {}) {
       const splitBlock = require('./utils/order-split').splitCancelBlock(target);
       if (splitBlock) return { ok: false, error: 'split-order', order_id: target.razorpay_order_id, message: splitBlock };
     }
+
+    // Cancels on WhatsApp are off (16 Nov) except 7+ days not picked up (28 Nov).
+    if (!botMayCancelOrRefund()) return await unpicked7ViaBot(supabase, target);
 
     const st = String(target.status || '').toLowerCase();
 
@@ -1957,6 +1983,32 @@ async function cancelOrderViaBot(phone, args = {}) {
     console.error('cancelOrderViaBot:', e.message);
     return { ok: false, error: e.message, message: 'Sorry, I hit a snag cancelling your order. ' + 'The next available agent will take up your issue and talk to you here. 🙏 [ESCALATE]' };
   }
+}
+
+/**
+ * The only cancel the bot does while cancels are off: an order the courier has
+ * not picked up 7+ days after it was placed (owner, 28 Nov 2026). Same path as
+ * My Orders' button: cancelUnpickedOrder asks the courier live, stops the AWB,
+ * cancels and refunds prepaid / partial-COD money in full. Anything else is
+ * handed to the team.
+ */
+async function unpicked7ViaBot(supabase, target, deps = {}) {
+  const oid = target.razorpay_order_id || target.id;
+  const now = Date.now();
+  const q = unpicked7Quote(target, now);
+  if (!q) {
+    const from = unpickedCancelFrom(target);
+    const notYet = from && from > now && ['paid', 'confirmed', 'processing', 'shipped', 'partial_cod_pending'].includes(String(target.status || '').toLowerCase()) && !target.shipment_moved_at;
+    if (!notYet) return NO_CANCEL_REFUND_RESULT;
+    const day = new Date(from).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
+    return { ...NO_CANCEL_REFUND_RESULT, error: 'too-soon', order_id: oid,
+      message: `Order ${oid} cannot be cancelled on WhatsApp yet. Tell the customer: if the courier has still not picked it up by ${day} (${UNPICKED_DAYS} days after ordering), they can cancel it here or from My Orders. For now, the next available agent will take up their issue: say "The next available agent will take up your issue and talk to you here. 🙏" and end the reply with [ESCALATE]. Do not say it is cancelled or refunded.` };
+  }
+  const r = await (deps.cancelUnpickedOrder || cancelUnpickedOrder)(supabase, target, { anyPayment: true, untilShipped: false, stockNotice: false });
+  const b = r.body || {};
+  return b.success
+    ? { ok: true, order_id: oid, was_prepaid: q.refundPaise > 0, outcome: b.outcome, message: `Order ${oid}: ${b.message}` }
+    : { ok: false, error: b.reason || 'unpicked-cancel-failed', order_id: oid, message: `Order ${oid}: ${b.error}` };
 }
 
 // ── Refund a wrong-COD double payment, from the chat ─────────────────────────
@@ -2492,5 +2544,5 @@ async function handleInboundMessage(msg, value) {
 // Shared with the admin-only missed-reply recovery function. Keeping these
 // internals here ensures live replies and retries use exactly the same prompt,
 // order lookup, WhatsApp sender selection, and persistence rules.
-exports._internal = { findBookForBot, FIND_BOOK_TOOL, botTools, botMayCancelOrRefund, NO_CANCEL_REFUND_RESULT, recordWrongCodUpi, refundWrongCodViaBot, loadHistory, historyWithCurrent, ORDER_QUERY_RE, buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
+exports._internal = { unpicked7ViaBot, unpicked7Quote, unpicked7Line, findBookForBot, FIND_BOOK_TOOL, botTools, botMayCancelOrRefund, NO_CANCEL_REFUND_RESULT, recordWrongCodUpi, refundWrongCodViaBot, loadHistory, historyWithCurrent, ORDER_QUERY_RE, buildSystemContent, callOpenAIChat, formatOrderContext, getBotExtraInstructions, OPENAI_TOOLS, askOpenAI, reportMissingBookViaBot, cancelOrderViaBot, sendReply, persistMessage, isHumanTakeover, buildOrderContext, openAIRetryDelayMs,
   describeNonText, collectInboundMessages, logStatusUpdates, buttonLabelOf, handleInboundMessage, processedMsgIds };

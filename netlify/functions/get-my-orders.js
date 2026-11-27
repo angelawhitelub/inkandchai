@@ -196,7 +196,14 @@ exports.handler = async (event) => {
         // full refund (utils/unpicked-cancel). Offered instead of the late
         // cancel, which would keep shipping back.
         const stockNotice = require('./utils/stock-notice').told(stockLedger, o);
-        const uc = quoteUnpickedCancel(o, Date.now(), { untilShipped, stockNotice });
+        let uc = quoteUnpickedCancel(o, Date.now(), { untilShipped, stockNotice });
+        // Owner, 28 Nov 2026: a COD order booked with the courier but not
+        // picked up 7+ days after ordering may be cancelled too (nothing to
+        // refund). Unbooked COD already has cancel-order.js's own button.
+        if (!uc.eligible) {
+          const any = quoteUnpickedCancel(o, Date.now(), { anyPayment: true });
+          if (any.eligible && any.hasAwb) uc = any;
+        }
         if (uc.eligible) {
           o.unpicked_cancel = { refund_paise: uc.refundPaise, partial_cod: uc.partialCod, early: !!uc.early, stock_notice: !!uc.stockNotice };
         }
