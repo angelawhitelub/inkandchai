@@ -33,6 +33,8 @@
 
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const plural = (n, w, ws) => n + ' ' + (n === 1 ? w : (ws || w + 's'));
+  const wide = () => window.matchMedia('(min-width: 960px)').matches;
+  const wireGo = (root) => root.querySelectorAll('[data-go]').forEach((b) => { b.onclick = (e) => { e.preventDefault(); go(b.dataset.go); }; });
 
   function toast(msg, { bad = false, action, ms } = {}) {
     toastEl.innerHTML = '<span>' + esc(msg) + '</span>' + (action ? '<button type="button">' + esc(action.label) + '</button>' : '');
@@ -73,6 +75,7 @@
     return sheetEl.querySelector('.panel');
   }
   function closeSheet() { sheetEl.hidden = true; sheetEl.innerHTML = ''; }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheetEl.hidden) closeSheet(); });
 
   const stepper = (val, attrs = '') => `<span class="stepper"><button type="button" data-step="-1" aria-label="One less">−</button><input type="number" inputmode="numeric" min="0" value="${Number(val) || 0}" ${attrs}><button type="button" data-step="1" aria-label="One more">+</button></span>`;
   function wireSteppers(root) {
@@ -125,8 +128,9 @@
   function viewAdd() {
     const single = state.mode === 'single';
     app.innerHTML = `
-      <h2>Add books</h2>
-      <p class="muted small">Photograph what has arrived. Check what was read, then put it on the shelf.</p>
+      <div class="page-head"><div><h2>Add books</h2>
+      <p class="muted small">Photograph what has arrived${wide() ? ', or drop / paste photos here' : ''}. Check what was read, then put it on the shelf.</p></div></div>
+      <div class="add-grid"><section class="a-photo">
       <div class="seg" role="tablist">
         <button data-mode="stack" class="${single ? '' : 'on'}">📚 Stack of books</button>
         <button data-mode="single" class="${single ? 'on' : ''}">📖 Single book</button>
@@ -134,7 +138,7 @@
       <label class="drop" for="photo">
         <input id="photo" type="file" accept="image/*" ${single ? '' : 'multiple'} capture="environment">
         <div style="font-size:30px">📷</div>
-        <b>${single ? 'Take a photo of the cover' : 'Take photos of the stack (spines visible)'}</b>
+        <b>${wide() ? (single ? 'Choose, drop or paste a photo of the cover' : 'Choose, drop or paste photos of the stack') : single ? 'Take a photo of the cover' : 'Take photos of the stack (spines visible)'}</b>
         <div class="muted small">${single ? 'One book; type how many copies you have below.' : 'Up to 4 photos; copies are counted from the spines.'}</div>
         <div class="thumbs">${state.images.map((u) => `<img src="${u}" alt="">`).join('')}</div>
       </label>
@@ -142,27 +146,41 @@
       <div class="row" style="margin-top:12px">
         <button class="btn block" id="read" ${state.images.length ? '' : 'disabled'}>Read ${state.images.length > 1 ? 'photos' : 'photo'}</button>
         ${state.images.length ? '<button class="btn ghost" id="clearPics" style="flex:none">Clear</button>' : ''}
-      </div>
-      <div id="scan"></div>
-      <h3>Or type a title</h3>
+      </div></section>
+      <section class="a-scan" id="scan">${wide() ? '<div class="card empty placeholder">📋<br>What the photo shows appears here, ready to check.</div>' : ''}</section>
+      <section class="a-manual"><h3>Or type a title</h3>
       <div class="card">
         <input type="search" id="manualTitle" list="known" placeholder="Start typing — books orders are waiting for appear">
         <div class="row" style="margin-top:10px">${stepper(1, 'id="manualQty"')}<button class="btn grow" id="manualAdd">Add to shelf</button></div>
-      </div>`;
+      </div></section></div>`;
     wireSteppers(app);
     loadTitles().catch(() => {});
     app.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => {
       state.mode = b.dataset.mode; ls.set('mode', state.mode);
       state.images = []; state.scan = null; viewAdd();
     });
-    app.querySelector('#photo').onchange = async (e) => {
-      const files = [...e.target.files].slice(0, single ? 1 : 4 - state.images.length);
+    const addFiles = async (list) => {
+      const imgs = [...(list || [])].filter((f) => /^image\//.test(f.type));
+      if (!imgs.length) { toast('That is not a photo', { bad: true }); return; }
+      const files = imgs.slice(0, single ? 1 : Math.max(0, 4 - state.images.length));
+      if (!files.length) { toast('4 photos at most — Clear first', { bad: true }); return; }
       try {
         const urls = await Promise.all(files.map((f) => shrink(f)));
         state.images = single ? urls : [...state.images, ...urls].slice(0, 4);
         state.scan = null;
         viewAdd();
       } catch (err) { toast(err.message, { bad: true }); }
+    };
+    app.querySelector('#photo').onchange = (e) => addFiles(e.target.files);
+    // Desktop: drag photos onto the box, or paste a screenshot / copied image.
+    const drop = app.querySelector('.drop');
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+    drop.ondragleave = () => drop.classList.remove('over');
+    drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
+    window.onpaste = (e) => {
+      if (location.hash && location.hash !== '#add') return;
+      const files = [...((e.clipboardData && e.clipboardData.files) || [])];
+      if (files.some((f) => /^image\//.test(f.type))) { e.preventDefault(); addFiles(files); }
     };
     const clr = app.querySelector('#clearPics');
     if (clr) clr.onclick = (e) => { e.preventDefault(); state.images = []; state.scan = null; viewAdd(); };
@@ -174,6 +192,7 @@
       state.scan = (r.books || []).map((b) => ({ ...b, title: b.match ? b.match.title : b.seen, include: !b.unreadable }));
       renderScan();
     }, 'Reading…');
+    app.querySelector('#manualTitle').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); app.querySelector('#manualAdd').click(); } };
     app.querySelector('#manualAdd').onclick = (e) => {
       const title = app.querySelector('#manualTitle').value.trim();
       const qty = Number(app.querySelector('#manualQty').value) || 0;
@@ -191,7 +210,7 @@
     if (!box) return;
     if (!state.scan.length) { box.innerHTML = '<div class="card empty">No books found in the photo. Try closer, with the spines straight on.</div>'; return; }
     const known = knownSet();
-    box.innerHTML = `<h3>Found ${plural(state.scan.length, 'book')} — check before adding</h3>
+    box.innerHTML = `<h3 class="scan-h">Found ${plural(state.scan.length, 'book')} — check before adding</h3>
       <div class="card">${state.scan.map((b, i) => {
         const waiting = known.has(b.title);
         const chip = b.unreadable ? '<span class="chip bad">Could not read — type the title</span>'
@@ -234,14 +253,14 @@
 
   // ── Shelf ─────────────────────────────────────────────────────────────────
   async function viewShelf() {
-    app.innerHTML = '<h2>Shelf</h2><p class="muted small">Books in the warehouse right now. Printing labels takes their books off.</p><div id="list"><div class="card empty"><span class="spin"></span></div></div>';
+    app.innerHTML = '<div class="page-head"><div><h2>Shelf</h2><p class="muted small">Books in the warehouse right now. Printing labels takes their books off.</p></div></div><div id="list"><div class="card empty"><span class="spin"></span></div></div>';
     try {
       const r = await refreshShelf();
       const list = app.querySelector('#list');
-      if (!state.shelf.length) { list.innerHTML = '<div class="card empty">The shelf is empty. Add books from a photo first.</div>'; return; }
-      list.innerHTML = `<p><b>${plural(r.books, 'book')}</b> · ${plural(state.shelf.length, 'title')}</p>
-        <input type="search" id="filter" placeholder="Find a book">
-        <div class="card" id="rows">${state.shelf.map((b) => `<div class="book" style="grid-template-columns:1fr auto;align-items:center" data-t="${esc(b.title)}">
+      if (!state.shelf.length) { list.innerHTML = '<div class="card empty">The shelf is empty. Add books from a photo first.<br><button class="btn sm" data-go="add" style="margin-top:12px">📷 Add books</button></div>'; wireGo(list); return; }
+      list.innerHTML = `<div class="toolbar"><p><b>${plural(r.books, 'book')}</b> · ${plural(state.shelf.length, 'title')}</p>
+        <input type="search" id="filter" placeholder="Find a book"></div>
+        <div class="card shelf-rows" id="rows">${state.shelf.map((b) => `<div class="book" style="grid-template-columns:1fr auto;align-items:center" data-t="${esc(b.title)}">
           <div class="t">${esc(b.title)}</div>
           <div class="row">${stepper(b.qty, 'data-qty')}<button class="btn sm danger" data-del aria-label="Remove">✕</button></div></div>`).join('')}</div>
         <button class="btn block danger" id="clearShelf" style="margin-top:10px">Empty the whole shelf</button>`;
@@ -284,10 +303,12 @@
       <div class="small muted">${o.age_hours != null ? Math.floor(o.age_hours / 24) + 'd old · ' : ''}${esc(o.payment || '')}${o.awb ? ' · ' + esc(o.awb) : ''}</div></div></div>`;
 
   async function viewLabels(force) {
-    app.innerHTML = `<h2>Labels</h2><p class="muted small">Orders the courier has not picked up, matched against the shelf (oldest orders get the books first).</p>
-      <label class="toggle"><input type="checkbox" id="dtdc" ${state.includeDtdc ? 'checked' : ''}> Include DTDC orders</label>
+    app.innerHTML = `<div class="page-head"><div><h2>Labels</h2><p class="muted small">Orders the courier has not picked up, matched against the shelf (oldest orders get the books first).</p></div>
+      <div class="head-tools"><label class="toggle"><input type="checkbox" id="dtdc" ${state.includeDtdc ? 'checked' : ''}> Include DTDC orders</label>
+      <button class="btn sm ghost" id="refresh" title="Match again">↻ Refresh</button></div></div>
       <div id="body"><div class="card empty"><span class="spin"></span> Matching orders…</div></div>`;
     app.querySelector('#dtdc').onchange = (e) => { state.includeDtdc = e.target.checked; ls.set('dtdc', state.includeDtdc); state.match = null; viewLabels(true); };
+    app.querySelector('#refresh').onclick = () => { state.match = null; viewLabels(true); };
     const body = app.querySelector('#body');
     try {
       if (!state.match || force) {
@@ -302,28 +323,44 @@
     const m = state.match;
     const readyBooks = m.ready.reduce((n, o) => n + o.units, 0);
     const left = m.shelf.filter((s) => s.left > 0);
-    if (!m.shelf.length) { body.innerHTML = '<div class="card empty">The shelf is empty. Add books first, then come back here.</div>'; return; }
+    if (!m.shelf.length) { body.innerHTML = '<div class="card empty big-empty"><div style="font-size:34px">📦</div><b>The shelf is empty</b><p>Add the books that have arrived, then their orders show up here ready to print.</p><button class="btn" data-go="add">📷 Add books</button></div>'; wireGo(body); return; }
     body.innerHTML = `
       <div class="kpis"><div class="kpi ok"><b>${m.ready.length}</b><span>ready (${plural(readyBooks, 'book')})</span></div>
         <div class="kpi warn"><b>${m.flagged.length}</b><span>missing a book</span></div>
         <div class="kpi"><b>${m.not_booked.length}</b><span>not booked yet</span></div></div>
       ${m.skipped.extracted ? `<p class="small muted">${plural(m.skipped.extracted, 'order')} already printed from here are hidden. <a href="#" id="showPrinted">Show them again</a></p>` : ''}
       ${m.skipped.dtdc ? `<p class="small muted">${plural(m.skipped.dtdc, 'DTDC order')} hidden.</p>` : ''}
-      <h3>Ready — every book is on the shelf</h3>
-      <div class="card">${m.ready.length ? m.ready.map((o) => orderHtml(o, state.sel.has(o.order_id))).join('') : '<div class="empty">None yet.</div>'}</div>
-      ${m.flagged.length ? `<h3>Flagged — some books are not in the warehouse</h3>
-        <div class="card">${m.flagged.map((o) => orderHtml(o, state.sel.has(o.order_id))).join('')}</div>` : ''}
+      <div class="lab-grid${m.flagged.length ? ' two' : ''}">
+      <section><div class="sec-head"><h3>Ready — every book is on the shelf</h3>${m.ready.length > 1 ? '<a href="#" data-all="ready" class="small">Select all / none</a>' : ''}</div>
+      <div class="card">${m.ready.length ? m.ready.map((o) => orderHtml(o, state.sel.has(o.order_id))).join('') : '<div class="empty">None yet.</div>'}</div></section>
+      ${m.flagged.length ? `<section><div class="sec-head"><h3>Flagged — some books are not in the warehouse</h3>${m.flagged.length > 1 ? '<a href="#" data-all="flagged" class="small">Select all / none</a>' : ''}</div>
+        <div class="card flagged">${m.flagged.map((o) => orderHtml(o, state.sel.has(o.order_id))).join('')}</div></section>` : ''}
+      </div>
       ${m.not_booked.length ? `<details class="card"><summary>Not booked with a courier yet (${m.not_booked.length})</summary>
         <p class="small muted">These have books on the shelf but no label exists yet. Book them in the admin first.</p>
         ${m.not_booked.map((o) => orderHtml(o, false).replace('<input type="checkbox" data-pick', '<input type="checkbox" disabled')).join('')}</details>` : ''}
       ${left.length ? `<details class="card"><summary>Left on the shelf after these (${left.reduce((n, s) => n + s.left, 0)})</summary>
         <ul class="small">${left.map((s) => `<li>${s.left} × ${esc(s.title)}</li>`).join('')}</ul></details>` : ''}
       ${m.last_print ? `<p class="small muted">Last print: ${plural(m.last_print.orders, 'order')}, ${new Date(m.last_print.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. <a href="#" id="undo">Undo it</a></p>` : ''}
-      <div class="sticky-bar"><div class="inner"><button class="btn block" id="extract">Extract labels</button></div></div>`;
+      <div class="sticky-bar"><div class="inner"><span class="sel-info" id="selInfo"></span><button class="btn block" id="extract">Extract labels</button></div></div>`;
     app.classList.add('has-bar');
     const btn = body.querySelector('#extract');
-    const syncBtn = () => { btn.textContent = state.sel.size ? 'Extract labels (' + state.sel.size + ')' : 'Extract labels'; };
+    const info = body.querySelector('#selInfo');
+    const syncBtn = () => {
+      btn.textContent = state.sel.size ? 'Extract labels (' + state.sel.size + ')' : 'Extract labels';
+      const picked = [...m.ready, ...m.flagged].filter((o) => state.sel.has(o.order_id));
+      const fl = m.flagged.filter((o) => state.sel.has(o.order_id)).length;
+      info.textContent = picked.length ? plural(picked.length, 'order') + ' · ' + plural(picked.reduce((n, o) => n + o.units, 0), 'book') + (fl ? ' · ' + fl + ' flagged' : '') : 'Nothing ticked';
+    };
     syncBtn();
+    body.querySelectorAll('[data-all]').forEach((a) => a.onclick = (e) => {
+      e.preventDefault();
+      const ids = m[a.dataset.all].map((o) => o.order_id);
+      const on = !ids.every((id) => state.sel.has(id));
+      ids.forEach((id) => (on ? state.sel.add(id) : state.sel.delete(id)));
+      body.querySelectorAll('.order [data-pick]').forEach((cb) => { cb.checked = state.sel.has(cb.closest('.order').dataset.id); });
+      syncBtn();
+    });
     body.querySelectorAll('.order [data-pick]').forEach((cb) => cb.onchange = (e) => {
       const id = e.target.closest('.order').dataset.id;
       if (e.target.checked) state.sel.add(id); else state.sel.delete(id);
@@ -433,6 +470,7 @@
   function showLogin() {
     closeSheet();
     tabs.hidden = true;
+    document.body.classList.remove('in');
     app.classList.remove('has-bar');
     app.innerHTML = `<div class="login"><form class="card" autocomplete="on">
       <h2>Sign in</h2><p class="muted small">Same email and password as the Ink &amp; Chai admin.</p>
@@ -478,6 +516,7 @@
       return;
     }
     tabs.hidden = false;
+    document.body.classList.add('in');
     tabs.querySelectorAll('button').forEach((b) => b.onclick = () => go(b.dataset.tab));
     window.onhashchange = route;
     refreshShelf().catch(() => {});

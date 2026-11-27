@@ -91,3 +91,79 @@ input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); m
 details summary { cursor: pointer; font-weight: 650; padding: 6px 0; }
 .toggle { display: flex; gap: 10px; align-items: center; font-size: 14px; }
 select { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 10px; padding: 8px; width: 100%; min-height: 40px; }
+
+/* Shared bits used by both layouts */
+.page-head { display: flex; gap: 12px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+.page-head p { margin: 2px 0 8px; }
+.head-tools { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.sec-head a, .small a, a { color: var(--accent); } .sec-head a { white-space: nowrap; flex: none; }
+.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.toolbar p { margin: 8px 0; flex: none; } .toolbar input { flex: 1; min-width: 180px; }
+.sel-info { display: none; }
+.drop { cursor: pointer; transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.big-empty { padding: 34px 18px; } .big-empty b { display: block; color: var(--ink); font-size: 16px; margin: 6px 0 2px; }
+.big-empty p { margin: 0 auto 14px; max-width: 360px; }
+.card.flagged { border-color: color-mix(in srgb, var(--orange) 30%, transparent); }
+
+/* Desktop: sidebar instead of bottom tabs, two-column pages, centred dialogs */
+@media (min-width: 960px) {
+  body { font-size: 15px; padding-bottom: 0; }
+  body.in { padding-left: 232px; }
+  body.in .top { position: fixed; left: 0; top: 0; width: 232px; height: 76px; padding: 20px 18px; border-bottom: 0; border-right: 1px solid var(--line); background: var(--surface); backdrop-filter: none; z-index: 7; }
+  .tabs { top: 76px; bottom: 0; right: auto; width: 232px; display: flex; flex-direction: column; gap: 4px; padding: 6px 12px 16px; border-top: 0; border-right: 1px solid var(--line); }
+  .tabs button { flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 44px; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: var(--ink-2); }
+  .tabs button:hover { background: var(--surface-2); }
+  .tabs button.on { background: var(--accent-soft); color: var(--accent); }
+  .tabs svg { width: 20px; height: 20px; }
+  .tabs em { color: var(--muted); font-weight: 600; }
+  main { max-width: 1240px; padding: 28px 40px 48px; }
+  h2 { font-size: 26px; } h3 { font-size: 15.5px; margin-top: 22px; }
+  .page-head { margin-bottom: 6px; }
+  .page-head .small { font-size: 13.5px; }
+  button, .drop, .tabs button { cursor: pointer; }
+  .btn:not(:disabled):hover { filter: brightness(1.06); }
+
+  /* Add books: photo + typed title on the left, what was read on the right */
+  .add-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); grid-template-areas: "photo scan" "manual scan"; gap: 4px 32px; align-items: start; }
+  .a-photo { grid-area: photo; } .a-scan { grid-area: scan; position: sticky; top: 20px; } .a-manual { grid-area: manual; }
+  .a-scan .scan-h { margin-top: 8px; }
+  .a-scan > .card { max-height: calc(100vh - 170px); overflow: auto; }
+  .placeholder { margin-top: 8px; min-height: 300px; display: grid; place-items: center; line-height: 1.8; border-style: dashed; box-shadow: none; }
+  .drop { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+  .drop:hover { border-color: var(--accent); }
+  .thumbs img { width: 96px; height: 96px; }
+  .seg { max-width: 420px; }
+
+  /* Shelf: two columns of titles */
+  .toolbar { margin-bottom: 4px; } .toolbar input { max-width: 420px; }
+  .shelf-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 32px; padding: 4px 18px; }
+  .shelf-rows .book:nth-child(2) { border-top: 0; }
+  .shelf-rows ~ #clearShelf { width: auto; }
+
+  /* Labels: ready and flagged side by side, action bar along the bottom */
+  .kpis { grid-template-columns: repeat(3, minmax(0, 220px)); gap: 12px; }
+  .kpi { padding: 14px 16px; } .kpi b { font-size: 28px; }
+  .lab-grid.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; align-items: start; }
+  .card { padding: 14px 18px; }
+  .order { padding: 12px 0; }
+  .order:hover { background: color-mix(in srgb, var(--surface-2) 50%, transparent); }
+  .sticky-bar { left: 232px; bottom: 0; padding: 12px 40px; }
+  .sticky-bar .inner { max-width: 1160px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
+  .sticky-bar .btn.block { width: auto; min-width: 240px; }
+  .sel-info { display: block; color: var(--ink-2); font-weight: 600; }
+  .has-bar { padding-bottom: 100px; }
+
+  /* Dialogs in the middle of the screen, toasts above the action bar */
+  .sheet { align-items: center; }
+  .sheet .panel { border-radius: 18px; max-width: 520px; padding: 22px 22px; max-height: 80vh; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  .sheet .panel .actions { grid-auto-flow: row; }
+  .toast { bottom: 90px; } body.in .toast { left: calc(50% + 116px); }
+  .login { min-height: 80vh; }
+}
+@media (min-width: 1400px) {
+  .lab-grid.two { gap: 0 36px; }
+  .shelf-rows { grid-template-columns: 1fr 1fr 1fr; }
+  .shelf-rows .book:nth-child(3) { border-top: 0; }
+}
