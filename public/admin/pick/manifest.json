@@ -1,0 +1,13 @@
+{
+  "name": "Ink & Chai Warehouse",
+  "short_name": "Warehouse",
+  "description": "Photograph arrived books, then print labels for the orders they complete.",
+  "start_url": "/admin/pick/",
+  "scope": "/admin/pick/",
+  "display": "standalone",
+  "background_color": "#f6f3ee",
+  "theme_color": "#f6f3ee",
+  "icons": [
+    { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+  ]
+}
