@@ -63,6 +63,11 @@
 [functions."daily-unshipped-report"]
   schedule = "30 15 * * *"
 
+# Shipments in the last 24 h (booked/picked up/delivered/cancelled/RTO) + open
+# parcels by stage, emailed to the owner at 21:00 IST. Read-only.
+[functions."shipment-daily-report-scheduled"]
+  schedule = "30 15 * * *"
+
 # auto-mark-delivered is NOT scheduled. Delivered status comes from the
 # NimbusPost webhook (nimbuspost-webhook.js maps 14 "delivered" spellings).
 # The handler is kept and can still be run manually with an X-Admin-Key POST if

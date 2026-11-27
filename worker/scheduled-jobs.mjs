@@ -37,6 +37,7 @@ export const ENABLED_JOBS = new Set([
   'support-ticket-sla-scheduled',
   'auto-recover-carts',
   'daily-unshipped-report',
+  'shipment-daily-report-scheduled',
   'not-picked-up-report-scheduled',
   'return-tracking-scheduled',
   'xpressbees-labels-send-scheduled',
