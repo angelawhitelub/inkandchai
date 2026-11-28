@@ -17,6 +17,11 @@
  *     is already received. notify (default true) sends the customer the usual
  *     order-confirmed WhatsApp and the owner ping.
  *
+ * POST { action: 'seen', prints: [{id, sha, dhash}] }
+ *   -> { used: { id: {order_id, at, exact} } }   screenshots already turned
+ *     into an order (KV, remembered on create with `prints`), so the batch
+ *     page can skip them before paying to read them again.
+ *
  * Prices never come from the picture; the model only reads names, numbers,
  * address and books (utils/screenshot-order.js).
  */
@@ -36,6 +41,12 @@ const CORS = {
 };
 const json = (statusCode, body) => ({ statusCode, headers: CORS, body: JSON.stringify(body) });
 const db = () => createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const KEY_USED = 'screenshot-order:used';
+const kv = () => require('@netlify/blobs').getStore('catalog');
+async function readUsed(s) {
+  const v = await s.get(KEY_USED, { type: 'json' }).catch(() => null);
+  return v && v.hashes && typeof v.hashes === 'object' ? v.hashes : {};
+}
 
 async function readScreenshots(images, { fetchImpl = fetch, model = process.env.SCREENSHOT_ORDER_MODEL || 'gpt-4o' } = {}) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not set');
@@ -117,7 +128,7 @@ async function existingFor(supabase, phones) {
 
 const ACTIVE_ORDER = (s) => !['cancelled', 'refunded', 'rto', 'lost'].includes(String(s || '').toLowerCase());
 
-async function create(supabase, body) {
+async function create(supabase, body, deps = {}) {
   const f = body.fields || {};
   const problems = so.validateForCreate(f);
   if (problems.length) return json(400, { error: `Missing or wrong: ${problems.join('; ')}.` });
@@ -161,6 +172,14 @@ async function create(supabase, body) {
   if (!pushed.ok) {
     return json(pushed.code || 400, { error: `Saved as WhatsApp request ${saved.order_id}, but it could not go to Orders: ${pushed.error}`, request_id: saved.id, request_order_id: saved.order_id });
   }
+  // Remember the screenshots, so the same chat is flagged if it comes back.
+  const prints = (Array.isArray(body.prints) ? body.prints : []).slice(0, 12);
+  if (prints.length) {
+    try {
+      const s = deps.kv || kv();
+      await s.setJSON(KEY_USED, { hashes: so.rememberUsed(await readUsed(s), prints, pushed.order_id) });
+    } catch (e) { console.warn('[admin-screenshot-order] could not remember screenshots:', e.message); }
+  }
   return json(200, { ok: true, order_id: pushed.order_id, status: pushed.status, amount: pushed.amount, payment_kind: pushed.payment_kind, request_id: saved.id });
 }
 
@@ -185,7 +204,11 @@ async function handle(event, deps = {}) {
       return json(200, { fields, pricing, existing });
     }
     if (body.action === 'price') return json(200, { pricing: await price(supabase, body.fields || {}) });
-    if (body.action === 'create') return await create(supabase, body);
+    if (body.action === 'create') return await create(supabase, body, deps);
+    if (body.action === 'seen') {
+      const prints = (Array.isArray(body.prints) ? body.prints : []).slice(0, 60);
+      return json(200, { used: so.findUsed(await readUsed(deps.kv || kv()), prints) });
+    }
     return json(400, { error: 'Unknown action' });
   } catch (e) {
     console.error('[admin-screenshot-order]', e.message);

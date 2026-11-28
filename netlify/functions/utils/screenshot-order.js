@@ -21,6 +21,7 @@ In these screenshots the customer's messages are WHITE bubbles on the left; the 
 Return ONLY a JSON object with these keys:
 {
   "chat_phone": "the number in the chat title at the top, digits only, or empty",
+  "chat_title": "the chat title at the very top exactly as shown (a saved name or a number), or empty if it is not in the picture",
   "customer_name": "the name the customer gave for the parcel (from a Name: line or similar). If none, the name the shop used to address them. Empty if unknown",
   "phones": ["every phone number the customer typed for delivery, digits only, in the order given"],
   "address": "the delivery address exactly as the customer wrote it (house, street, village/area, district, state), without the pincode",
@@ -57,6 +58,7 @@ function normaliseExtraction(raw = {}) {
   const quoted = Number(raw.quoted_total_rs);
   return {
     customer_name: clean(raw.customer_name, 120),
+    chat_title: clean(raw.chat_title, 80),
     phone: phones[0] || '',
     alt_phones: phones.slice(1),
     address,
@@ -105,4 +107,61 @@ function validateForCreate(f = {}) {
   return problems;
 }
 
-module.exports = { PROMPT, MAX_IMAGES, MAX_IMAGE_CHARS, normaliseExtraction, booksString, fullAddress, validateForCreate, mobile };
+// ── Screenshots already used (owner, 28 Nov 2026) ──────────────────────────
+// The page sends two fingerprints per screenshot: sha (the exact file) and
+// dhash (a 16x16 difference hash, 64 hex chars), so a re-saved or re-sent
+// copy of the same screenshot is still caught. Remembered on create.
+const HASH_KEEP_DAYS = 90;
+const HASH_MAX = 6000;
+const DHASH_NEAR = 14;   // of 256 bits
+
+function hamming(a, b) {
+  if (!a || !b || a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    let x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
+    while (x) { d += x & 1; x >>= 1; }
+  }
+  return d;
+}
+
+/** A near-blank picture (all wallpaper) has too little detail to compare. */
+function detailed(dhash) {
+  if (!/^[0-9a-f]{64}$/.test(String(dhash || ''))) return false;
+  const ones = hamming(dhash, '0'.repeat(64));
+  return ones >= 24 && ones <= 232;
+}
+
+/** Which of these fingerprints were used for an order before. */
+function findUsed(store = {}, prints = []) {
+  const out = {};
+  const seen = Object.values(store || {});
+  for (const p of prints || []) {
+    if (!p || !p.id) continue;
+    let hit = p.sha && store[p.sha] ? { ...store[p.sha], exact: true } : null;
+    if (!hit && detailed(p.dhash)) {
+      const v = seen.find((x) => detailed(x.dhash) && hamming(x.dhash, p.dhash) <= DHASH_NEAR);
+      if (v) hit = { ...v, exact: false };
+    }
+    if (hit) out[p.id] = { order_id: hit.order_id, at: hit.at, exact: hit.exact };
+  }
+  return out;
+}
+
+/** Remember these screenshots against an order; old ones fall off. */
+function rememberUsed(store = {}, prints = [], orderId, now = Date.now()) {
+  const next = {};
+  const cut = now - HASH_KEEP_DAYS * 86400e3;
+  for (const [k, v] of Object.entries(store || {})) if (Date.parse(v.at) >= cut) next[k] = v;
+  const at = new Date(now).toISOString();
+  for (const p of prints || []) {
+    const sha = String((p && p.sha) || '');
+    if (!/^[0-9a-f]{64}$/.test(sha)) continue;
+    next[sha] = { order_id: orderId, at, dhash: /^[0-9a-f]{64}$/.test(String(p.dhash || '')) ? p.dhash : '' };
+  }
+  const keys = Object.keys(next);
+  if (keys.length > HASH_MAX) keys.sort((a, b) => next[a].at.localeCompare(next[b].at)).slice(0, keys.length - HASH_MAX).forEach((k) => delete next[k]);
+  return next;
+}
+
+module.exports = { hamming, detailed, findUsed, rememberUsed, DHASH_NEAR, PROMPT, MAX_IMAGES, MAX_IMAGE_CHARS, normaliseExtraction, booksString, fullAddress, validateForCreate, mobile };
